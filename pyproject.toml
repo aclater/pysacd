@@ -4,15 +4,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pysacd"
-version = "0.1.0"
-description = "Pure-Python SACD (Scarletbook) ISO TOC reader"
+version = "0.2.0"
+description = "SACD (Scarletbook) ISO reader and DSF/FLAC converter"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-2.0-or-later"
 dependencies = []
 
+[project.optional-dependencies]
+convert = ["mutagen>=1.45"]
+
 [project.scripts]
 pysacd = "pysacd.__main__:main"
+pysacd-extract = "pysacd.extract:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

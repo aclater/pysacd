@@ -1,14 +1,22 @@
 # pysacd
 
-Pure-Python reader for SACD (Scarletbook) ISO images: no `sacd_extract`
-subprocess and no C extension. It currently reads the TOC; audio extraction is planned.
+Read and convert SACD (Scarletbook) ISO images from Python, without running
+`sacd_extract` as a subprocess.
+
+- `pysacd.read_toc()` is a pure-Python TOC reader with no dependencies.
+- `pysacd convert` extracts tracks to DSF (native DSD, the default), FLAC or
+  WAV (24-bit PCM). A small C engine does the audio work, and the files are
+  tagged from MusicBrainz and the Cover Art Archive.
+- `pysacd-extract` is a drop-in for `sacd_extract`: the same options, the same
+  files and names, and the same bytes (see Validation). Extra features are
+  available as long options.
 
 The layouts are ported from [sacd-ripper](https://github.com/sacd-ripper/sacd-ripper)'s
 `libs/libsacd/scarletbook.h` and `scarletbook_read.c` (GPL-2.0-or-later).
 
 ## Validation
 
-On 2026-10-28 this was checked against `sacd_extract -P`, built from
+On 2026-10-28 the TOC reader was checked against `sacd_extract -P`, built from
 sacd-ripper's current source, on 116 real SACD ISOs. Every field that
 `sacd_extract` prints matched on all 116: disc and album text, catalog
 numbers, genres, dates, area totals and speaker config, and per-track
@@ -16,6 +24,43 @@ text, start times, durations and ISRCs. The test set included stereo and
 multichannel areas, DST and plain-DSD areas, and US-ASCII and ISO-8859-1
 text. The 12 ISOs with raw 2064-byte sectors could not be compared,
 because `sacd_extract` fails on them.
+
+Audio, also on 2026-10-28:
+
+- DSF output was bit-identical to `sacd_extract -s` for plain-DSD stereo, DST
+  stereo and DST 5.1 tracks.
+- PCM output matched ffmpeg's DSD decoder: the same level, a 1-sample offset,
+  and a −104 dB difference below 20 kHz.
+- Tracks converted separately joined to within ±2 LSB (the dither) of a single
+  continuous conversion.
+
+`pysacd-extract` vs `sacd_extract`, run with the same options and compared file
+by file:
+
+- **Identical:** `-s`, `-s -z`, `-s -k -t`, `-s -b -t`, `-2 -m -s` (DST) and
+  `-A -a` produced byte-identical trees. Those cover the ID3 tags and the
+  nopad carry-over.
+- **Identical apart from the creating-machine string:** `-p` (DSD), `-p`
+  (DST passthrough), `-p -c -m`, and `-e -C` (a 930 MB DST edit master with
+  its cue and xml).
+- **Further identical cases:**
+  - `-P` on all 99 plain-SACD ISOs.
+  - `sacd_extract.cfg` driving artist, performer, nopad, pauses, concatenate
+    and id3tag 0/1/3.
+  - `-o`, `-y` and a missing output directory (same exit status).
+  - `-z -t`, repeated `-t`, and `-s -p` together.
+  - 5-channel `-m -s`, `-m -p` and `-m -e -C`.
+  - Multi-disc sets, and titles with trailing spaces.
+  - A disc with no text.
+  - `-I`, and `-I -s -w` in one pass.
+- **DST decoding:** every DST frame in a 27-area library (6,676,925 frames,
+  about 24.7 hours) decoded with no errors. The FFmpeg-derived decoder
+  doesn't implement DST segmentation, and none of those discs use it.
+- **Speed (32 threads, ISO in page cache):**
+  - A full DST stereo + 5.1 disc to DSF took 33 s, against 104 s for
+    `sacd_extract`.
+  - A plain-DSD album (79 min) to DSF took 1.0 s.
+  - Cold reads over 2.5 GbE NFS run at about 280 MB/s.
 
 ## Usage
 
@@ -38,9 +83,120 @@ for area in disc.areas:                 # disc.stereo / disc.multichannel
 Command line:
 
 ```
-python -m pysacd IMAGE.iso [...]          # human readable
-python -m pysacd --json IMAGE.iso         # full TOC as JSON
+pysacd toc IMAGE.iso [...]                # human readable
+pysacd toc --json IMAGE.iso               # full TOC as JSON
 ```
+
+(Use `python -m pysacd` if it isn't installed.)
+
+## Converting
+
+```
+make                                      # builds src/pysacd/_sacdconv.so
+pysacd convert disc.iso                   # stereo area -> DSF, tagged
+pysacd convert -f flac disc.iso           # 24-bit/88.2 kHz FLAC
+pysacd convert -f flac -r 176400 -a both -o ~/Music disc.iso
+pysacd convert -n disc.iso                # dry run: show the MB match and paths
+```
+
+Requirements:
+
+- gcc and make
+- `flac-devel`, for FLAC output only. `make` builds without it, and DSF and
+  WAV still work.
+- `mutagen`, for tagging.
+
+The defaults are set in `~/.config/pysacd/config.toml`, using the same names
+as the long options with underscores; command-line flags override them:
+
+```toml
+dir_template = "{albumartist}/{year} - {album} [{edition}]"
+file_template = "{disc_prefix}{tracknumber:02d} {title}"
+format = "flac"
+```
+
+Template fields:
+
+- Album: `albumartist`, `album`, `date`, `year`, `originalyear`, `label`,
+  `catalognumber`, `barcode`
+- Track: `artist`, `title`, `composer`, `tracknumber`, `tracktotal`
+- Disc: `discnumber`, `disctotal`, `disc` (`Disc N`, only set on multi-disc
+  releases), `disc_prefix` (`N-`, multi-disc only)
+- Area and format: `edition` (from `stereo_edition` or `multichannel_edition`),
+  `layout` (`Stereo`, `5.0` or `5.1`), `channels`, `format`
+
+Python format specs work (`{tracknumber:02d}`). Empty `[]` or `()` left by blank
+fields are removed, and `/` inside values is replaced. `--portable-names` also
+replaces characters that are invalid on Windows/SMB.
+
+How it works:
+
+- **Audio:** one call into `_sacdconv.so` (through ctypes, which releases the
+  GIL) produces every output for an area in one sequential pass over the image:
+  - **Reader thread:** demuxes the audio sectors into batches of 32 frames.
+  - **Worker pool** (`-j` or `--threads`, defaulting to the CPU count):
+    decodes DST, converts DSD to PCM, and lays out DSF blocks.
+  - **Writer thread:** writes every overlapping output in order. That covers
+    DSF, DSDIFF (DSD or DST passthrough), WAV, FLAC, and optionally a plain
+    ISO copy.
+
+  Even a single long DST track uses every core. DST is decoded by a port of
+  FFmpeg's decoder (`csrc/dstdec.c`).
+- **PCM (FLAC/WAV):** a three-stage linear-phase FIR (2.8224 MHz → 352.8 →
+  176.4 → 88.2 kHz) with a stopband of about 105 dB and TPDF dither. The
+  default gain is 0 dB, which puts SACD's 0 dB reference at −6 dBFS, so
+  nothing clips; use `--gain-db 6` if you want louder files. Each batch is
+  filtered with two frames of context on either side and trimmed by the exact
+  filter delay. Track joins are therefore sample-exact (gapless), and the
+  output doesn't depend on the thread count.
+- **Tags:** the MusicBrainz release is found by barcode (the SACD's album
+  catalog number) or by catalog number. The match is checked against track
+  count, durations and ISRCs, and picks the medium for the right layer:
+  MusicBrainz lists "Hybrid SACD (SACD layer, 2 channels)" and "…multichannel"
+  as separate media. If there's no confident match, the disc's own text is used.
+  Use `--mb-release ID` to force a release, and `--mb-text-search` to allow a
+  fallback search by title and artist. FLAC gets Vorbis comments; DSF and WAV
+  get ID3 tags (v2.3 by default). Both follow Picard's field names, including
+  the MusicBrainz IDs.
+
+## sacd_extract compatibility
+
+```
+pysacd-extract -2 -m -s -i disc.iso          # same as sacd_extract
+pysacd-extract -e -C -i disc.iso             # DSDIFF edit master + cue + xml
+pysacd-extract -s --musicbrainz --cover -i disc.iso
+pysacd-extract --flac --pcm-rate 176400 -m -i disc.iso
+```
+
+All `sacd_extract` options are supported: `-2 -m -e -p -s -z -t -k -I -w -c
+-C -o -y -P -A -a -b -v -i`. `./sacd_extract.cfg` is honoured, including
+`artist`, `performer`, `pauses`, `nopad`, `concatenate` and `id3tag`.
+
+Extensions (long options only):
+
+| Option | What it does |
+|---|---|
+| `--flac`, `--wav` | 24-bit PCM output (`--pcm-rate`, `--gain-db`, `--flac-level`) |
+| `--musicbrainz` | MusicBrainz tags instead of SACD text (`--mb-release`, `--mb-contact`, `--cover`) |
+| `--templates` | name files with the `pysacd convert` templates from `~/.config/pysacd/config.toml` |
+| `--threads N` | number of worker threads |
+| `--id3tag N` | the cfg's `id3tag` setting, as a flag |
+| `--no-cfg` | ignore `./sacd_extract.cfg` |
+
+Differences from `sacd_extract`:
+
+- **Input:** ISO images only. Drives and PS3 network servers aren't
+  supported.
+- **Raw-sector images** (2064 or 2054 bytes per sector) are read, where
+  `sacd_extract` refuses them. `-I` writes them out as plain 2048-byte ISOs.
+- **The DSDIFF "creating machine" comment, and the version lines in `.cue` and
+  `.xml`,** name pysacd rather than sacd-ripper. With sacd-ripper's string
+  substituted, the files are byte-identical.
+- **`-b` (pauses):** each track runs from its start to the next track's start.
+  sacd_extract cuts on sector boundaries, which can put a boundary frame in both
+  tracks.
+- **Speed:** everything for an area is produced in one read pass, and DST is
+  decoded on all cores.
 
 ## What's parsed
 
@@ -71,20 +227,12 @@ The sector layout is detected by looking for `SACDMTOC` at LSN 510:
 ## Tests
 
 ```
-PYTHONPATH=src python3 -m unittest discover -s tests
+make && PYTHONPATH=src python3 -m unittest discover -s tests
 PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
-## Roadmap: extraction
+## License
 
-The parsed TOC already includes what extraction needs (`Area.track_start` and
-`track_end`, `Track.start_lsn` and `length_lsn`, `frame_format`). The
-remaining pieces, following sacd-ripper's `scarletbook_read.c`
-(`scarletbook_process_frames`), `dsf.c` and `dsdiff.c`, are:
-
-1. Audio sector demux: the 1-byte frame header, then packet and frame info,
-   then reassembly of DSD/DST frames.
-2. DSF/DFF writers. Plain DSD (3-in-14) only needs bit reordering.
-3. A DST decoder, for DST-coded areas (23 of the 143 areas in this
-   library, and all of the multichannel ones). This is CPU-heavy, so it may
-   need numpy or a small optional C accelerator.
+GPL-2.0-or-later. `csrc/dstdec.c` is derived from FFmpeg's DST decoder and
+stays LGPL-2.1-or-later, which is compatible with the GPL. No Philips/ISO
+reference code is included.

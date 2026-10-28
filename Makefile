@@ -4,12 +4,25 @@
 #   make clean
 #   make test-tools      also build the test-only DST encoder (build/dstenc.so)
 
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_S),Darwin)
+# macOS: clang, a .dylib, and -mcpu=native on Apple silicon (#8)
+CC      ?= cc
+LIBEXT  := dylib
+SHARED  := -dynamiclib
+NATIVE  := $(if $(filter arm64,$(UNAME_M)),-mcpu=native,-march=native)
+else
 CC      ?= gcc
+LIBEXT  := so
+SHARED  := -shared
+NATIVE  := -march=native
+endif
 ifdef PORTABLE
 # generic x86-64, with the PCM filters picked at load time for the CPU (see csrc/dsp.c)
 ARCH    := -DSC_DISPATCH
 else
-ARCH    := -march=native
+ARCH    := $(NATIVE)
 endif
 CFLAGS  ?= -O3 -ffast-math -fno-finite-math-only $(ARCH)
 # override: required flags survive `make CFLAGS=...` on the command line
@@ -30,7 +43,7 @@ SRC := $(addprefix csrc/,sacdconv.c demux.c dsp.c dstdec.c)
 # BUILD and LIB can be overridden: the wheel build (setup.py) uses a private directory.
 BUILD ?= build
 OBJ := $(patsubst csrc/%.c,$(BUILD)/%.o,$(SRC))
-LIB ?= src/pysacd/_sacdconv.so
+LIB ?= src/pysacd/_sacdconv.$(LIBEXT)
 
 all: $(LIB)
 ifeq ($(FLAC_LIBS),)
@@ -38,7 +51,7 @@ ifeq ($(FLAC_LIBS),)
 endif
 
 $(LIB): $(OBJ)
-	$(CC) -shared $(CFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) $(SHARED) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
 $(BUILD)/%.o: csrc/%.c $(wildcard csrc/*.h)
 	@mkdir -p $(dir $@)
@@ -52,7 +65,7 @@ test-tools: $(TEST_TOOLS)
 
 build/dstenc.so: tests/native/dstenc.c
 	@mkdir -p $(dir $@)
-	$(CC) -O2 $(ARCH) -fPIC -shared -std=gnu17 -Wall -o $@ $< -lm
+	$(CC) -O2 $(ARCH) -fPIC $(SHARED) -std=gnu17 -Wall -o $@ $< -lm
 
 # libFuzzer harnesses for the code that parses untrusted disc data (#36): clang only.
 #   make fuzz && build/fuzz_dst_frame -max_total_time=300 build/fuzz-corpus/dst_frame build/fuzz-seeds/dst_frame
@@ -68,6 +81,6 @@ build/fuzz_%: fuzz/fuzz_%.c $(FUZZ_SRC) $(wildcard csrc/*.h)
 	$(FUZZ_CC) $(FUZZ_FLAGS) -o $@ $< $(FUZZ_SRC) -lm
 
 clean:
-	rm -rf build $(LIB)
+	rm -rf build src/pysacd/_sacdconv.so src/pysacd/_sacdconv.dylib src/pysacd/_sacdconv.dll
 
 .PHONY: all clean test-tools fuzz

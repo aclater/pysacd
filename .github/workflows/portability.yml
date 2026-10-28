@@ -1,0 +1,47 @@
+# Build and test the engine on macOS (#8), where it isn't built by ci.yml.
+# macOS runner minutes cost ten times Linux ones on a private repository, so
+# this runs only when the engine, its build or its loader change, plus weekly.
+
+name: portability
+
+on:
+  pull_request:
+    paths: ["csrc/**", "Makefile", "setup.py", "src/pysacd/_native.py", "tests/native/**",
+            ".github/workflows/portability.yml"]
+  schedule:
+    - cron: "41 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: |
+          brew install flac pkg-config
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Build the engine (warnings are errors)
+        run: |
+          make clean
+          make CFLAGS="-O2 -Werror"
+          make test-tools
+          python -m pysacd --version
+
+      - name: Tests
+        run: PYTHONPATH=src pytest -q tests

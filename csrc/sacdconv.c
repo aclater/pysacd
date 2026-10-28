@@ -385,7 +385,9 @@ static void *reader_main(void *arg)
             set_error(e, "%s: %s", a->iso_path, strerror(errno));
             goto out;
         }
+#ifdef POSIX_FADV_SEQUENTIAL   /* not on macOS, whose read-ahead does this by itself */
         posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
+#endif
     }
 
     if (a->iso_out_path) {
@@ -1043,7 +1045,11 @@ static int writer_run(engine_t *e)
 /* Build details for diagnostic logs */
 const char *sacdconv_build_info(void)
 {
+#ifdef __clang__
+    return "clang " __clang_version__
+#else
     return "gcc " __VERSION__
+#endif
 #ifdef HAVE_FLAC
            ", libFLAC"
 #endif

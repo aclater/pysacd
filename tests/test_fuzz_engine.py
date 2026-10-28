@@ -36,7 +36,7 @@ class FuzzReplay(unittest.TestCase):
         if dst.HAVE_ENCODER:
             cls.seeds = cls.dir / "seeds"
             subprocess.run([sys.executable, str(ROOT / "fuzz" / "make_seeds.py"), str(cls.seeds)], check=True,
-                           capture_output=True, env=dict(os.environ, PYTHONPATH=f"{ROOT / 'src'}:{ROOT / 'tests'}"))
+                           capture_output=True, env=dict(os.environ, PYTHONPATH=os.pathsep.join([str(ROOT / 'src'), str(ROOT / 'tests')])))
 
     @classmethod
     def tearDownClass(cls):

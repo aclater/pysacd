@@ -210,6 +210,8 @@ def _ps3sim(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:        # run as the command: tracebacks quote exception messages (#47)
+        safetext.install_excepthook()
     ap = argparse.ArgumentParser(prog="pysacd", description="SACD ISO tools")
     ap.add_argument("--log-file", help="write a diagnostic log here (default level: debug)")
     ap.add_argument("--log-level", choices=["debug", "info", "warning", "error"],

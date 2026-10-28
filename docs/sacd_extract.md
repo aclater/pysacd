@@ -33,7 +33,7 @@ deliberate:
 | Where | sacd_extract | pysacd-extract | Why |
 |---|---|---|---|
 | Two discs aimed at one folder (sets mastered as 1/1, e.g. *Live-Evil*) | mixes them silently, and overwrites tracks whose names match | writes the second disc to `<album> [<catalogue no.>]` and warns; `--disc N/M` gives sacd_extract's own `Disc N` layout | silent mixing is a bug (#4) |
-| Hostile disc text (control or bidi characters, `` ` $ ; ``, a leading `-`) | copied into names and tags as is | neutralised; ordinary discs are unaffected | [security](security.md) |
+| Hostile disc text (invisible characters such as controls, bidi and zero-width characters, tag characters or U+2028; `` ` $ ; ``; a leading `-`) | copied into names, tags, cue, XML and `-P` as is | neutralised: invisible characters removed (a control becomes a space) and shown as escapes in `-P`; ordinary discs are unaffected | [security](security.md#hostile-text) |
 | Malformed TOC timing (a track running past its area's playtime, a zero-length track, more audio than the area's sectors can hold) | uses the times as given: writes a header-only file for a zero-length track and only the frames it finds | cuts tracks to the playtime (so `-P` and the files show the cut times), stops with an error on a zero-length track or on more audio than the image's sectors can hold | no real disc does this; a hostile one could ask for hours of output ([security](security.md#hostile-images)) |
 | Raw-sector images (2064/2054 bytes per sector) | refused | read; `-I` writes a plain ISO | real rips exist in that form |
 | A dropped PS3 connection | gives up | reconnects and resumes, after checking it's still the same disc | PS3 drives are flaky |

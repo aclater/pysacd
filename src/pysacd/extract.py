@@ -39,6 +39,12 @@ def say(msg: str = "", end: str = "\n") -> None:
     sys.stdout.flush()
 
 
+def _err(msg: str) -> None:
+    """A one-line failure on stderr. Errors quote paths and OSError messages, which can hold
+    disc text (an output name), so control, bidi and zero-width characters are escaped (#47)."""
+    print(safetext.for_terminal(msg, keep_tab_newline=True), file=sys.stderr)
+
+
 # ------------------------------------------------------------ options
 
 @dataclass
@@ -502,6 +508,8 @@ def _hint_log() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
+    if argv is None:        # run as the command: tracebacks quote exception messages (#47)
+        safetext.install_excepthook()
     o = parse_args(args)
     # sacd_extract runs as root (sudo for /dev/sr0), so the drop-in only warns (#17)
     warn_root("pysacd-extract")
@@ -511,7 +519,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _setup_logging(o, args)
     except (OSError, ValueError) as e:
-        print(f"logging: {e}", file=sys.stderr)
+        _err(f"logging: {e}")
         return 255
     log.debug("options: %s", safetext.for_terminal(o))
     if o.version:
@@ -541,7 +549,7 @@ def main(argv: list[str] | None = None) -> int:
             o.input, tmp_iso = _fetch_remote(addr, o)
         except (OSError, SACDError) as e:
             log.exception("reading from the server failed")
-            print(f"{o.input}: {e}", file=sys.stderr)
+            _err(f"{o.input}: {e}")
             _hint_log()
             return 255
         except KeyboardInterrupt:
@@ -592,19 +600,19 @@ def _main_local(o: Opts) -> int:
     try:
         mode = os.stat(o.input).st_mode
     except OSError as e:
-        print(f"{o.input}: {e.strerror}", file=sys.stderr)
+        _err(f"{o.input}: {e.strerror}")
         return 255
     kind = "file" if stat.S_ISREG(mode) else "block device" if stat.S_ISBLK(mode) else None
     if kind is None:
-        print(f"{o.input}: only SACD ISO images, block devices and SACD Ripper servers (host:port) are "
-              "supported", file=sys.stderr)
+        _err(f"{o.input}: only SACD ISO images, block devices and SACD Ripper servers (host:port) are "
+             "supported")
         return 255
 
     try:
         img = SACDImage(o.input)
     except (OSError, SACDError) as e:
         log.exception("cannot read the input (%s)", kind)
-        print(f"{o.input}: {e}", file=sys.stderr)
+        _err(f"{o.input}: {e}")
         _hint_log()
         return 255
     try:
@@ -612,7 +620,7 @@ def _main_local(o: Opts) -> int:
     except (OSError, SACDError) as e:
         img.close()     # a malformed TOC mustn't leave the image open (Windows can't delete it then)
         log.exception("cannot read the input (%s)", kind)
-        print(f"{o.input}: {e}", file=sys.stderr)
+        _err(f"{o.input}: {e}")
         _hint_log()
         return 255
     log.info("input: %s, %d sectors of %d bytes (data at offset %d)", kind, img.total_sectors, img.sector_size,
@@ -633,7 +641,7 @@ def _main_local(o: Opts) -> int:
         return 255
     except (OSError, SACDError, _native.NativeError) as e:
         log.exception("failed")
-        print(f"\nERROR: {e}", file=sys.stderr)
+        _err(f"\nERROR: {e}")
         _hint_log()
         return 255
     finally:

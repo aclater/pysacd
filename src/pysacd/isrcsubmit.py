@@ -132,7 +132,7 @@ def body(p: Plan) -> bytes:
 # ---------------------------------------------------------------- credentials
 
 def _open_private(path: Path, flags: int) -> int:
-    return os.open(path, flags | os.O_NOFOLLOW, 0o600)
+    return os.open(path, flags | getattr(os, "O_NOFOLLOW", 0), 0o600)    # no O_NOFOLLOW on Windows
 
 
 def save_token(token: dict, path: Path = TOKEN_FILE) -> None:
@@ -144,14 +144,19 @@ def save_token(token: dict, path: Path = TOKEN_FILE) -> None:
     os.replace(tmp, path)
 
 
+def check_private(mode: int, path: Path) -> None:
+    """Refuse a token file that anyone but its owner can read or write (POSIX only)."""
+    if os.name == "posix" and mode & 0o077:
+        raise musicbrainz.MBError(f"{path} is readable by others; chmod 600 it")
+
+
 def load_token(path: Path = TOKEN_FILE) -> dict | None:
     try:
         with open(path, opener=lambda p, f: _open_private(Path(p), f)) as f:
+            check_private(os.fstat(f.fileno()).st_mode, path)     # the file actually opened
             tok = json.load(f)
     except FileNotFoundError:
         return None
-    if os.stat(path).st_mode & 0o077:
-        raise musicbrainz.MBError(f"{path} is readable by others; chmod 600 it")
     return tok if isinstance(tok, dict) else None
 
 

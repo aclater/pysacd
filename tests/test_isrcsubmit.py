@@ -122,11 +122,12 @@ class Tokens(unittest.TestCase):
         with self.assertRaises(OSError):
             isrcsubmit.load_token(self.path)
 
+    @unittest.skipUnless(os.name == "posix", "POSIX permissions")
     def test_readable_by_others_refused(self):
-        isrcsubmit.save_token({"access_token": "t"}, self.path)
-        os.chmod(self.path, 0o640)      # group-readable is enough to refuse
-        with self.assertRaisesRegex(musicbrainz.MBError, "chmod 600"):
-            isrcsubmit.load_token(self.path)
+        for mode in (0o100640, 0o100604, 0o100620):
+            with self.subTest(mode=oct(mode)), self.assertRaisesRegex(musicbrainz.MBError, "chmod 600"):
+                isrcsubmit.check_private(mode, self.path)
+        isrcsubmit.check_private(0o100600, self.path)
 
 
 class _Server(http.server.BaseHTTPRequestHandler):

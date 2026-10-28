@@ -172,7 +172,7 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
              pcm_rate: int = 88200, gain_db: float = 0.0, threads: int = 0,
              iso_out: str | os.PathLike | None = None,
              progress: Callable[[Progress], None] | None = None, interval: float = 0.5,
-             source: SectorSource | None = None) -> None:
+             source: SectorSource | None = None, isolate: bool = False) -> None:
     """Produce all outputs from one area in a single pass. Blocking, multithreaded.
 
     `progress` is called from this thread every `interval` seconds while the
@@ -180,7 +180,14 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     With `source`, sectors come from that callable instead of the file at
     iso_path (which is then only a name for messages). Engine diagnostics go to
     the "pysacd.engine" logger.
+
+    With `isolate`, the engine runs in a sandboxed child process instead (pysacd.isolate,
+    #17). That is opt-in. The default stays in-process, and this check is all it costs.
     """
+    if isolate:
+        from . import isolate as _isolate
+        return _isolate.run_area(image, iso_path, area, specs, pcm_rate, gain_db, threads, iso_out,
+                                 progress, interval, source)
     lib = _load()
     outs = (_Output * max(1, len(specs)))()
     keep = []   # keep ctypes buffers alive

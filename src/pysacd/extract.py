@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import __version__, _native, sbcompat
+from . import __version__, _native, remote, sbcompat
 from .toc import START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage
 
 FRAME_BYTES = 4704
@@ -454,8 +454,61 @@ def main(argv: list[str] | None = None) -> int:
     o.output_dir = o.output_dir or o.output_dir_conc
     if not o.input:
         o.input = "/dev/cdrom"
+    tmp_iso = None
+    addr = remote.parse_address(o.input)
+    if addr:
+        try:
+            o.input, tmp_iso = _fetch_remote(addr, o)
+        except (OSError, SACDError) as e:
+            print(f"{o.input}: {e}", file=sys.stderr)
+            return 255
+        except KeyboardInterrupt:
+            say("\n\n Program interrupted...")
+            return 255
+    try:
+        return _main_local(o)
+    finally:
+        if tmp_iso:
+            Path(tmp_iso).unlink(missing_ok=True)
+
+
+def _wants_audio(o: Opts) -> bool:
+    return bool(o.output_dsf or o.output_dsdiff or o.output_dsdiff_em or o.export_cue_sheet or o.pcm)
+
+
+def _fetch_remote(addr: tuple[str, int], o: Opts) -> tuple[str, str | None]:
+    """Copy what's needed from a PS3 (SACD Ripper server) to a local file.
+
+    With -I the whole disc goes straight into the output ISO, which then serves as the input
+    for any other outputs, so the disc crosses the network once. Otherwise only the TOCs and
+    the requested areas are fetched into a temporary sparse ISO. Returns (input path, temp path).
+    """
+    host, port = addr
+    say(f"\n Reading from SACD Ripper server {host}:{port}")
+    progress = remote.RateMeter(lambda m: (sys.stdout.write(m), sys.stdout.flush()))
+    base = Path(o.output_dir) if o.output_dir else Path()
+    if o.output_iso:
+        disc, total = remote.read_remote_toc(host, port)
+        out_dir = base / sbcompat.album_path(disc, o.artist_flag)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = Path(sbcompat.unique_filename(str(out_dir), sbcompat.album_dir(disc, o.artist_flag), "iso"))
+        say(f"\n Exporting ISO output in file: {path}")
+        remote.fetch(host, port, path, None, progress=progress)
+        o.output_iso = False        # written; the other outputs read from it
+        say("\n We are done exporting ISO.")
+        return str(path), None
+    want = _wants_audio(o)
+    two, mch = o.two_channel or not o.multi_channel, o.multi_channel
+    tmp, _ = remote.fetch_temp(
+        host, port, str(base),
+        lambda a: want and ((a.is_stereo and two) or (a.is_multichannel and mch)), progress=progress)
+    return tmp, tmp
+
+
+def _main_local(o: Opts) -> int:
     if not os.path.isfile(o.input):
-        print(f"{o.input}: only SACD ISO image files are supported (no drives or PS3 servers)", file=sys.stderr)
+        print(f"{o.input}: only SACD ISO image files and SACD Ripper servers (host:port) are supported",
+              file=sys.stderr)
         return 255
 
     try:

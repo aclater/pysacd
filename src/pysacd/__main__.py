@@ -85,13 +85,30 @@ def _convert(args) -> int:
     for k, v in vars(args).items():
         if v is not None and hasattr(opts, k):
             setattr(opts, k, v)
+    from . import remote
+
     rc = 0
     for iso in args.images:
+        tmp = None
         try:
-            rc |= convert(iso, opts)
+            addr = remote.parse_address(iso)
+            if addr:
+                # Fetch the TOCs and the selected areas from the PS3 into a temporary sparse ISO
+                print(f"{iso}: reading from SACD Ripper server", file=sys.stderr)
+                which = opts.areas
+                tmp, _ = remote.fetch_temp(
+                    *addr, opts.output_dir or ".",
+                    lambda a: not opts.dry_run and (
+                        (a.is_stereo and which in ("stereo", "both")) or
+                        (a.is_multichannel and which in ("multichannel", "both"))),
+                    progress=remote.RateMeter(lambda m: (sys.stderr.write(m), sys.stderr.flush())))
+            rc |= convert(tmp or iso, opts)
         except (OSError, SACDError) as e:
             print(f"{iso}: {e}", file=sys.stderr)
             rc = 1
+        finally:
+            if tmp:
+                Path(tmp).unlink(missing_ok=True)
     return rc
 
 
@@ -133,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
                "  e.g. --dir-template '{albumartist}/{year} - {album} [{edition}]'\n"
                "       --file-template '{tracknumber:02d} {title}'\n"
                "  empty [] / () left by blank fields are removed")
-    c.add_argument("images", nargs="+")
+    c.add_argument("images", nargs="+", help="ISO images, or HOST:PORT of a PS3 running SACD Ripper")
     c.add_argument("--config", help=f"config file (default {Path('~/.config/pysacd/config.toml')})")
     c.add_argument("-f", "--format", choices=["dsf", "flac", "wav"], help="output format (default dsf)")
     c.add_argument("-o", "--output-dir", help="root output directory (default .)")

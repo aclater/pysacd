@@ -64,6 +64,12 @@ then `min(count, block size)`. On a single-area disc `s2 = e2 = 0`, so
 none of the rows match after the first area and the server reuses the block size from the
 previous request. Clients must loop until they have all the sectors they asked for.
 
+The block size starts at 0 on each connection. So on a single-area disc, a new connection
+whose first read starts after the audio area gets `result = 0`, and keeps getting it. That
+matters when resuming after a dropped connection. `RemoteDisc` reads one sector at LSN 0
+right after `DISC_OPEN`, which sets the block size before any other read. A client that
+starts by reading the TOC (as `sacd_extract` does) gets the same effect.
+
 The first time an encrypted range is read, the server checks whether the disc is
 encrypted at all (some DSD 3-in-14/16 discs aren't) by looking at bytes 16-23 of the
 first block. That only affects the PS3's own decryption, not the bytes sent.
@@ -94,6 +100,25 @@ worthwhile.
 
 ## Client
 
-`pysacd.remote.RemoteDisc(host, port)` opens the disc and behaves as a seekable read-only
-file of 2048-byte sectors, so `SACDImage`, `read_toc()` and anything else that takes a
-binary file object work unchanged. `PS3Client` is the lower-level request/response API.
+- `pysacd.remote.RemoteDisc(host, port)` opens the disc and behaves as a seekable
+  read-only file of 2048-byte sectors. `SACDImage`, `read_toc()` and anything else that
+  takes a binary file object work unchanged. It primes the block size, as described
+  under [Reads](#reads).
+- `PS3Client` is the lower-level request/response API. `read()` loops over short reads;
+  `read_some()` is a single `DISC_READ`.
+- `fetch(host, port, path, ranges)` copies the disc, or just the given LSN ranges, into a
+  plain 2048-byte ISO.
+  - Each reply is written to disk as soon as it arrives.
+  - A dropped connection is reopened and the copy resumes (`retries`, `backoff`).
+  - Sectors outside `ranges` stay holes in a sparse file.
+- `needed_ranges(disc, total, areas)` gives the ranges needed to convert `areas`:
+  everything except the audio of the other areas.
+- `fetch_temp()` combines the two for the CLIs: it fetches the needed ranges into a
+  temporary sparse ISO, which the native engine then reads like any other image.
+
+`pysacd-extract -i HOST:PORT` and `pysacd convert HOST:PORT` use these. Checked
+through the simulator on a 3.39 GB plain-DSD disc:
+
+- `pysacd-extract -I` produced a byte-identical ISO.
+- `pysacd-extract -s` and `pysacd convert` produced the same DSF files as from the
+  local ISO (24 tracks), and removed their temporary files.

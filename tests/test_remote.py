@@ -45,6 +45,20 @@ class Codec(unittest.TestCase):
         self.assertEqual(_signed64(f[2]), -1)
         self.assertEqual(f[3], b"abc")
 
+    def test_hostile_lengths_rejected(self):
+        import socket
+        from pysacd.remote import MAX_FIELD, _varint
+        a, b = socket.socketpair()
+        a.sendall(_varint(3 << 3 | 2) + _varint(MAX_FIELD + 1))      # huge bytes field
+        with self.assertRaises(RemoteError):
+            decode_message(_Reader(b))
+        a.close(), b.close()
+        a, b = socket.socketpair()
+        a.sendall(encode_message([(1, 1)] * 40)[:-1] + b"\0")       # too many fields
+        with self.assertRaises(RemoteError):
+            decode_message(_Reader(b))
+        a.close(), b.close()
+
     def test_parse_address(self):
         self.assertEqual(parse_address("192.0.2.10:2002"), ("192.0.2.10", 2002))
         self.assertEqual(parse_address("[::1]:2002"), ("::1", 2002))

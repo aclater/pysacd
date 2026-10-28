@@ -17,6 +17,9 @@ already-decrypted ISO is indistinguishable from a PS3 to the client.
   byte marks the end of the message. Both directions use this framing.
 - The client decodes responses incrementally, receiving more bytes until a complete
   message parses.
+- `pysacd.remote` treats network data as untrusted. A length-delimited field larger than
+  one 512-sector read plus 1 KiB, or a message with more than 16 fields, is rejected
+  before anything is allocated.
 
 ## Messages
 

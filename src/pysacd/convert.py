@@ -36,6 +36,7 @@ class Options:
     mb_release: str | None = None
     mb_text_search: bool = False
     mb_contact: str | None = None             # contact info for the MusicBrainz User-Agent
+    submit_isrcs: bool = False                # offer the disc's ISRCs to the matched release (#34)
     cover: bool = True                        # embed front cover
     cover_size: str = "1200"                  # 250 | 500 | 1200 | full
     cover_file: str = "cover.jpg"             # saved next to the tracks; "" to skip
@@ -287,6 +288,12 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
                  f"mean Δ {match.score:.2f}s, ISRC {match.isrc_hits}/{len(area.tracks)}]")
             for w in match.warnings:
                 _log(f"warning: {w}")
+            if opts.submit_isrcs:
+                from . import isrcsubmit
+                try:
+                    isrcsubmit.offer(match, area, opts.mb_contact, dry_run=bool(opts.dry_run), out=_log)
+                except musicbrainz.MBError as e:
+                    _log(f"warning: ISRC submission: {e}")
         else:
             _log("MusicBrainz: no confident match; using SACD text")
         if match and (opts.cover or opts.cover_file) and not opts.dry_run:

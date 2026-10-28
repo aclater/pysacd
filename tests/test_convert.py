@@ -174,6 +174,24 @@ class Naming(unittest.TestCase):
     def test_portable(self):
         self.assertEqual(render("{title}", {"title": 'What? "Now": <x>'}, True), "What_ _Now__ _x_")
 
+    def test_windows_device_names(self):
+        for t in ("CON", "nul", "Com1", "LPT9.txt", "aux.tar.gz"):
+            self.assertEqual(render("{title}", {"title": t}, True), "_" + t, t)
+            self.assertEqual(render("{title}", {"title": t}, False), t, t)    # only --portable-names
+        for t in ("CONcert", "COM10", "Aux Pistes"):
+            self.assertEqual(render("{title}", {"title": t}, True), t, t)
+
+    def test_hostile_lengths_and_lookalikes(self):
+        # Names stay one component of at most 240 bytes (room for " (2).flac"); a lookalike
+        # slash (U+2215, U+2044, U+FF0F) is an ordinary character, not a separator.
+        long = "é" * 400
+        for portable in (False, True):
+            n = render("{album}/{title}", {"album": long, "title": "a∕b⁄c／d"}, portable)
+            parts = Path(n).parts
+            self.assertEqual(len(parts), 2, n)
+            self.assertLessEqual(len(parts[0].encode()), 240)
+            self.assertEqual(parts[1], "a∕b⁄c／d")
+
     def test_values(self):
         area = Area("MULCHTOC", (1, 20), 0, 0, 0, 4, 0, 6, 4, 6, 0, 0, Timecode(0, 0, 0), 0, 0, 0, [])
         tags = {"ALBUM": ["Al"], "ALBUMARTIST": ["Ar"], "DATE": ["2004-08-21"], "TRACKNUMBER": ["3"],

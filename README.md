@@ -148,6 +148,9 @@ separated by `{disc_prefix}`.
 Tracks that already exist are skipped unless `--overwrite` is given, and the
 run summary says how many were skipped.
 
+`pysacd convert` refuses to run as root unless `--allow-root` is given, because disc
+images are untrusted input (see [docs/security.md](docs/security.md#running-as-root)).
+
 Python format specs work (`{tracknumber:02d}`). Empty `[]` or `()` left by blank
 fields are removed, and `/` inside values is replaced. `--portable-names` also
 replaces characters that are invalid on Windows/SMB.
@@ -233,6 +236,8 @@ Differences from `sacd_extract`:
   `-` is neutralised in file names, tags, cue/XML and terminal output, so names can differ from
   `sacd_extract`'s for such discs. Ordinary discs are unaffected. See
   [docs/security.md](docs/security.md).
+- **Running as root** prints a one-line warning on stderr. Unlike `pysacd convert`, it
+  doesn't refuse, because `sacd_extract` runs as root and people use `sudo` with it.
 - **Raw-sector images** (2064 or 2054 bytes per sector) are read, where
   `sacd_extract` refuses them. `-I` writes them out as plain 2048-byte ISOs.
 - **The DSDIFF "creating machine" comment, and the version lines in `.cue` and

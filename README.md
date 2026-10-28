@@ -190,7 +190,8 @@ Extensions (long options only):
 Differences from `sacd_extract`:
 
 - **Input:** ISO images only. Drives and PS3 network servers aren't
-  supported.
+  supported by the CLI yet. The PS3 protocol is implemented in
+  `pysacd.remote` (see [PS3 network protocol](#ps3-network-protocol)).
 - **Raw-sector images** (2064 or 2054 bytes per sector) are read, where
   `sacd_extract` refuses them. `-I` writes them out as plain 2048-byte ISOs.
 - **The DSDIFF "creating machine" comment, and the version lines in `.cue` and
@@ -228,12 +229,33 @@ The sector layout is detected by looking for `SACDMTOC` at LSN 510:
 | 2064   | 12          | raw DVD sectors (ID/IED/CPR_MAI header + EDC) |
 | 2054   | 6           | raw sectors with ID/IED header only          |
 
+## PS3 network protocol
+
+`sacd_extract -i HOST:2002` reads discs from a PS3 running SACD Ripper. The PS3
+decrypts the disc, so only plain sectors cross the network.
+`pysacd.remote` implements both ends of that protocol:
+
+- `RemoteDisc(host, port)`: a disc on a PS3 as a seekable file object, usable
+  with `SACDImage` and `read_toc()`.
+- `pysacd ps3sim disc.iso [--port 2002]`: a server that behaves like the PS3,
+  for testing clients without one. It serves an already-decrypted ISO and copies
+  the PS3's read sizes and area-boundary cuts. `--rate`, `--latency`,
+  `--drop-after`, `--fail-lsn` and `--no-disc` simulate slow drives and failures.
+
+`sacd_extract -I` through `ps3sim` produces an ISO byte-identical to the source.
+The wire format and the checks against `sacd_extract` are in
+[docs/ps3-protocol.md](docs/ps3-protocol.md).
+
 ## Tests
 
 ```
 make && PYTHONPATH=src python3 -m unittest discover -s tests
 PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s tests
 ```
+
+With `SACD_EXTRACT=/path/to/sacd_extract` and `PYSACD_TEST_ISO` set, the tests also
+copy the ISO through `ps3sim` with the real `sacd_extract -I` and check that the copy
+is byte-identical.
 
 ## CI
 

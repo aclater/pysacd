@@ -95,6 +95,23 @@ def _convert(args) -> int:
     return rc
 
 
+def _ps3sim(args) -> int:
+    from .remote import PS3Simulator
+
+    sim = PS3Simulator(args.image, args.host, args.port, rate=args.rate * 1e6, latency=args.latency / 1000,
+                       drop_after=args.drop_after, fail_lsn=args.fail_lsn, no_disc=args.no_disc,
+                       log=lambda m: print(m, file=sys.stderr, flush=True))
+    host, port = sim.address
+    print(f"serving {args.image} as a SACD Ripper server on {host}:{port} (Ctrl-C to stop)", file=sys.stderr)
+    try:
+        sim.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sim.stop()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="pysacd", description="SACD ISO tools")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -142,6 +159,20 @@ def main(argv: list[str] | None = None) -> int:
     _bool(c, "overwrite", "overwrite existing files (default: skip)")
     c.add_argument("-n", "--dry-run", action="store_true", default=None, help="show match and paths only")
     c.set_defaults(func=_convert)
+
+    s = sub.add_parser(
+        "ps3sim", help="serve an ISO like a PS3 running SACD Ripper (for testing network clients)",
+        description="Serve an already-decrypted SACD ISO over the SACD Ripper network protocol, "
+                    "so `sacd_extract -i HOST:PORT` or pysacd can be tested without a PS3.")
+    s.add_argument("image")
+    s.add_argument("--host", default="0.0.0.0", help="listen address (default 0.0.0.0)")
+    s.add_argument("--port", type=int, default=2002, help="listen port (default 2002, as on the PS3)")
+    s.add_argument("--rate", type=float, default=0, help="throttle to this many MB/s (0 = unlimited)")
+    s.add_argument("--latency", type=float, default=0, help="delay each request by this many ms")
+    s.add_argument("--drop-after", type=int, default=0, help="close the connection after N reads")
+    s.add_argument("--fail-lsn", type=int, help="make reads covering this LSN fail (result -1)")
+    s.add_argument("--no-disc", action="store_true", help="fail DISC_OPEN, as with an empty drive")
+    s.set_defaults(func=_ps3sim)
 
     args = ap.parse_args(argv)
     return args.func(args)

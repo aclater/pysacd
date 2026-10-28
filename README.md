@@ -54,8 +54,12 @@ by file:
   - A disc with no text.
   - `-I`, and `-I -s -w` in one pass.
 - **DST decoding:** every DST frame in a 27-area library (6,676,925 frames,
-  about 24.7 hours) decoded with no errors. The FFmpeg-derived decoder
-  doesn't implement DST segmentation, and none of those discs use it.
+  about 24.7 hours) decoded with no errors.
+- **Full DST syntax:** segmentation, general mapping, one-entry probability
+  tables and the reference decoder's validity checks are covered by
+  `tests/test_dst_full.py`. A test-only encoder forces each feature at 2, 5
+  and 6 channels and wraps the frames in a synthetic SACD ISO. The original
+  DSD, pysacd's decode and `sacd_extract`'s decode agree bit for bit.
 - **Speed (32 threads, ISO in page cache):**
   - A full DST stereo + 5.1 disc to DSF took 33 s, against 104 s for
     `sacd_extract`.
@@ -236,3 +240,13 @@ PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s
 GPL-2.0-or-later. `csrc/dstdec.c` is derived from FFmpeg's DST decoder and
 stays LGPL-2.1-or-later, which is compatible with the GPL. No Philips/ISO
 reference code is included.
+
+FFmpeg's decoder lacks parts of the DST syntax. Those parts were added through
+a clean-room process:
+
+1. One agent studied the reference decoder and wrote
+   `docs/dst-bitstream.md`, a specification in prose and syntax tables with
+   no code.
+2. A separate agent, which never saw the reference code, implemented the
+   decoder extensions and a test encoder from that document alone.
+3. The compiled `sacd_extract` binary served only as a black-box oracle.

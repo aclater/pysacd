@@ -968,3 +968,61 @@ Each item describes behaviour.
 * **fs44 above 64.** The format scales with fs44 through FL and NB as in
   section 1, but the reference decoder only works at fs44 = 64, so the
   behaviour at higher rates was not observed.
+
+### Errata from tests against the reference decoder
+
+These were found by encoding frames from section 6 with a test encoder and
+decoding them both with pysacd and with the reference decoder (inside
+`sacd_extract`, used as a black box) from synthetic SACD images, at 2, 5 and
+6 channels. Where the reference disagreed with the text above, the
+reference wins.
+
+* **Minimum segment length (2.4, rule 5.4).** The sentence "This is the same
+  as saying `L >= 1` and `R x L <= remBytes`" is wrong whenever
+  `R < Lmin/8`. The reference rejects every explicit segment with
+  `8 x R x L < Lmin`, even when `L >= 1`. Observed: filter segments of 127
+  bytes (R = 1, L = 127) and 120 bytes (R = 8, L = 15), and ptable segments
+  of 3 bytes (R = 1, L = 3) and 2 bytes (R = 2, L = 1), are all rejected. The
+  check is therefore `Lmin <= 8 x R x L` **and** `R x L <= remBytes`.
+* **Nine ptable segments (2.4, section 8 "Segment-count limit").** Shared
+  ptable segmentation with Smax = 8 explicit lengths (9 segments) is not
+  decodable by the reference. The ninth segment is decoded with the wrong
+  table (the result is correct only when its table number equals the table
+  of segment 0, consistent with the write spilling into the next channel's
+  first entry), and at 6 channels every such frame is rejected. Decoders
+  should treat a ninth ptable segment as invalid (pysacd does), and the
+  recommendation to accept it is withdrawn. The filter case is sound: shared
+  filter segmentation with 4 explicit lengths (5 segments) decodes
+  correctly with any table assignment at 2, 5 and 6 channels, so 5 filter
+  segments remain valid in shared mode. Per-channel limits behave as stated
+  (3 filter lengths and 7 ptable lengths accepted, one more rejected).
+* **Arithmetic code longer than NB x Nch bits (2.9, 6.7).** The reference
+  keeps the code bits in a fixed array of NB x Nch entries. A frame with
+  `fs > NB x Nch` overflows it: at 2 channels, fs = 75273 and 75274 bits
+  crashed `sacd_extract` with heap corruption, while fs = 75271 decoded
+  correctly. The crash is not about the frame length: frames up to 89 bytes
+  longer than a plain frame decode correctly when fs <= NB x Nch.
+  Consequences:
+  * An encoder must keep `fs <= NB x Nch`. Falling back to a plain frame
+    when the code would be longer (6.1) achieves this.
+  * A frame that codes every bit with probability 1/2 (for example, every
+    channel using one-entry ptables for the whole frame) always needs a few
+    bits more than NB x Nch, so the reference can never decode it. One-entry
+    ptables themselves are fine, and are parsed as 2.8 says: frames where
+    they cover part of the frame or some channels decode identically.
+  * pysacd decodes such frames correctly; this is not an error condition
+    of the format, but no conforming stream contains them.
+* **End-of-frame check (3.7, 6.7), clarified.** The reference behaves as
+  stated. Because the decoder's 12-bit window ends 11 bits past the last
+  codeword bit, one appended zero byte is always accepted, two are accepted
+  only when the original padding was at most 2 bits, and three are always
+  rejected. Dropping trailing zero bytes is accepted.
+* **Error output (3.11), confirmed.** Every rejected frame came out of the
+  reference as 0x55 bytes, with the neighbouring frames unaffected. A
+  plain-frame header with DST_X_bit_plain = 1 is accepted; non-zero stuffing
+  is rejected.
+* **Short plain frames (2.2).** A plain frame shorter than `1 + FL x Nch`
+  bytes crashed `sacd_extract` (segmentation fault) at 2 and 6 channels, so
+  the zero-fill behaviour could not be observed. pysacd zero-fills as
+  recommended. Longer plain frames are accepted and the extra bytes are
+  ignored, as stated.

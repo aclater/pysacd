@@ -1,4 +1,5 @@
-/* DST decoder, ported from FFmpeg (LGPL-2.1-or-later); see dstdec.c. */
+/* DST decoder, ported from FFmpeg and extended from docs/dst-bitstream.md
+   (LGPL-2.1-or-later); see dstdec.c. */
 #ifndef PYSACD_DSTDEC_H
 #define PYSACD_DSTDEC_H
 
@@ -6,7 +7,7 @@
 
 enum {
     DST_ERR_INVALID = -1,       /* corrupt frame */
-    DST_ERR_UNSUPPORTED = -2,   /* valid DST feature FFmpeg's decoder doesn't implement */
+    DST_ERR_UNSUPPORTED = -2,   /* kept for compatibility; no longer returned */
 };
 
 typedef struct dst_decoder dst_decoder_t;

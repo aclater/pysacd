@@ -3,6 +3,7 @@
 import os
 import random
 import struct
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -177,7 +178,8 @@ class Naming(unittest.TestCase):
     def test_windows_device_names(self):
         for t in ("CON", "nul", "Com1", "LPT9.txt", "aux.tar.gz", "nul .txt", "COM\u00b9"):
             self.assertEqual(render("{title}", {"title": t}, True), "_" + t, t)
-            self.assertEqual(render("{title}", {"title": t}, False), t, t)    # only --portable-names
+            # only with --portable-names, except on Windows, where the rules always apply
+            self.assertEqual(render("{title}", {"title": t}, False), "_" + t if sys.platform == "win32" else t, t)
         self.assertEqual(render("{title}", {"title": "CON . "}, True), "_CON")
         for t in ("CONcert", "COM10", "Aux Pistes"):
             self.assertEqual(render("{title}", {"title": t}, True), t, t)

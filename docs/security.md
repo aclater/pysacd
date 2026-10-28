@@ -64,7 +64,7 @@ writer and printer. Extend it when you add one.
 Output paths: each name component is neutralised (below) and capped at 240 bytes, `/` and `\`
 can't split a component, and `..` can't appear as one. Lookalike slashes (U+2215, U+2044,
 U+FF0F) are ordinary characters on every filesystem, so they can only make a name look
-nested; they can't nest it. With `--portable-names`, trailing spaces and dots are removed and Windows
+nested; they can't nest it. With `--portable-names` (always on Windows), trailing spaces and dots are removed and Windows
 device names (`CON`, `NUL`, `COM1`, `COM¹`, …, with any extension) get a leading `_`.
 
 ## Running as root

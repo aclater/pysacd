@@ -2,6 +2,7 @@
 #   make                 build, tuned for this CPU (-march=native)
 #   make PORTABLE=1      build for generic x86-64
 #   make clean
+#   make test-tools      also build the test-only DST encoder (build/dstenc.so)
 
 CC      ?= gcc
 ifdef PORTABLE
@@ -39,7 +40,17 @@ build/%.o: csrc/%.c $(wildcard csrc/*.h)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+# Test-only DST encoder core used by tests/dstenc.py (not part of the package).
+# No -ffast-math: the synthetic test signal should not depend on it.
+TEST_TOOLS := build/dstenc.so
+
+test-tools: $(TEST_TOOLS)
+
+build/dstenc.so: tests/native/dstenc.c
+	@mkdir -p $(dir $@)
+	$(CC) -O2 $(ARCH) -fPIC -shared -std=gnu17 -Wall -o $@ $< -lm
+
 clean:
 	rm -rf build $(LIB)
 
-.PHONY: all clean
+.PHONY: all clean test-tools

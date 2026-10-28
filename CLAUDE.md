@@ -93,8 +93,11 @@ paths from environment variables and skip without them.
   on each PR and after each push. It sends the PR's title, description and
   diff to Google's Gemini API, so never put secrets or private details in a
   PR. Answer every finding (fix it, or reply with
-  why not) before merging. If it hasn't arrived 15 minutes after the last
-  push, say so in the PR and merge on green.
+  why not) before merging. A red `review` check means every model call
+  failed (usually Gemini overload): re-run it once (`/review` as a comment).
+  If no review has arrived 15 minutes after the last push, say so in the PR
+  and merge when everything else is green. Comments starting with `/` are
+  PR-Agent commands; other comments don't start a run.
 - Commits explain why, one logical change each, and end with the
   `Co-Authored-By:` trailer for the model in use.
 - Verify every version (actions, images, packages) from its primary source

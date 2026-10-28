@@ -71,7 +71,12 @@ class _Timeout(Exception):
 @contextlib.contextmanager
 def _deadline(seconds: float):
     """Raise _Timeout in the main thread after `seconds`. The engine runs in its own thread
-    and run_area() cancels it when the exception arrives."""
+    and run_area() cancels it when the exception arrives. Windows has no SIGALRM: there only
+    the CI job's own timeout catches a hang."""
+    if not hasattr(signal, "setitimer"):
+        yield
+        return
+
     def fire(_sig, _frame):
         raise _Timeout(f"no result after {seconds:.0f} s")
     old = signal.signal(signal.SIGALRM, fire)

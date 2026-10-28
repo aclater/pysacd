@@ -10,10 +10,10 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "GPL-2.0-or-later"
 license-files = ["COPYING", "licenses/*"]
-dependencies = []
+dependencies = ["mutagen>=1.45"]     # tags for convert and pysacd-extract --musicbrainz
 
 [project.optional-dependencies]
-convert = ["mutagen>=1.45"]
+convert = []        # kept so `pip install pysacd[convert]` still works; mutagen is a dependency now
 # ruff and mypy are pinned: an unpinned upgrade can change the rule set on unchanged code.
 dev = ["mutagen>=1.45", "numpy", "pytest==9.1.1", "ruff==0.17.0", "mypy==2.4.0"]
 

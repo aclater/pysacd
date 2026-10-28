@@ -8,11 +8,12 @@
 
 ## Install
 
-**From a wheel** (Linux x86-64 and aarch64): download the `.whl` from a
-[GitHub release](https://github.com/aclater/pysacd/releases), then
+**From a wheel** (Linux x86-64/aarch64 with glibc or musl, macOS arm64/x86-64,
+Windows x86-64): `pip install pysacd` once it's on PyPI, or download the `.whl`
+from a [GitHub release](https://github.com/aclater/pysacd/releases) and
 
 ```sh
-pip install 'pysacd-*.whl[convert]'   # engine and libFLAC included; [convert] adds mutagen for tagging
+pip install pysacd-*.whl              # engine, libFLAC and mutagen included
 pysacd --version                      # shows how the engine was built
 ```
 

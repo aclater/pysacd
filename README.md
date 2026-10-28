@@ -227,6 +227,10 @@ Differences from `sacd_extract`:
   Optical drives aren't supported. A dropped PS3 connection is reopened and the
   copy resumes; sacd_extract gives up. See
   [PS3 network protocol](#ps3-network-protocol).
+- **Hostile text:** disc text with control or bidi characters, `` ` $ ; | < > `` or a leading
+  `-` is neutralised in file names, tags, cue/XML and terminal output, so names can differ from
+  `sacd_extract`'s for such discs. Ordinary discs are unaffected. See
+  [docs/security.md](docs/security.md).
 - **Raw-sector images** (2064 or 2054 bytes per sector) are read, where
   `sacd_extract` refuses them. `-I` writes them out as plain 2048-byte ISOs.
 - **The DSDIFF "creating machine" comment, and the version lines in `.cue` and

@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import __version__, _native, remote, sbcompat
+from . import __version__, _native, remote, safetext, sbcompat
 from .toc import START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage
 
 FRAME_BYTES = 4704
@@ -28,6 +28,9 @@ CATEGORIES = ["Not used", "General", "Japanese"]
 
 
 def say(msg: str = "", end: str = "\n") -> None:
+    # Messages can contain disc text: make control characters visible so a crafted title can't
+    # drive the terminal. Tab, newline and pysacd's own \r progress updates are kept.
+    msg = "\r".join(safetext.for_terminal(part, keep_tab_newline=True) for part in msg.split("\r"))
     sys.stdout.write(msg + end)
     sys.stdout.flush()
 
@@ -621,9 +624,8 @@ def _avoid_other_discs(disc: Disc, want: list[Area], o: Opts, out_dir: Path) -> 
     target = base / f"{album} [{sbcompat.sanitize_filename(label)}]"
     if rest:
         target /= rest
-    from .convert import _shown
-    print(f"WARNING: {_shown(out_dir)} already holds tracks of another disc ({_shown(', '.join(clash[:3]))}"
-          f"{', ...' if len(clash) > 3 else ''}); writing this disc ({_shown(label)}) to {_shown(target)} instead "
+    print(f"WARNING: {safetext.for_terminal(out_dir)} already holds tracks of another disc ({safetext.for_terminal(', '.join(clash[:3]))}"
+          f"{', ...' if len(clash) > 3 else ''}); writing this disc ({safetext.for_terminal(label)}) to {safetext.for_terminal(target)} instead "
           "of mixing them (sacd_extract would mix or overwrite them).", file=sys.stderr)
     if disc.album_set_size <= 1:
         print("hint: if both are discs of one set mastered as 1/1, re-run each with --disc N/M "

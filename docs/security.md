@@ -42,6 +42,22 @@ Any new code path that writes or prints disc, MusicBrainz or network text must g
 `pysacd.safetext`. `tests/test_safetext.py` builds a disc with hostile titles and checks every
 writer and printer. Extend it when you add one.
 
+## Threat model
+
+| Actor | Controls | Must not be able to |
+|---|---|---|
+| Whoever made a disc image | every byte of the image, including TOC text and audio frames | write outside the output directory, run commands, drive the terminal, crash or hang pysacd, corrupt another disc's output |
+| A PS3 server, or anything on port 2002 | everything the client receives | the above, plus make the client allocate, write or wait without bound |
+| A client of `ps3sim` | requests | read anything but the served ISO, crash the server, or hold it for ever |
+| An on-path attacker | the unauthenticated, unencrypted PS3 traffic | anything a hostile server couldn't. Reading or altering sectors is possible and accepted (trusted networks only) |
+| MusicBrainz and cover-art responses | tag text and images | the same as disc text (see #14 for HTTP limits) |
+
+Output paths: each name component is neutralised (below) and capped at 240 bytes, `/` and `\`
+can't split a component, and `..` can't appear as one. Lookalike slashes (U+2215, U+2044,
+U+FF0F) are ordinary characters on every filesystem, so they can only make a name look
+nested; they can't nest it. With `--portable-names`, trailing spaces and dots are removed and Windows
+device names (`CON`, `NUL`, `COM1`, `COM¹`, …, with any extension) get a leading `_`.
+
 ## PS3 network protocol
 
 The SACD Ripper protocol (`docs/ps3-protocol.md`) has **no authentication and no encryption**.
@@ -57,6 +73,17 @@ as hostile:
   can't make the client create an enormous sparse file.
 - **TOC over the network:** areas whose TOC or audio lies outside the disc, or whose end comes
   before their start, are rejected as malformed. Fetch ranges are clamped to the disc.
+- **Time:** each request has a deadline: the timeout (60 s) covers the whole response, not
+  just each `recv()`, so a server can't trickle a reply a byte at a time. Reconnects are
+  bounded (3 in a row, with backoff), and every successful reply moves the copy forward, so
+  the total transferred never exceeds the requested ranges.
+- **Reconnects:** a reconnect that reports a different disc size or master TOC fails the
+  copy. A server that swapped discs (even another pressing with the same size) can't splice
+  another disc into the file.
+- **Temporary files:** the sparse ISO for a partial fetch is created with `mkstemp` (mode
+  0600, unpredictable name) in the output directory. It is removed on success, on error and on
+  Ctrl-C. A SIGKILL, or a SIGTERM with no handler, leaves a `.pysacd-remote-*.iso` behind.
+  That is a known limitation.
 - **Text on the disc:** it's still disc text. Names, tags and output are neutralised as
   described under [Hostile text](#hostile-text), and every output path stays inside the output
   directory.

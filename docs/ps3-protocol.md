@@ -108,7 +108,8 @@ worthwhile.
 - `pysacd.remote.RemoteDisc(host, port)` opens the disc and behaves as a seekable
   read-only file of 2048-byte sectors. `SACDImage`, `read_toc()` and anything else that
   takes a binary file object work unchanged. It primes the block size, as described
-  under [Reads](#reads).
+  under [Reads](#reads), by reading the master TOC (LSN 510–519, before the first area),
+  which `fetch()` then compares on every reconnect.
 - `PS3Client` is the lower-level request/response API. `read()` loops over short reads;
   `read_some()` is a single `DISC_READ`.
 - `fetch(host, port, path, ranges)` copies the disc, or just the given LSN ranges, into a

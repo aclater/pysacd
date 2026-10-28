@@ -42,6 +42,8 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Hostile text](security.md#hostile-text)
   - [Threat model](security.md#threat-model)
   - [Running as root](security.md#running-as-root)
+  - [Files pysacd writes](security.md#files-pysacd-writes)
+  - [Network responses](security.md#network-responses)
   - [Extra isolation](security.md#extra-isolation)
   - [MusicBrainz credentials](security.md#musicbrainz-credentials)
   - [PS3 network protocol](security.md#ps3-network-protocol)

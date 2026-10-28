@@ -12,9 +12,25 @@
 make                 # src/pysacd/_sacdconv.so, tuned for this CPU
 make PORTABLE=1      # generic x86-64; the PCM filters still use AVX2/AVX-512 when the CPU has them
 make test-tools      # the test-only DST encoder
+make HARDEN=0        # without the hardening flags (sanitizer builds)
 ```
 
 libFLAC (`flac-devel`) is optional: without it FLAC output is disabled and everything else works.
+
+On Linux the engine is built hardened (`HARDEN=1`, the default):
+
+- compiler flags: `-D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection`, plus
+  `-fcf-protection` on x86;
+- linker flags: `-Wl,-z,relro,-z,now,-z,noexecstack`.
+
+The flags live in `override CFLAGS`/`LDFLAGS`, so `make CFLAGS=...` keeps them. The cost is in
+[performance](performance.md#hardening).
+
+`_native.py` mirrors the engine's `sc_area_t` and `sc_output_t` structs by hand. When it loads
+the library, it checks the engine's ABI version (`SACDCONV_ABI` in `csrc/sacdconv.c`, `ABI` in
+`_native.py`), then each struct's size and every field offset. It refuses a library that
+doesn't match: rebuild it (`make clean all`). Bump both versions whenever a struct or an
+exported signature changes.
 
 ## Tests
 
@@ -54,7 +70,8 @@ Every pull request runs:
 - **ruff and mypy** on the Python code.
 - **The test suite** on Python 3.11 to 3.14, with the engine built with
   `-Werror` (FLAC included).
-- **The tests under AddressSanitizer and UndefinedBehaviorSanitizer.**
+- **The tests under AddressSanitizer and UndefinedBehaviorSanitizer**, and again under
+  **ThreadSanitizer**.
 - **libFuzzer** on the demuxer and the DST decoder, 2 minutes each, when
   `csrc/` or `fuzz/` changes. A weekly run lasts 30 minutes and keeps its
   corpus cached.
@@ -67,8 +84,12 @@ Every pull request runs:
   description and diff to Google's Gemini API**, a third party, even though
   the repository is private. Without the secret the workflow sends nothing.
 
-Dependabot keeps the SHA-pinned actions and the Python dev dependencies
-current, with a two-week cooldown. 
+CI installs its dev dependencies from `requirements-dev.txt`, with every package pinned
+and hash-checked (`pip install --require-hashes`). It installs pysacd itself with
+`--no-build-isolation`, so nothing unhashed is downloaded. To update a pin, edit `PINS` in
+`tools/lock_dev.py` and run `python3 -I tools/lock_dev.py`. It rewrites the file from PyPI's
+hashes and refuses releases younger than two weeks. For local work, `pip install -e '.[dev]'`
+still works. Dependabot keeps the SHA-pinned actions current, with a two-week cooldown.
 
 Contributor rules (clean room, byte-identity, benchmarks, privacy) are in [CLAUDE.md](../CLAUDE.md).
 

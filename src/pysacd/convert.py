@@ -42,7 +42,6 @@ class Options:
     id3_version: int = 3                      # DSF/WAV tags: 3 or 4
     portable_names: bool = False              # also replace <>:"\|?* in names
     overwrite: bool = False
-    isolate: bool = False                     # run the engine in a sandboxed child (#17)
     dry_run: bool = False
 
     @classmethod
@@ -353,7 +352,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     start = time.monotonic()
     try:
         _native.run_area(img, iso, area, specs, opts.pcm_rate, opts.gain_db, opts.jobs,
-                         progress=_progress_printer(label), isolate=opts.isolate)
+                         progress=_progress_printer(label))
     except BaseException as e:
         for spec in specs:
             Path(spec.path).unlink(missing_ok=True)

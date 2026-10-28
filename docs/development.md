@@ -94,14 +94,26 @@ directory, so your `build/` and `src/pysacd/_sacdconv.so` are left alone. The
 engine is a ctypes library rather than a CPython extension, so one
 `py3-none-<platform>` wheel serves every Python version.
 
-`.github/workflows/wheels.yml` builds manylinux wheels (x86-64, aarch64) and
-the sdist when packaging or `csrc/` changes. auditwheel bundles libFLAC and
-libogg; their licences ship in the wheel (`licenses/`). To release:
+`.github/workflows/wheels.yml` builds wheels for manylinux (x86-64, aarch64),
+musllinux (x86-64), macOS (arm64, x86-64) and Windows (x86-64), plus the sdist,
+whenever packaging or `csrc/` changes. auditwheel and delocate bundle libFLAC and
+libogg; the Windows DLL is linked statically. Their licences ship in the wheel
+(`licenses/`). Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
+in a clean environment: it converts a synthetic disc to DSF and FLAC with the
+installed console scripts. Runtime SIMD dispatch needs glibc, so musllinux wheels
+use the plain filters.
+
+To release:
 
 1. Bump `version` in `pyproject.toml` and `src/pysacd/__init__.py`, and merge.
-2. Tag `vX.Y.Z` on master and push the tag. The workflow attaches the wheels
-   and sdist to a GitHub release.
-3. PyPI: publishing makes the code public, so it's off. To turn it on,
-   configure PyPI trusted publishing for this repository (environment `pypi`)
-   and set the repository variable `PYPI_PUBLISH` to `true`.
-
+2. Tag `vX.Y.Z` on master and push the tag. The workflow then:
+   - creates build provenance attestations for every wheel and the sdist
+     (`gh attestation verify <file> --repo aclater/pysacd`);
+   - attaches them to a GitHub release;
+   - publishes to TestPyPI, if the repository variable `TESTPYPI_PUBLISH` is
+     `true` (trusted publishing, environment `testpypi`);
+   - then publishes to PyPI, if `PYPI_PUBLISH` is `true` (environment `pypi`),
+     and only if TestPyPI succeeded or was skipped.
+3. Trusted publishing is configured once per index on its website: a "pending
+   publisher" with owner `aclater`, repository `pysacd`, workflow `wheels.yml`
+   and the environment name above. No API token is stored anywhere.

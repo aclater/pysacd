@@ -16,7 +16,9 @@
  * for AVX-512, AVX2+FMA and the baseline, and picks one at load time from the
  * CPU (an ifunc), so a wheel runs as fast as a native build (#21).
  */
-#if defined(SC_DISPATCH) && defined(__GNUC__) && !defined(__clang__) && defined(__x86_64__) && defined(__ELF__)
+/* ifunc resolvers need glibc: musl (Alpine) and other libcs get the plain version */
+#if defined(SC_DISPATCH) && defined(__GNUC__) && !defined(__clang__) && defined(__x86_64__) && defined(__ELF__) && \
+    defined(__GLIBC__)
 #define SC_CLONES __attribute__((target_clones("arch=x86-64-v4", "arch=x86-64-v3", "default")))
 #else
 #define SC_CLONES

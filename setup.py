@@ -33,8 +33,15 @@ class BuildEngine(build_py):
         dest.mkdir(parents=True, exist_ok=True)
         # A private build directory: never touch the developer's build/ or src/pysacd/ library
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(["make", "-C", str(ROOT), f"BUILD={tmp}", f"LIB={dest / LIB}",
-                            *([] if native else ["PORTABLE=1"])], check=True)
+            try:
+                subprocess.run(["make", "-C", str(ROOT), f"BUILD={tmp}", f"LIB={dest / LIB}",
+                                *([] if native else ["PORTABLE=1"])], check=True)
+            except FileNotFoundError:
+                sys.exit("pysacd: building from source needs `make` and a C compiler (gcc or clang; MinGW-w64 "
+                         "on Windows). Install them, or use a prebuilt wheel. See docs/quickstart.md.")
+            except subprocess.CalledProcessError as e:
+                sys.exit(f"pysacd: building the native engine failed (make exited {e.returncode}). It needs a "
+                         "C compiler, and libFLAC (flac-devel) for FLAC output. See docs/quickstart.md.")
 
 
 class PlatformWheel(bdist_wheel):

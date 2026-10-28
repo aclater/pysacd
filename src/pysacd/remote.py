@@ -43,6 +43,9 @@ MAX_BLOCK = 512                 # MAX_PROCESSING_BLOCK_SIZE in sacd-ripper's sca
 # Network data is untrusted: bound every length before allocating.
 MAX_FIELD = MAX_BLOCK * SECTOR_SIZE + 1024      # largest legitimate field: one 512-sector read
 MAX_FIELDS = 16                                 # the protocol's messages have 3 fields
+# Largest disc a server may report: 8 GiB, just above a dual-layer SACD (DVD-9, 4,173,824 sectors).
+# A larger DISC_SIZE would let a server make the client create an enormous sparse file.
+MAX_DISC_SECTORS = 1 << 22
 
 REQ_OPEN, REQ_CLOSE, REQ_READ, REQ_SIZE = 1, 2, 3, 4
 RESP_OPENED, RESP_CLOSED, RESP_READ, RESP_SIZE = 1, 2, 3, 4
@@ -218,6 +221,10 @@ class PS3Client:
         if r[2] <= 0:
             log.error("no disc size (result %d)", r[2])
             raise RemoteError(f"{self.address}: no disc size (result {r[2]})")
+        if r[2] > MAX_DISC_SECTORS:
+            log.error("disc size %d sectors exceeds the largest SACD (%d)", r[2], MAX_DISC_SECTORS)
+            raise RemoteError(f"{self.address}: disc size {r[2]} sectors exceeds the largest SACD "
+                              f"({MAX_DISC_SECTORS})")
         log.info("disc has %d sectors (%.2f GB)", r[2], r[2] * SECTOR_SIZE / 1e9)
         return r[2]
 
@@ -337,6 +344,15 @@ def needed_ranges(disc, total_sectors: int, areas: list | None) -> list[tuple[in
     Everything except the audio of areas that aren't wanted: lead-in, master and area TOCs
     (TOC-1 and TOC-2), and the wanted areas' audio. The rest stays a hole in a sparse file.
     """
+    if not 0 < total_sectors <= MAX_DISC_SECTORS:
+        log.error("implausible disc size %d sectors", total_sectors)
+        raise RemoteError(f"implausible disc size {total_sectors} sectors")
+    for a in disc.areas:    # the TOC came over the network: reject areas outside the disc
+        if not (0 <= a.toc_start < total_sectors and 0 <= a.track_start <= a.track_end < total_sectors):
+            log.error("malformed TOC: %s area at LSN %d..%d (TOC at %d) outside a disc of %d sectors",
+                      a.kind, a.track_start, a.track_end, a.toc_start, total_sectors)
+            raise RemoteError(f"malformed TOC: {a.kind} area at LSN {a.track_start}..{a.track_end} "
+                              f"(TOC at {a.toc_start}) lies outside a disc of {total_sectors} sectors")
     if areas is None:
         return [(0, total_sectors)]
     skip = sorted((a.track_start, a.track_end + 1) for a in disc.areas if a not in areas)
@@ -362,7 +378,10 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
     """
     disc = RemoteDisc(host, port)
     total = disc.sectors
-    ranges = ranges or [(0, total)]
+    asked = ranges or [(0, total)]
+    ranges = [(max(0, s), min(e, total)) for s, e in asked if min(e, total) > max(0, s)]
+    if ranges != asked:
+        log.warning("fetch ranges clamped to the disc's %d sectors: %r -> %r", total, asked, ranges)
     todo = sum(e - s for s, e in ranges)
     done = failures = 0
     try:
@@ -453,16 +472,23 @@ class PS3Simulator:
     Test knobs: `rate` (bytes/s, emulates the PS3 drive), `latency` (seconds per request),
     `drop_after` (close each connection after N reads), `fail_lsn` (reads covering this LSN
     return result -1), `no_disc` (DISC_OPEN fails), `over_return` (send N sectors more than
-    requested, to test that clients reject a misbehaving server).
+    requested, to test that clients reject a misbehaving server), `disc_size` (report this
+    DISC_SIZE instead of the real one).
+
+    Exposure: it listens on 127.0.0.1 by default. A connection that sends nothing for
+    `idle_timeout` seconds is closed, so one idle client can't block the server for ever.
     """
 
     def __init__(self, iso: str | os.PathLike, host: str = "127.0.0.1", port: int = DEFAULT_PORT, *,
                  rate: float = 0, latency: float = 0, drop_after: int = 0, fail_lsn: int | None = None,
-                 no_disc: bool = False, over_return: int = 0, log=None):
+                 no_disc: bool = False, over_return: int = 0, disc_size: int | None = None,
+                 idle_timeout: float = 60.0, log=None):
         self.iso = iso
         self.rate, self.latency, self.drop_after, self.fail_lsn = rate, latency, drop_after, fail_lsn
         self.no_disc = no_disc
         self.over_return = over_return
+        self.disc_size = disc_size
+        self.idle_timeout = idle_timeout
         self.log = log or (lambda msg: None)
         self.reads = 0
         sim = self
@@ -504,6 +530,8 @@ class PS3Simulator:
         enc = [0, 0, 0, 0]              # encrypted_start_1, end_1, start_2, end_2
         block_size = 0                  # carried across requests, as in server.c
         session_reads = 0
+        if self.idle_timeout:
+            sock.settimeout(self.idle_timeout)
         self.log(f"client {sock.getpeername()[0]} connected")
         try:
             while True:
@@ -565,7 +593,7 @@ class PS3Simulator:
                 elif rtype == REQ_SIZE:
                     resp_type = RESP_SIZE
                     if img is not None:
-                        result = img.total_sectors
+                        result = self.disc_size if self.disc_size is not None else img.total_sectors
                 else:
                     break
                 fields = [(1, resp_type), (2, result)]

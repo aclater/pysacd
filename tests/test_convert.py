@@ -175,9 +175,10 @@ class Naming(unittest.TestCase):
         self.assertEqual(render("{title}", {"title": 'What? "Now": <x>'}, True), "What_ _Now__ _x_")
 
     def test_windows_device_names(self):
-        for t in ("CON", "nul", "Com1", "LPT9.txt", "aux.tar.gz"):
+        for t in ("CON", "nul", "Com1", "LPT9.txt", "aux.tar.gz", "nul .txt", "COM\u00b9"):
             self.assertEqual(render("{title}", {"title": t}, True), "_" + t, t)
             self.assertEqual(render("{title}", {"title": t}, False), t, t)    # only --portable-names
+        self.assertEqual(render("{title}", {"title": "CON . "}, True), "_CON")
         for t in ("CONcert", "COM10", "Aux Pistes"):
             self.assertEqual(render("{title}", {"title": t}, True), t, t)
 

@@ -630,7 +630,10 @@ def _parse_track_text(data: bytes, base: int, track_count: int, codec: str,
                 else:
                     out[i][name] = _decode(raw, codec)
             if j < item_count - 1:
-                # Skip the string, then zero padding up to the next item
+                # Skip the string, then zero padding up to the next item. A string longer than
+                # MAX_TEXT_BYTES was cut, so this lands inside it and the next items misparse.
+                # That's deliberate: such a string is hostile, and the result stays bounded.
+                # Don't "fix" it with an unbounded scan.
                 q = _skip_zeros(data, q + len(raw))
 
 

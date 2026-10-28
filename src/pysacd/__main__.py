@@ -125,6 +125,17 @@ def _mb_login(args) -> int:
     return 0
 
 
+class _Version(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        from . import __version__, _native
+        try:
+            engine = f"{_native.build_info()} ({_native.library_path()})"
+        except (OSError, _native.NativeError) as e:
+            engine = f"not available: {e}"
+        print(f"pysacd {__version__}\nengine: {engine}")
+        parser.exit()
+
+
 def _bool(ap, name, help):
     ap.add_argument(f"--{name}", dest=name.replace("-", "_"), action=argparse.BooleanOptionalAction,
                     default=None, help=help)
@@ -203,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--log-file", help="write a diagnostic log here (default level: debug)")
     ap.add_argument("--log-level", choices=["debug", "info", "warning", "error"],
                     help="log detail; without --log-file the log goes to stderr")
+    ap.add_argument("--version", action=_Version, nargs=0, help="show the version and how the engine was built")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     t = sub.add_parser("toc", help="print the TOC of SACD ISO images")

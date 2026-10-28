@@ -32,6 +32,7 @@ import socketserver
 import threading
 import time
 from collections.abc import Sequence
+from typing import BinaryIO, cast
 
 from .toc import SECTOR_SIZE, SACDError, SACDImage
 
@@ -351,7 +352,7 @@ def read_remote_toc(host: str, port: int):
     """(Disc, total sectors) of the disc on a SACD Ripper server."""
     rd = RemoteDisc(host, port)
     try:
-        return SACDImage(rd).read_toc(), rd.sectors
+        return SACDImage(cast(BinaryIO, rd)).read_toc(), rd.sectors
     finally:
         rd.close()
 

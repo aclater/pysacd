@@ -17,9 +17,21 @@ from test_toc import make_image
 
 from pysacd import read_toc
 from pysacd.remote import (
-    MAX_BLOCK, REQ_READ, RESP_READ, PS3Client, PS3Simulator, RemoteDisc, RemoteError,
-    decode_message, encode_message, fetch, needed_ranges, parse_address, read_remote_toc,
-    _Reader, _signed64,
+    MAX_BLOCK,
+    REQ_READ,
+    RESP_READ,
+    PS3Client,
+    PS3Simulator,
+    RemoteDisc,
+    RemoteError,
+    _Reader,
+    _signed64,
+    decode_message,
+    encode_message,
+    fetch,
+    needed_ranges,
+    parse_address,
+    read_remote_toc,
 )
 
 S = 2048
@@ -200,7 +212,7 @@ class RemoteCLI(unittest.TestCase):
     def test_iso_copy_and_dsf_match_local(self):
         iso = os.environ["PYSACD_TEST_ISO"]
         with PS3Simulator(iso, "127.0.0.1", 0) as s, tempfile.TemporaryDirectory() as d:
-            addr = "%s:%d" % s.address
+            addr = f"{s.address[0]}:{s.address[1]}"
             net, loc, cp = (os.path.join(d, x) for x in ("net", "local", "copy"))
             for p in (net, loc, cp):
                 os.mkdir(p)

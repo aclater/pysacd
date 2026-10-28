@@ -235,6 +235,25 @@ make && PYTHONPATH=src python3 -m unittest discover -s tests
 PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
+## CI
+
+Every pull request runs:
+
+- **ruff and mypy** on the Python code.
+- **The test suite** on Python 3.11 to 3.14, with the engine built with
+  `-Werror` (FLAC included).
+- **The tests under AddressSanitizer and UndefinedBehaviorSanitizer.**
+- **The comparison tests** against a `sacd_extract` built from a pinned
+  upstream commit inside the runner. Its code never enters the repository.
+- **CodeQL** (Python, C, workflows) and **semgrep**.
+- **A check for private names**, in files and commit identities.
+- **An AI review** from a second model, using PR-Agent. It needs the
+  `GEMINI_API_KEY` repository secret.
+
+Dependabot keeps the SHA-pinned actions and the Python dev dependencies
+current, with a two-week cooldown. Contributor rules are in
+[CLAUDE.md](CLAUDE.md).
+
 ## License
 
 GPL-2.0-or-later. `csrc/dstdec.c` is derived from FFmpeg's DST decoder and

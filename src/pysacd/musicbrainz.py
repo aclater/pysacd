@@ -41,7 +41,7 @@ def _get(url: str, contact: str | None, accept: str = "application/json", retrie
     for attempt in range(retries):
         with _lock:  # MusicBrainz allows ~1 request/second
             wait = _last_request + 1.1 - time.monotonic()
-            if wait > 0 and "musicbrainz.org" in url:
+            if wait > 0 and urllib.parse.urlsplit(url).hostname == "musicbrainz.org":
                 time.sleep(wait)
             _last_request = time.monotonic()
         try:
@@ -137,7 +137,8 @@ def physical_discs(media: list[dict]) -> list[int]:
     "Hybrid SACD (CD layer)", "Hybrid SACD (SACD layer, 2 channels)",
     "Hybrid SACD (SACD layer, multichannel)" for one hybrid disc.
     """
-    out, n, base, seen = [], 0, None, set()
+    out, n, base = [], 0, None
+    seen: set[str] = set()
     for m in media:
         f = m.get("format") or ""
         b = f.split(" (")[0]

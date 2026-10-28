@@ -119,6 +119,7 @@ def write_tags(path: str, fmt: str, tags: Tags, cover: tuple[bytes, str] | None,
         f = WAVE(path)
         if f.tags is None:
             f.add_tags()
+        assert f.tags is not None
         f.tags.clear()
         _fill_id3(f.tags, tags, cover)
         f.save(v2_version=id3_version)

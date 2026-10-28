@@ -1,0 +1,35 @@
+# Pattern-based static analysis with the community rule packs for the
+# languages this repo ships: Python, C and the workflows themselves.  Any
+# finding fails the check; intentional exceptions are suppressed inline with
+# `nosemgrep` and a reason.  Runs locally with the same image:
+#
+#   podman run --rm -v "$PWD:/src:Z" -w /src docker.io/semgrep/semgrep:1.178.0 \
+#     semgrep scan --metrics=off --error \
+#       --config p/python --config p/c --config p/github-actions
+
+name: semgrep
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    container:
+      # Pinned by digest; Dependabot can't update container: images, so
+      # bump tag and digest together by hand.
+      image: docker.io/semgrep/semgrep:1.178.0@sha256:32e459968daabe7ab86968184a29109b9564aa00392401156f9788452b42786b
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: semgrep scan
+        # Private repository without code scanning: findings print in the log
+        # and fail the job instead of being uploaded.
+        run: |
+          semgrep scan --metrics=off --error \
+            --config p/python --config p/c --config p/github-actions

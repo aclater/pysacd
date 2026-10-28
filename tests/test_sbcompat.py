@@ -18,10 +18,10 @@ import tempfile
 import unittest
 from datetime import datetime
 
+from test_toc import make_image
+
 from pysacd import SACDImage, read_toc
 from pysacd import sbcompat as sb
-
-from test_toc import make_image
 
 SACD_EXTRACT = os.environ.get("SACD_EXTRACT") or shutil.which("sacd_extract")
 DSD_ISO = os.environ.get("PYSACD_COMPAT_DSD", "/path/to/album.iso")

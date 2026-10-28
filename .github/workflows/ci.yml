@@ -1,0 +1,141 @@
+# CI: lint, type-check, build the C engine and run the tests.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    name: lint + tests (${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install build and dev dependencies
+        # libflac-dev so the FLAC output path is compiled and tested too.
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libflac-dev
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: ruff
+        run: ruff check .
+
+      - name: mypy
+        run: mypy src
+
+      - name: Build the engine (warnings are errors)
+        # PORTABLE: no -march=native, so the runner's CPU doesn't matter.
+        run: |
+          make PORTABLE=1 CFLAGS="-O2 -Werror"
+          make test-tools
+
+      - name: Tests
+        run: PYTHONPATH=src pytest -q tests
+
+  sanitizers:
+    # The engine parses untrusted disc images: run the whole suite under
+    # AddressSanitizer + UndefinedBehaviorSanitizer.
+    name: tests under ASan + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libflac-dev
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Build with sanitizers
+        run: |
+          SAN="-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined"
+          make PORTABLE=1 CFLAGS="$SAN"
+          make test-tools CFLAGS="$SAN"
+
+      - name: Tests
+        # Python itself isn't instrumented: preload the runtimes and skip
+        # leak checks (the interpreter keeps memory until exit).
+        run: |
+          export LD_PRELOAD="$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so)"
+          export ASAN_OPTIONS=detect_leaks=0:abort_on_error=1
+          export UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
+          PYTHONPATH=src python -m pytest -q tests
+
+  oracle:
+    # Build the real sacd_extract from a pinned sacd-ripper commit and run the
+    # tests that compare against it (synthetic DST ISOs: original == pysacd ==
+    # sacd_extract).  sacd-ripper's code exists only in this runner, never in
+    # the repository.
+    name: compare with sacd_extract
+    runs-on: ubuntu-latest
+    env:
+      SACD_RIPPER_REPO: https://github.com/sacd-ripper/sacd-ripper.git
+      SACD_RIPPER_COMMIT: a3d981c935c3224217e2842cd492f9351106c81e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libflac-dev cmake
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          make PORTABLE=1
+          make test-tools
+
+      - name: Build sacd_extract
+        # The upstream tree predates current CMake and GCC defaults.
+        run: |
+          git init -q "$RUNNER_TEMP/sacd-ripper"
+          cd "$RUNNER_TEMP/sacd-ripper"
+          git fetch -q --depth 1 "$SACD_RIPPER_REPO" "$SACD_RIPPER_COMMIT"
+          git checkout -q FETCH_HEAD
+          CFLAGS="-std=gnu17 -Wno-error=incompatible-pointer-types -Wno-error=int-conversion -Wno-error=implicit-function-declaration" \
+            cmake -S tools/sacd_extract -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 >/dev/null
+          make -s -C build -j"$(nproc)"
+          echo "SACD_EXTRACT=$RUNNER_TEMP/sacd-ripper/build/sacd_extract" >> "$GITHUB_ENV"
+
+      - name: Tests against sacd_extract
+        run: PYTHONPATH=src:tests python -m pytest -q tests/test_dst_full.py tests/test_sbcompat.py
+
+  privacy:
+    # The repository must not carry hostnames or home-network names, in files
+    # or in commit identities.  The generic pattern is always checked; extra
+    # names come from the PRIVATE_NAMES repository variable (a regex), so
+    # they never appear in the repository themselves.
+    name: no private names
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Scan files and commit identities
+        env:
+          PRIVATE_NAMES: ${{ vars.PRIVATE_NAMES }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bash scripts/check-private-names.sh

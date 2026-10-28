@@ -80,7 +80,6 @@ class Opts:
     log_file: str | None = None
     log_level: str | None = None
     disc: tuple[int, int] | None = None    # --disc N/M
-    isolate: bool = False                  # --isolate: sandboxed engine process (#17)
 
 
 def parse_args(argv: list[str]) -> Opts:
@@ -135,8 +134,6 @@ def parse_args(argv: list[str]) -> Opts:
     x.add_argument("--log-file", help="write a diagnostic log here (default level: debug)")
     x.add_argument("--log-level", choices=["debug", "info", "warning", "error"],
                    help="log detail; without --log-file the log goes to stderr")
-    x.add_argument("--isolate", action="store_true",
-                   help="run the engine in a sandboxed child process (Linux; see docs/security.md)")
     x.add_argument("--disc", metavar="N/M",
                    help="treat the disc as disc N of an M-disc set (for sets mastered as 1/1): "
                         "names and tags follow sacd_extract's own set layout (\"Title/Disc N\")")
@@ -155,8 +152,7 @@ def parse_args(argv: list[str]) -> Opts:
              pcm=a.pcm, pcm_rate=a.pcm_rate, gain_db=a.gain_db, flac_level=a.flac_level,
              threads=a.threads, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
              mb_contact=a.mb_contact, cover=a.cover, templates=a.templates, config=a.config,
-             use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc), log_file=a.log_file, log_level=a.log_level,
-             isolate=a.isolate)
+             use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc), log_file=a.log_file, log_level=a.log_level)
     if a.tracks:
         # like sacd_extract, the last -t wins; 0 and junk are ignored
         for tok in a.tracks[-1].replace(" ", ",").split(","):
@@ -796,7 +792,7 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
             log.debug("  %s -> %s (track %s, frames %d-%d)", j.kind, safetext.for_terminal(j.final), j.track,
                       j.spec.tc_start, j.spec.tc_end)
         _native.run_area(img, o.input, area, specs, o.pcm_rate, o.gain_db, o.threads,
-                         iso_out=iso_path, progress=_progress, isolate=o.isolate)
+                         iso_out=iso_path, progress=_progress)
     except BaseException:
         for s in specs:
             Path(s.path).unlink(missing_ok=True)

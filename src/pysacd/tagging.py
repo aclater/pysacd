@@ -150,7 +150,7 @@ def flac_metadata_size(tags: Tags, cover: tuple[bytes, str] | None) -> int:
 
 
 def read_tags(path: str | os.PathLike) -> Tags:
-    """Tags of an existing DSF, FLAC or WAV file, as Vorbis-style keys
+    """Tags of an existing DSF, DSDIFF, FLAC or WAV file, as Vorbis-style keys
     (the inverse of the writers above); {} if the file has none or can't be read."""
     p = Path(path)
     try:
@@ -164,10 +164,12 @@ def read_tags(path: str | os.PathLike) -> Tags:
                 values = value if isinstance(value, list) else [value]   # mutagen versions differ
                 vorbis.setdefault(str(key).upper(), []).extend(str(v) for v in values)
             return vorbis
+        from mutagen.dsdiff import DSDIFF
         from mutagen.dsf import DSF
         from mutagen.wave import WAVE
 
-        id3 = (DSF if p.suffix.lower() == ".dsf" else WAVE)(p).tags
+        reader = {".dsf": DSF, ".dff": DSDIFF}.get(p.suffix.lower(), WAVE)
+        id3 = reader(p).tags
     except Exception:  # noqa: BLE001 - unreadable files just have no identity
         return {}
     if id3 is None:

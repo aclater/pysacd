@@ -69,6 +69,7 @@ class Opts:
     templates: bool = False            # name files with pysacd's config templates
     config: str | None = None
     use_cfg: bool = True
+    disc: tuple[int, int] | None = None    # --disc N/M
 
 
 def parse_args(argv: list[str]) -> Opts:
@@ -120,6 +121,9 @@ def parse_args(argv: list[str]) -> Opts:
     x.add_argument("--templates", action="store_true", help="name output with pysacd config templates")
     x.add_argument("--config", help="pysacd config file for --templates")
     x.add_argument("--no-cfg", dest="no_cfg", action="store_true", help="ignore ./sacd_extract.cfg")
+    x.add_argument("--disc", metavar="N/M",
+                   help="treat the disc as disc N of an M-disc set (for sets mastered as 1/1): "
+                        "names and tags follow sacd_extract's own set layout (\"Title/Disc N\")")
 
     a = ap.parse_args(argv)
     if a.usage:
@@ -135,7 +139,7 @@ def parse_args(argv: list[str]) -> Opts:
              pcm=a.pcm, pcm_rate=a.pcm_rate, gain_db=a.gain_db, flac_level=a.flac_level,
              threads=a.threads, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
              mb_contact=a.mb_contact, cover=a.cover, templates=a.templates, config=a.config,
-             use_cfg=not a.no_cfg)
+             use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc))
     if a.tracks:
         # like sacd_extract, the last -t wins; 0 and junk are ignored
         for tok in a.tracks[-1].replace(" ", ",").split(","):
@@ -144,6 +148,16 @@ def parse_args(argv: list[str]) -> Opts:
     if a.id3tag is not None:
         o.id3_mode = a.id3tag
     return o
+
+
+def _parse_disc(ap: argparse.ArgumentParser, spec: str | None) -> tuple[int, int] | None:
+    if spec is None:
+        return None
+    from .convert import parse_disc
+    try:
+        return parse_disc(spec)
+    except ValueError as e:
+        ap.error(str(e))
 
 
 def _dirarg(s: str | None) -> str | None:
@@ -476,6 +490,92 @@ def main(argv: list[str] | None = None) -> int:
         img.close()
 
 
+def _wanted_areas(disc: Disc, o: Opts) -> list[Area]:
+    want: list[Area] = []
+    if o.output_dsf or o.output_dsdiff or o.output_dsdiff_em or o.export_cue_sheet or o.pcm:
+        if o.multi_channel:
+            if disc.multichannel:
+                want.append(disc.multichannel)
+            else:
+                say("\n Asked multichannel format but disc has no multichannel area. So skip processing...")
+        if o.two_channel:
+            if disc.stereo:
+                want.append(disc.stereo)
+            else:
+                say("\n Asked for stereo format but disc has no stereo area. So skip processing...")
+    return want
+
+
+def _planned_tracks(disc: Disc, area: Area, o: Opts) -> dict[str, int]:
+    """File name (without extension) -> track index for the tracks this run would write."""
+    ext = o.pcm or ("dsf" if o.output_dsf else "dff")
+    if not (o.output_dsf or o.output_dsdiff or o.pcm):
+        return {}
+    if o.concatenate and o.selected:
+        first, last = min(o.selected), max(o.selected)
+        name = sbcompat.music_filename(disc, area, first, f"[{first + 1:02d}-{last + 1:02d}]", o.performer_flag)
+        return {Path(sbcompat.make_filename(None, name, ext)).stem: first}
+    return {Path(sbcompat.make_filename(None, sbcompat.music_filename(disc, area, i, "", o.performer_flag), ext)).stem: i
+            for i in range(len(area.tracks)) if not o.selected or i in o.selected}
+
+
+def _other_disc_in(folder: Path, planned: dict[str, int], disc: Disc, area: Area) -> list[str]:
+    """Audio files in `folder` that belong to some other disc: names this disc
+    doesn't produce, or same-named files whose tags say another disc."""
+    from . import tagging
+
+    if not folder.is_dir():
+        return []
+    foreign = []
+    for f in sorted(folder.iterdir()):
+        if f.suffix.lower() not in (".dsf", ".dff", ".wav", ".flac") or f.name.startswith("."):
+            continue
+        # Match on the name without extension: this disc's own tracks in another
+        # format (DSF next to DSDIFF, say) are not another disc
+        idx = planned.get(f.stem)
+        if idx is None:
+            foreign.append(f.name)
+            continue
+        have = tagging.read_tags(f)
+        want = tagging.base_tags(disc, area, area.tracks[idx])
+        for key in ("ALBUM", "TITLE", "TRACKNUMBER", "TRACKTOTAL", "ISRC"):
+            a, b = (have.get(key) or [""])[0].strip(), (want.get(key) or [""])[0].strip()
+            if a and b and a != b:
+                foreign.append(f.name)
+                break
+    return foreign
+
+
+def _avoid_other_discs(disc: Disc, want: list[Area], o: Opts, out_dir: Path) -> Path:
+    """Where sacd_extract would mix two discs into one folder (or overwrite one
+    disc's tracks with another's), use "<album folder> [<catalogue number>]"
+    instead and warn. A deliberate exception to sacd_extract compatibility (#4)."""
+    if o.templates:
+        return out_dir      # pysacd naming: handled like pysacd convert
+    clash: list[str] = []
+    for area in want:
+        folder = out_dir / sbcompat.area_dir_name(area) if disc.multichannel else out_dir
+        clash += _other_disc_in(folder, _planned_tracks(disc, area, o), disc, area)
+    if not clash:
+        return out_dir
+    label = (disc.disc_catalog_number or disc.album_catalog_number).strip()
+    if not label:
+        raise SACDError(f"{out_dir} already holds tracks of another disc ({clash[0]}, ...) and this disc has "
+                        "no catalogue number to tell them apart; use -o/-y or --disc")
+    base = Path(o.output_dir) if o.output_dir else Path()
+    album, _, rest = sbcompat.album_path(disc, o.artist_flag).partition("/")
+    target = base / f"{album} [{sbcompat.sanitize_filename(label)}]"
+    if rest:
+        target /= rest
+    print(f"WARNING: {out_dir} already holds tracks of another disc ({', '.join(clash[:3])}"
+          f"{', ...' if len(clash) > 3 else ''}); writing this disc ({label}) to {target} instead "
+          "of mixing them (sacd_extract would mix or overwrite them).", file=sys.stderr)
+    if disc.album_set_size <= 1:
+        print("hint: if both are discs of one set mastered as 1/1, re-run each with --disc N/M "
+              "(e.g. --disc 1/2 and --disc 2/2) to get sacd_extract's \"Disc N\" layout.", file=sys.stderr)
+    return target
+
+
 def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
     if o.print_:
         print_disc(img, disc)
@@ -483,9 +583,16 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
     say(f"\nThe size of sacd is ok (sectors={total}). Size is: {total * 2048} bytes, "
         f"{total * 2048 / 1e9:.3f} GB (gigabyte) ")
 
+    if o.disc:
+        # A set mastered as 1/1 (e.g. Live-Evil): name and tag it as sacd_extract
+        # names a correctly mastered set ("Title/Disc N", TPOS N/M, ...)
+        disc.album_sequence_number, disc.album_set_size = o.disc
     album_filename = sbcompat.album_dir(disc, o.artist_flag)
     base = Path(o.output_dir) if o.output_dir else Path()
     out_dir = base / sbcompat.album_path(disc, o.artist_flag)
+
+    want = _wanted_areas(disc, o)
+    out_dir = _avoid_other_discs(disc, want, o, out_dir)
 
     if o.export_cue_sheet:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -512,18 +619,6 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
             say(f"\n Warning: MusicBrainz lookup failed: {e}")
         say(f"\n MusicBrainz: {'https://musicbrainz.org/release/' + match.release_id if match else 'no confident match'}")
 
-    want = []
-    if o.output_dsf or o.output_dsdiff or o.output_dsdiff_em or o.export_cue_sheet or o.pcm:
-        if o.multi_channel:
-            if disc.multichannel:
-                want.append(disc.multichannel)
-            else:
-                say("\n Asked multichannel format but disc has no multichannel area. So skip processing...")
-        if o.two_channel:
-            if disc.stereo:
-                want.append(disc.stereo)
-            else:
-                say("\n Asked for stereo format but disc has no stereo area. So skip processing...")
 
     rc = 0
     for area in want:

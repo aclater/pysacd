@@ -8,14 +8,27 @@
 
 ## Install
 
+**From a wheel** (Linux x86-64 and aarch64): download the `.whl` from a
+[GitHub release](https://github.com/aclater/pysacd/releases), then
+
 ```sh
-git clone https://github.com/aclater/pysacd && cd pysacd
-make                                  # builds the engine (gcc; flac-devel for FLAC)
-pip install -e '.[convert]'           # adds mutagen for tagging
+pip install 'pysacd-*.whl[convert]'   # engine and libFLAC included; [convert] adds mutagen for tagging
+pysacd --version                      # shows how the engine was built
 ```
 
-Linux only for now. Windows and macOS are tracked in #8, prebuilt packages in
-#9.
+Wheels are portable builds: the PCM filters pick AVX-512, AVX2 or the baseline
+when the library loads.
+
+**From source** (needs gcc and make; `flac-devel` for FLAC output):
+
+```sh
+git clone https://github.com/aclater/pysacd && cd pysacd
+pip install -e '.[convert]'                  # builds a portable engine
+make                                         # optional: rebuild it for this CPU (-march=native)
+```
+
+`PYSACD_NATIVE=1 pip install .` builds for this CPU from the start. Linux only
+for now; Windows and macOS are tracked in #8.
 
 ## Read a disc's TOC
 

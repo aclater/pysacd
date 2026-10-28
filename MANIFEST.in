@@ -1,0 +1,4 @@
+# The sdist builds the engine from source (setup.py runs make).
+include Makefile COPYING
+recursive-include csrc *.c *.h
+recursive-include licenses *

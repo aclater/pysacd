@@ -845,6 +845,17 @@ static int out_close(engine_t *e, sc_output_t *o, out_state_t *st)
 {
     int ch = e->channels, rc = 0;
     st->closed = 1;
+    if (o->format == OUT_FLAC ? !st->enc : !st->fp) {
+        /* out_open failed (e.g. the directory isn't writable) and recorded why: nothing to finish */
+#ifdef HAVE_FLAC
+        if (st->pad)
+            FLAC__metadata_object_delete(st->pad);
+        st->pad = NULL;
+#endif
+        free(st->wbuf);
+        st->wbuf = NULL;
+        return -1;
+    }
     switch (o->format) {
     case OUT_DSF:
         if (st->fill) {

@@ -158,6 +158,9 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--stereo-edition", help="{edition} for the stereo area (default 'SACD')")
     c.add_argument("--multichannel-edition", help="{edition} for the multichannel area (default 'SACD {layout}')")
     c.add_argument("-a", "--areas", choices=["stereo", "multichannel", "both"], help="areas to extract (default stereo)")
+    c.add_argument("--disc", metavar="N/M",
+                   help="this is disc N of an M-disc set: sets the disc number tags and {disc}/{disc_prefix}, "
+                        "overriding the TOC and MusicBrainz (for sets mastered as 1/1, e.g. Live-Evil)")
     c.add_argument("-t", "--tracks", type=lambda s: [int(x) for x in s.split(",")], help="only these tracks, e.g. 1,4,5")
     c.add_argument("-r", "--pcm-rate", type=int, choices=[88200, 176400], help="FLAC/WAV sample rate (default 88200)")
     c.add_argument("--gain-db", type=float, help="PCM gain in dB (default 0; SACD 0 dB = -6 dBFS)")

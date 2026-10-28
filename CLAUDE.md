@@ -29,7 +29,9 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
 - **sacd_extract compatibility is byte-for-byte.** For the same options,
   `pysacd-extract` must produce the same files, names and bytes as
   `sacd_extract`: DSF, DSDIFF, edit master, cue, xml and `-P` text. The only
-  exceptions are the documented creating-machine comment and version lines.
+  exceptions are documented in the README: the creating-machine comment and
+  version lines, and keeping a different disc out of a folder that
+  `sacd_extract` would silently mix or overwrite (#4).
   Any change to `sbcompat.py`, `extract.py` or the writers needs a
   comparison test.
 - **Hostile input.** Disc images and network data may be malformed. Bound

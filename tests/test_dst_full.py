@@ -34,6 +34,13 @@ try:
 except Exception:  # noqa: BLE001 - any failure to load means "not built"; tests skip
     HAVE_NATIVE = False
 
+def _native_has_flac() -> bool:
+    try:
+        return HAVE_NATIVE and _native.has_flac()
+    except Exception:  # noqa: BLE001 - no engine means no FLAC
+        return False
+
+
 try:
     dstenc.load()
     HAVE_ENCODER = True

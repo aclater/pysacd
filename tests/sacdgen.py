@@ -88,18 +88,29 @@ def mux(frames: list[bytes], dst: bool) -> tuple[list[bytes], list[int]]:
     return sectors, first
 
 
-def _master_toc(area_tocs: list[tuple[int, int]], title: str) -> bytes:
+@dataclass
+class DiscInfo:
+    """Master TOC identity fields."""
+    title: str = "pysacd DST test"
+    artist: str = "pysacd synthetic"
+    album_catalog: str = "PYSACD-TEST"
+    disc_catalog: str = "PYSACD-0001"
+    set_size: int = 1
+    sequence: int = 1
+
+
+def _master_toc(area_tocs: list[tuple[int, int]], info: DiscInfo) -> bytes:
     """area_tocs: (TOC-1, TOC-2) LSNs of the stereo and multichannel areas."""
     m = bytearray(10 * S)
     m[0:8] = b"SACDMTOC"
     m[8:10] = bytes([1, 20])
-    struct.pack_into(">HH", m, 16, 1, 1)                    # album set size / sequence
-    m[24:40] = b"PYSACD-TEST".ljust(16)
+    struct.pack_into(">HH", m, 16, info.set_size, info.sequence)    # album set size / sequence
+    m[24:40] = info.album_catalog.encode("latin-1").ljust(16)
     m[40:44] = bytes([1, 0, 0, 25])                          # General / Sound Effects
     (a1, b1), (a2, b2) = area_tocs
     struct.pack_into(">IIII", m, 64, a1, b1, a2, b2)
     struct.pack_into(">HH", m, 84, AREA_TOC_SECTORS if a1 else 0, AREA_TOC_SECTORS if a2 else 0)
-    m[88:104] = b"PYSACD-0001".ljust(16)
+    m[88:104] = info.disc_catalog.encode("latin-1").ljust(16)
     m[104:108] = bytes([1, 0, 0, 25])
     struct.pack_into(">HBB", m, 120, 2026, 10, 28)
     m[128] = 1                                               # text channels
@@ -108,7 +119,7 @@ def _master_toc(area_tocs: list[tuple[int, int]], title: str) -> bytes:
         t = i * S
         m[t:t + 8] = b"SACDText"
     t = S
-    strings = [title.encode("latin-1"), b"pysacd synthetic"]
+    strings = [info.title.encode("latin-1"), info.artist.encode("latin-1")]
     pos = 64
     for i, s in enumerate(strings):
         m[t + pos:t + pos + len(s)] = s
@@ -172,8 +183,10 @@ def _area_toc(spec: AreaSpec, track_lsns: list[tuple[int, int]], audio: tuple[in
     return bytes(a)
 
 
-def build_iso(path: str | Path, areas: list[AreaSpec], title: str = "pysacd DST test") -> None:
+def build_iso(path: str | Path, areas: list[AreaSpec], title: str = "pysacd DST test",
+              info: DiscInfo | None = None) -> None:
     """Write an ISO with a stereo area and/or a multichannel area (at most one each)."""
+    info = info or DiscInfo(title=title)
     assert sorted(a.channels == 2 for a in areas) in ([False], [True], [False, True])
     lsn = FIRST_AREA
     blobs, tocs = [], {}
@@ -195,7 +208,7 @@ def build_iso(path: str | Path, areas: list[AreaSpec], title: str = "pysacd DST 
         tocs[spec.channels == 2] = (toc1, toc2)
         lsn = toc2 + AREA_TOC_SECTORS
     img = bytearray(lsn * S)
-    master = _master_toc([tocs.get(True, (0, 0)), tocs.get(False, (0, 0))], title)
+    master = _master_toc([tocs.get(True, (0, 0)), tocs.get(False, (0, 0))], info)
     for copy in (MASTER_TOC, MASTER_TOC + 10, MASTER_TOC + 20):
         img[copy * S:(copy + 10) * S] = master
     for start, blob in blobs:

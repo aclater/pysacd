@@ -10,7 +10,7 @@ import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from . import _native, musicbrainz, tagging
+from . import _native, musicbrainz, safetext, tagging
 from .toc import FRAME_RATE, Area, Disc, SACDImage, Track
 
 CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pysacd" / "config.toml"
@@ -70,7 +70,9 @@ _UNSAFE = re.compile(r'[<>:"\\|?*\x00-\x1f]')
 
 
 def _clean_component(s: str, portable: bool) -> str:
-    s = s.replace("/", "-").replace("\0", "")
+    # Disc and MusicBrainz text is untrusted: no control/bidi characters, no command
+    # substitution, pipes or redirection, no leading '-' or '.' (docs/security.md).
+    s = safetext.name_component(s)
     if portable:
         s = _UNSAFE.sub("_", s)
     s = re.sub(r"\s*(\[\s*\]|\(\s*\))", "", s)       # empty [] / () from blank fields
@@ -159,13 +161,6 @@ def _same_disc_or_set(a: tagging.Tags, b: tagging.Tags) -> bool | None:
     return None
 
 
-def _shown(text: object) -> str:
-    """Disc- or network-derived text for the terminal: control characters
-    (escape sequences, newlines, bidi overrides) are shown escaped, never
-    interpreted. Replaced by pysacd.safetext once #17 lands."""
-    import unicodedata
-    return "".join(c if c.isprintable() and unicodedata.category(c) not in ("Cf", "Cc") else c.encode(
-        "unicode_escape").decode("ascii") for c in str(text))
 
 
 def _disc_label(tags: tagging.Tags) -> str:
@@ -205,21 +200,21 @@ def _avoid_other_discs(plan: list[tuple[Track, tagging.Tags, Path]], portable: b
         verdicts = [_same_disc_or_set(o, tags) for o in others if o]
         if False not in verdicts:
             if None in verdicts:
-                _log(f"warning: {_shown(d)} holds tracks without catalogue, barcode or MusicBrainz tags; "
+                _log(f"warning: {_term(d)} holds tracks without catalogue, barcode or MusicBrainz tags; "
                      "can't tell whether they are this disc")
             continue
         label = _disc_label(tags)
         if not label:
-            raise SystemExit(f"{_shown(d)} already holds a different disc, and this disc has no catalogue number or "
+            raise SystemExit(f"{_term(d)} already holds a different disc, and this disc has no catalogue number or "
                              "barcode to tell them apart; use --dir-template or --disc")
         target = d.with_name(_clean_component(f"{d.name} [{label}]", portable))
         clash = [o for o in others if o and _same_disc_or_set(o, tags) is False]
-        _log(f"warning: {_shown(d)} already holds a different disc "
-             f"({_shown(', '.join(sorted({_disc_label(o) or '?' for o in clash})))}); "
-             f"writing this disc ({_shown(label)}) to {_shown(target)}")
+        _log(f"warning: {_term(d)} already holds a different disc "
+             f"({_term(', '.join(sorted({_disc_label(o) or '?' for o in clash})))}); "
+             f"writing this disc ({_term(label)}) to {_term(target)}")
         hint = _set_hint(sorted({_disc_label(o) for o in clash if _disc_label(o)} | {label}), clash, tags)
         if hint:
-            _log(f"hint: {_shown(hint)}")
+            _log(f"hint: {_term(hint)}")
         moved[d] = target
     return [(t, tg, moved[p.parent] / p.name if p.parent in moved else p) for t, tg, p in plan]
 
@@ -230,8 +225,12 @@ def _skipped(n: int) -> str:
 
 # ------------------------------------------------------------ main flow
 
+def _term(text: object) -> str:
+    return safetext.for_terminal(str(text))
+
+
 def _log(msg: str) -> None:
-    print(msg, file=sys.stderr, flush=True)
+    print(safetext.for_terminal(msg, keep_tab_newline=True), file=sys.stderr, flush=True)
 
 
 def _select_areas(disc: Disc, which: str) -> list[Area]:
@@ -312,7 +311,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     _log(f"{label}: {len(plan)} tracks -> {', '.join(map(str, dirs))}")
     if opts.dry_run:
         for t, tags, path in plan:
-            print(f"  {t.duration}  {path}")
+            print(safetext.for_terminal(f"  {t.duration}  {path}"))
         return 0
 
     for d in dirs:

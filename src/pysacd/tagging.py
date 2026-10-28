@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from . import __version__
+from . import __version__, safetext
 from .musicbrainz import Match, barcode_of, credit_name, physical_discs
 from .toc import Area, Disc, Track
 
@@ -35,7 +35,9 @@ _ID3_TXXX = {
 
 
 def _put(tags: Tags, key: str, *values) -> None:
-    vals = [str(v).strip() for v in values if v is not None and str(v).strip()]
+    # Untrusted text (disc or MusicBrainz): no control, bidi or zero-width characters in tags.
+    vals = [safetext.clean_text(str(v)) for v in values if v is not None and str(v).strip()]
+    vals = [v for v in vals if v]
     if vals:
         tags[key] = vals
 

@@ -25,7 +25,7 @@ import struct
 from collections.abc import Sequence
 from datetime import datetime
 
-from . import __version__
+from . import __version__, safetext
 from .toc import CATEGORIES, GENRES, START_OF_MASTER_TOC, Area, Disc, SACDImage
 
 FRAME_RATE = 75
@@ -64,7 +64,9 @@ _SPACE = b" \t\n\v\f\r"
 
 
 def _b(s: str | None) -> bytes:
-    return s.encode("utf-8", "surrogateescape") if s is not None else b""
+    # Untrusted disc text: control, bidi and zero-width characters never reach names, tags,
+    # cue or XML (docs/security.md, "Hostile text"). Ordinary text is unchanged.
+    return safetext.strip_controls(s).encode("utf-8", "surrogateescape") if s is not None else b""
 
 
 def _s(b: bytes) -> str:
@@ -81,11 +83,17 @@ def _trim_whitespace(b: bytes) -> bytes:
     return b.strip(_SPACE)
 
 
+_NAME_UNSAFE = frozenset(safetext.NAME_UNSAFE.encode())
+
+
 def _sanitize(b: bytes, unsafe: frozenset) -> bytes:
     if not b:
         return b
-    b = bytes(0x5F if c in unsafe else c for c in b)
-    return _trim_whitespace(_trim_dots(b))
+    # sacd_extract's rules, plus pysacd's hostile-text rules (command substitution, pipes,
+    # redirection, a leading '-'): a deliberate deviation that never changes ordinary names.
+    b = bytes(0x5F if c in unsafe or c in _NAME_UNSAFE else c for c in b)
+    b = _trim_whitespace(_trim_dots(b))
+    return b"_" + b[1:] if b.startswith(b"-") else b
 
 
 def sanitize_filename(name: str) -> str:
@@ -620,11 +628,13 @@ def raw_catalog_numbers(image: SACDImage) -> tuple[str, str]:
 
 
 def _attr_escape(s: str) -> str:
+    s = safetext.strip_controls(s, keep_tab_newline=True)
     return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
             .replace("\r", "&#13;").replace("\n", "&#10;").replace("\t", "&#9;"))
 
 
 def _text_escape(s: str) -> str:
+    s = safetext.strip_controls(s, keep_tab_newline=True)
     return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
             .replace("\r", "&#13;"))
 

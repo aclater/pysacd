@@ -206,6 +206,11 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     if specs:
         assert area is not None, "outputs need an area"
         a.scan_lsn_start, a.scan_lsn_end = _scan_range(area, specs)
+        # The range comes from the TOC, which may be hostile: a sector source must only ever be
+        # asked for sectors that exist (#11). A file needs no check: pread stops at its end.
+        if source is not None and not 0 <= a.scan_lsn_start <= a.scan_lsn_end < image.total_sectors:
+            raise NativeError(f"area LSN {a.scan_lsn_start}-{a.scan_lsn_end} lies outside the image "
+                              f"({image.total_sectors} sectors)")
         a.channels = area.channel_count
     else:
         a.channels = 2

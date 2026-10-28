@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .toc import Area, SACDImage
+from .toc import Area, SACDImage, area_frame_capacity
 
 FORMATS = {"dsf": 0, "flac": 1, "wav": 2, "dff": 3, "dff-dst": 4}
 SCAN_SLACK = 128    # sectors read around the needed range (frame context + boundary frames)
@@ -161,6 +161,15 @@ def _scan_range(area: Area, specs: list[OutputSpec]) -> tuple[int, int]:
     hi_tc = max(s.tc_end for s in specs)
     lo = area.track_start
     hi = area.track_end
+    # Track LSNs and timecodes come from the TOC: use them to narrow the scan only when they're
+    # consistent (inside the area's audio and in order, as on every real disc). Otherwise scan
+    # the whole area rather than miss frames or hand the engine a range outside it (#17).
+    lsns = [t.start_lsn for t in tracks]
+    starts = [t.start.total_frames for t in tracks]
+    if not (all(area.track_start <= x <= area.track_end for x in lsns)
+            and lsns == sorted(lsns) and starts == sorted(starts)):
+        log.debug("track LSNs or timecodes inconsistent: scanning the whole area")
+        return area.track_start, area.track_end
     for i, t in enumerate(tracks):
         if t.start.total_frames <= lo_tc:
             lo = t.start_lsn if i else area.track_start
@@ -207,6 +216,13 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     a.sector_size, a.data_offset = image.sector_size, image.data_offset
     if specs:
         assert area is not None, "outputs need an area"
+        # Frames the image lacks become silence: never more of it than the area's sectors in this
+        # image could hold, however long the TOC says the tracks are (#17)
+        capacity = area_frame_capacity(area, image.total_sectors)
+        if max(s.tc_end for s in specs) > capacity:
+            raise NativeError(f"the outputs need frames up to {max(s.tc_end for s in specs)}, but the area's "
+                              f"audio in this image (LSN {area.track_start}-{area.track_end}, "
+                              f"{image.total_sectors} sectors) holds at most {capacity}")
         a.scan_lsn_start, a.scan_lsn_end = _scan_range(area, specs)
         # The range comes from the TOC, which may be hostile: a sector source must only ever be
         # asked for sectors that exist (#11). A file needs no check: pread stops at its end.

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import os
+import re
 import struct
 from dataclasses import dataclass, field
 from typing import BinaryIO, Self, cast
@@ -19,6 +20,12 @@ FRAME_RATE = 75  # SACD frames per second (timecode "frames" field)
 SAMPLES_PER_FRAME = 588
 MAX_LANGUAGE_COUNT = 8
 SUPPORTED_VERSION = (1, 20)
+
+# Bounds on values a hostile image controls (#17). Real discs stay far inside them: area TOCs
+# of 5-41 sectors, at most 0.6 frames per audio sector, titles under 100 bytes.
+MAX_AREA_TOC_SECTORS = 128
+MAX_FRAMES_PER_SECTOR = 7   # an audio sector's header can start at most 7 frames
+MAX_TEXT_BYTES = 4096       # one TOC string, before its terminating NUL
 
 FRAME_FORMAT_DST = 0
 FRAME_FORMAT_DSD_3_IN_14 = 2
@@ -257,8 +264,17 @@ def _u32(buf: bytes, off: int) -> int:
 
 
 def _cstring(buf: bytes, off: int) -> bytes:
-    end = buf.find(b"\0", off)
-    return buf[off:] if end < 0 else buf[off:end]
+    # Bounded: an unterminated string must not cost a scan of the whole TOC per lookup
+    end = buf.find(b"\0", off, off + MAX_TEXT_BYTES)
+    return buf[off:off + MAX_TEXT_BYTES] if end < 0 else buf[off:end]
+
+
+_NONZERO = re.compile(rb"[^\0]")
+
+
+def _skip_zeros(buf: bytes, off: int) -> int:
+    m = _NONZERO.search(buf, off)
+    return m.start() if m else len(buf)
 
 
 def _decode(raw: bytes, codec: str) -> str:
@@ -384,6 +400,10 @@ class SACDImage:
 
     def _read_area(self, label: str, toc1: int, toc2: int, size: int,
                    warnings: list[str]) -> Area | None:
+        if size > MAX_AREA_TOC_SECTORS:
+            warnings.append(f"{label} area TOC size {size} sectors is implausible (at most "
+                            f"{MAX_AREA_TOC_SECTORS}); area skipped")
+            return None
         # Primary copy first; fall back to the backup (TOC-2) like sacd-ripper
         data = start = None
         try:
@@ -402,7 +422,9 @@ class SACDImage:
         if data is None or start is None:
             return None
         try:
-            return _parse_area_toc(data, start, size)
+            area = _parse_area_toc(data, start, size)
+            _bound_area(area)
+            return area
         except SACDError as e:
             warnings.append(f"{label} area: {e}")
             return None
@@ -548,6 +570,41 @@ def _parse_area_toc(data: bytes, toc_start: int, toc_size: int) -> Area:
     return area
 
 
+def area_frame_capacity(area: Area, total_sectors: int) -> int:
+    """The most frames the area's audio sectors in an image of total_sectors can hold."""
+    last = min(area.track_end, total_sectors - 1)
+    return max(0, last - area.track_start + 1) * MAX_FRAMES_PER_SECTOR
+
+
+def _clamp_tc(tc: Timecode, frames: int) -> Timecode:
+    if tc.total_frames <= frames:
+        return tc
+    return Timecode(frames // (60 * FRAME_RATE), frames // FRAME_RATE % 60, frames % FRAME_RATE)
+
+
+def _bound_area(area: Area) -> None:
+    """Check an area's audio range and hold its tracks to its playtime (#17).
+
+    Track timecodes decide how much each output gets, and frames the disc doesn't have become
+    silence. A track that runs past the area's playtime is cut to it; real discs never do that.
+    How much the playtime itself may ask for is bounded by the image when audio is extracted
+    (see _native.run_area). Raises SACDError for an audio range that ends before it starts.
+    """
+    if area.track_end < area.track_start:
+        raise SACDError(f"audio LSN range {area.track_start}-{area.track_end} ends before it starts")
+    play = area.total_playtime.total_frames
+    for t in area.tracks:
+        start, end = t.start.total_frames, t.start.total_frames + t.duration.total_frames
+        if end > play:
+            area.warnings.append(f"track {t.number}: frames {start}-{end} run past the area's playtime "
+                                 f"({play} frames); cut")
+            t.start = _clamp_tc(t.start, play)
+            t.duration = _clamp_tc(t.duration, play - t.start.total_frames)
+        if not area.track_start <= t.start_lsn <= area.track_end:
+            area.warnings.append(f"track {t.number}: LSN {t.start_lsn} lies outside the area's audio "
+                                 f"(LSN {area.track_start}-{area.track_end})")
+
+
 def _parse_track_text(data: bytes, base: int, track_count: int, codec: str,
                       out: list[dict[str, str]], warnings: list[str]) -> None:
     for i in range(track_count):
@@ -573,10 +630,11 @@ def _parse_track_text(data: bytes, base: int, track_count: int, codec: str,
                 else:
                     out[i][name] = _decode(raw, codec)
             if j < item_count - 1:
-                # Skip the string, then zero padding up to the next item
-                q += len(raw)
-                while q < len(data) and data[q] == 0:
-                    q += 1
+                # Skip the string, then zero padding up to the next item. A string longer than
+                # MAX_TEXT_BYTES was cut, so this lands inside it and the next items misparse.
+                # That's deliberate: such a string is hostile, and the result stays bounded.
+                # Don't "fix" it with an unbounded scan.
+                q = _skip_zeros(data, q + len(raw))
 
 
 def read_toc(source: str | os.PathLike | BinaryIO) -> Disc:

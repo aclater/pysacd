@@ -266,7 +266,7 @@ def convert(iso: str, opts: Options) -> int:
 
     with SACDImage(iso) as img:
         disc = img.read_toc()
-        for w in disc.warnings:
+        for w in disc.warnings + [w for a in disc.areas for w in a.warnings]:
             _log(f"warning: {w}")
         failures = 0
         for area in _select_areas(disc, opts.areas):
@@ -306,6 +306,9 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
                 _log("note: no cover art in the Cover Art Archive")
 
     tracks = [t for t in area.tracks if not opts.tracks or t.number in opts.tracks]
+    for t in [t for t in tracks if not t.duration.total_frames]:
+        _log(f"  {t.number:2d} has no audio (zero length in the TOC), skipped")
+    tracks = [t for t in tracks if t.duration.total_frames]
     plan: list[tuple[Track, tagging.Tags, Path]] = []
     for t in tracks:
         tags = tagging.base_tags(disc, area, t)

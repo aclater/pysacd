@@ -124,7 +124,7 @@ class Tokens(unittest.TestCase):
 
     def test_readable_by_others_refused(self):
         isrcsubmit.save_token({"access_token": "t"}, self.path)
-        os.chmod(self.path, 0o644)
+        os.chmod(self.path, 0o640)      # group-readable is enough to refuse
         with self.assertRaisesRegex(musicbrainz.MBError, "chmod 600"):
             isrcsubmit.load_token(self.path)
 

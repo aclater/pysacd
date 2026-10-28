@@ -113,7 +113,12 @@ def _mb_login(args) -> int:
     try:
         if args.mb_server:
             musicbrainz.set_server(args.mb_server)
-        isrcsubmit.login(args.client_id, args.client_secret or getpass.getpass("client secret: "), args.mb_contact)
+        print("Open this URL, allow pysacd to submit ISRCs, then paste the code it shows:\n\n  "
+              + isrcsubmit.authorize_url(args.client_id) + "\n")
+        code = input("code: ")
+        secret = args.client_secret or getpass.getpass("client secret: ")
+        isrcsubmit.finish_login(args.client_id, secret, code, args.mb_contact)
+        print(f"saved the token to {isrcsubmit.TOKEN_FILE} (readable only by you)")
     except (OSError, musicbrainz.MBError) as e:
         print(f"mb-login: {e}", file=sys.stderr)
         return 1

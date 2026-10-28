@@ -173,18 +173,20 @@ def _token_request(params: dict, contact: str | None) -> dict:
     return tok
 
 
-def login(client_id: str, client_secret: str, contact: str | None, ask=input, path: Path = TOKEN_FILE) -> None:
-    """Out-of-band OAuth2: open the printed URL, sign in, paste the code back."""
-    url = _oauth_base() + "/authorize?" + urllib.parse.urlencode(
+def authorize_url(client_id: str) -> str:
+    """Where the user signs in and allows pysacd to submit ISRCs (out-of-band OAuth2)."""
+    return _oauth_base() + "/authorize?" + urllib.parse.urlencode(
         {"response_type": "code", "client_id": client_id, "redirect_uri": OOB, "scope": SCOPE,
          "access_type": "offline"})
-    print(f"Open this URL, allow pysacd to submit ISRCs, then paste the code it shows:\n\n  {url}\n")
-    code = ask("code: ").strip()
-    tok = _token_request({"grant_type": "authorization_code", "code": code, "client_id": client_id,
+
+
+def finish_login(client_id: str, client_secret: str, code: str, contact: str | None,
+                 path: Path = TOKEN_FILE) -> None:
+    """Exchange the code the user pasted for a token, and save it owner-only."""
+    tok = _token_request({"grant_type": "authorization_code", "code": code.strip(), "client_id": client_id,
                           "client_secret": client_secret, "redirect_uri": OOB}, contact)
     tok.update(client_id=client_id, client_secret=client_secret, server=musicbrainz.API)
     save_token(tok, path)
-    print(f"saved the token to {path} (readable only by you)")
 
 
 def _bearer(contact: str | None, path: Path = TOKEN_FILE) -> str | None:

@@ -101,7 +101,13 @@ def _get(url: str, contact: str | None, accept: str = "application/json", retrie
 def _json(path: str, contact: str | None, **params) -> dict:
     params["fmt"] = "json"
     body, _ = _get(f"{API}/{path}?{urllib.parse.urlencode(params)}", contact)
-    return json.loads(body)
+    try:
+        data = json.loads(body)
+    except ValueError:
+        raise MBError(f"{path}: response is not JSON") from None
+    if not isinstance(data, dict):
+        raise MBError(f"{path}: response is not a JSON object")
+    return data
 
 
 def _lucene_quote(s: str) -> str:
@@ -109,7 +115,7 @@ def _lucene_quote(s: str) -> str:
 
 
 def credit_name(credits: list[dict]) -> str:
-    return "".join(c.get("name", c["artist"]["name"]) + c.get("joinphrase", "") for c in credits)
+    return "".join((_str(c.get("name")) or "") + (_str(c.get("joinphrase")) or "") for c in _dicts(credits))
 
 
 @dataclass
@@ -132,8 +138,8 @@ def candidate_ids(disc: Disc, contact: str | None, text_search: bool = False) ->
     seen = set()
 
     def add(releases, method):
-        for r in releases:
-            if r["id"] not in seen:
+        for r in _dicts(releases):
+            if _str(r.get("id")) is not None and r["id"] not in seen:
                 seen.add(r["id"])
                 out.append((r["id"], method))
 
@@ -163,7 +169,93 @@ def barcode_of(disc: Disc) -> str | None:
 
 
 def lookup_release(release_id: str, contact: str | None) -> dict:
-    return _json(f"release/{release_id}", contact, inc=RELEASE_INC)
+    rel = clean_release(_json(f"release/{release_id}", contact, inc=RELEASE_INC))
+    if rel is None:
+        raise MBError(f"release {release_id}: malformed response")
+    return rel
+
+
+# --- validating MusicBrainz JSON (#47) -------------------------------------------------------
+# A release is third-party data: any field can be null, a list where a string belongs, or a
+# string where a number belongs. clean_release() keeps only the fields pysacd uses, each of
+# the right type. Anything else is dropped, and the disc's own text is used instead.
+
+def _str(v) -> str | None:
+    return v if isinstance(v, str) else None
+
+
+def _num(v) -> float | None:
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v < 1e12 else None
+
+
+def _int(v) -> int | None:
+    if isinstance(v, int) and not isinstance(v, bool):
+        return v if 0 <= v < 1 << 31 else None
+    if isinstance(v, str) and v.isascii() and v.isdigit() and len(v) < 10:
+        return int(v)
+    return None
+
+
+def _dicts(v) -> list[dict]:
+    return [x for x in v if isinstance(x, dict)] if isinstance(v, list) else []
+
+
+def _pick(d: dict, **types) -> dict:
+    """The keys of d whose values pass their checker (None = drop)."""
+    out = {}
+    for key, check in types.items():
+        val = check(d.get(key.replace("_", "-")))
+        if val is not None:
+            out[key.replace("_", "-")] = val
+    return out
+
+
+def _credits(v) -> list[dict]:
+    out = []
+    for c in _dicts(v):
+        artist = c.get("artist")
+        if not isinstance(artist, dict) or _str(artist.get("id")) is None or _str(artist.get("name")) is None:
+            continue
+        out.append({"name": _str(c.get("name")) or artist["name"], "joinphrase": _str(c.get("joinphrase")) or "",
+                    "artist": {"id": artist["id"], "name": artist["name"]}})
+    return out
+
+
+def _recording(v) -> dict | None:
+    if not isinstance(v, dict):
+        return None
+    r = _pick(v, id=_str, title=_str, length=_num)
+    r["isrcs"] = [x for x in v.get("isrcs") or [] if isinstance(x, str)] if isinstance(v.get("isrcs"), list) else []
+    r["artist-credit"] = _credits(v.get("artist-credit"))
+    return r
+
+
+def _track(v: dict) -> dict:
+    t = _pick(v, id=_str, title=_str, number=_str, length=_num, position=_int)
+    t["artist-credit"] = _credits(v.get("artist-credit"))
+    rec = _recording(v.get("recording"))
+    if rec is not None:
+        t["recording"] = rec
+    return t
+
+
+def clean_release(v) -> dict | None:
+    """A release with only well-typed fields (see above), or None without a string id."""
+    if not isinstance(v, dict) or _str(v.get("id")) is None:
+        return None
+    rel = _pick(v, id=_str, title=_str, date=_str, barcode=_str, country=_str, status=_str)
+    rel["artist-credit"] = _credits(v.get("artist-credit"))
+    rg = v.get("release-group")
+    if isinstance(rg, dict):
+        rel["release-group"] = _pick(rg, id=_str, first_release_date=_str, primary_type=_str)
+    rel["label-info"] = [
+        {**({"label": {"name": li["label"]["name"]}} if isinstance(li.get("label"), dict)
+            and _str(li["label"].get("name")) is not None else {}),
+         **_pick(li, catalog_number=_str)}
+        for li in _dicts(v.get("label-info"))]
+    rel["media"] = [{**_pick(m, format=_str, position=_int), "tracks": [_track(t) for t in _dicts(m.get("tracks"))]}
+                    for m in _dicts(v.get("media"))]
+    return rel
 
 
 def physical_discs(media: list[dict]) -> list[int]:

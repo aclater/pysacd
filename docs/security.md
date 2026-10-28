@@ -165,5 +165,11 @@ reproduces from the seed in a failure. `PYSACD_FUZZ=N` runs N cases. Fixed when 
 - a track-text offset pointing past the end of the area TOC (now a warning, and the track
   keeps no text).
 
-The native engine's parsers are covered by the hostile-image corpus planned in #17, under
-ASan and UBSan.
+The native engine's parsers, the sector demuxer and the DST decoder, have libFuzzer
+harnesses (`fuzz/`, built with ASan and UBSan). They run for 2 minutes per harness on pull
+requests that touch the engine, and for 30 minutes weekly. Their seeds are synthetic frames
+from the test encoder, covering every optional DST feature and the invalid frames. Crashing
+inputs go into `fuzz/regressions/`, which `tests/test_fuzz_engine.py` replays on every test
+run. The first long run (2026-10-28, 12 cores, 30 minutes) found nothing: about 1.8 million
+DST frames and 0.4 million sector sequences, with no crash, sanitizer report or hang. The
+end-to-end hostile-image corpus is #17.

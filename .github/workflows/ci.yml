@@ -72,6 +72,7 @@ jobs:
       - name: Build with sanitizers
         run: |
           SAN="-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined"
+          echo "SAN=$SAN" >> "$GITHUB_ENV"
           make PORTABLE=1 CFLAGS="$SAN"
           make test-tools CFLAGS="$SAN"
 
@@ -82,6 +83,8 @@ jobs:
           export LD_PRELOAD="$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so)"
           export ASAN_OPTIONS=detect_leaks=0:abort_on_error=1
           export UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
+          # tests/test_fuzz_engine.py builds the C fuzz harnesses with these flags too
+          export PYSACD_FUZZ_CFLAGS="$SAN"
           PYTHONPATH=src python -m pytest -q tests
 
   oracle:

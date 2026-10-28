@@ -30,12 +30,24 @@ def create(path: str | os.PathLike) -> int:
     return os.open(path, FLAGS, MODE)
 
 
+def open_new(path: str | os.PathLike):
+    """create() as a binary file object. If wrapping the descriptor fails, it is closed and
+    the new file removed, so nothing leaks."""
+    fd = create(path)
+    try:
+        return os.fdopen(fd, "wb")
+    except BaseException:
+        os.close(fd)
+        Path(path).unlink(missing_ok=True)
+        raise
+
+
 def write_file(path: str | os.PathLike, data: bytes) -> None:
     """Write `data` to `path` atomically, through a new temporary file, replacing any old file."""
     tmp = temp_name(path)
-    fd = create(tmp)
+    f = open_new(tmp)
     try:
-        with os.fdopen(fd, "wb") as f:
+        with f:
             f.write(data)
         os.replace(tmp, path)
     except BaseException:

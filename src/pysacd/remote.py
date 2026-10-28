@@ -409,7 +409,7 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
     done = failures = 0
     tmp = safeio.temp_name(path)    # written under a new, unpredictable name; moved into place at the end
     try:
-        with os.fdopen(safeio.create(tmp), "wb") as out:
+        with safeio.open_new(tmp) as out:
             out.truncate(total * SECTOR_SIZE)
             for start, end in ranges:
                 lsn = start

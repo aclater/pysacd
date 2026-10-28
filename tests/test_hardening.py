@@ -72,6 +72,17 @@ class SafeIO(unittest.TestCase):
                 safeio.create(p)
         self.assertEqual(target.read_bytes(), b"keep")
 
+    def test_open_new_closes_fd_if_wrapping_fails(self):
+        target = self.dir / "x"
+        closed = []
+        real_close = os.close
+        with mock.patch.object(os, "fdopen", side_effect=MemoryError), \
+                mock.patch.object(os, "close", side_effect=lambda fd: (closed.append(fd), real_close(fd))), \
+                self.assertRaises(MemoryError):
+            safeio.open_new(target)
+        self.assertEqual(len(closed), 1)
+        self.assertFalse(target.exists())
+
     def test_write_file_mode_and_symlink_replace(self):
         outside = self.dir / "outside"
         outside.write_bytes(b"canary")

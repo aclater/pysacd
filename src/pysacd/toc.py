@@ -141,6 +141,7 @@ class Track:
     isrc: str | None = None
     genre: Genre | None = None
     text: dict[str, str] = field(default_factory=dict)
+    start_flags: int = 0         # raw flag byte from SACDTRL2 start entry
 
     @property
     def title(self) -> str | None:
@@ -260,9 +261,10 @@ def _cstring(buf: bytes, off: int) -> bytes:
 
 
 def _decode(raw: bytes, codec: str) -> str:
-    # Some discs carry control chars in text (sacd-ripper replaces them with spaces)
+    # Some discs carry control chars in text (sacd-ripper replaces them with spaces).
+    # Leading/trailing spaces are kept: sacd_extract writes them into tags and files.
     raw = bytes(b if b >= 0x20 else 0x20 for b in raw)
-    return raw.decode(codec, errors="replace").strip()
+    return raw.decode(codec, errors="replace")
 
 
 def _text_at(buf: bytes, off: int, codec: str) -> str | None:
@@ -536,6 +538,7 @@ def _parse_area_toc(data: bytes, toc_start: int, toc_size: int) -> Area:
             isrc=isrc,
             genre=genre,
             text=texts[i],
+            start_flags=data[times + 8 + i * 4 + 3],
         ))
     return area
 

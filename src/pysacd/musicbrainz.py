@@ -1,0 +1,220 @@
+"""Minimal MusicBrainz + Cover Art Archive client (stdlib only).
+
+Finds the MusicBrainz release (and medium) for an SACD area by barcode or
+catalog number, then checks the match against the disc's track count,
+track durations and ISRCs.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass, field
+
+from . import __version__
+from .toc import Area, Disc
+
+API = "https://musicbrainz.org/ws/2"
+CAA = "https://coverartarchive.org"
+RELEASE_INC = "artist-credits+labels+recordings+release-groups+isrcs"
+
+_lock = threading.Lock()
+_last_request = 0.0
+
+
+class MBError(RuntimeError):
+    pass
+
+
+def _user_agent(contact: str | None) -> str:
+    return f"pysacd/{__version__} ( {contact or 'https://musicbrainz.org/doc/MusicBrainz_API'} )"
+
+
+def _get(url: str, contact: str | None, accept: str = "application/json", retries: int = 5) -> tuple[bytes, str]:
+    global _last_request
+    req = urllib.request.Request(url, headers={"User-Agent": _user_agent(contact), "Accept": accept})
+    for attempt in range(retries):
+        with _lock:  # MusicBrainz allows ~1 request/second
+            wait = _last_request + 1.1 - time.monotonic()
+            if wait > 0 and "musicbrainz.org" in url:
+                time.sleep(wait)
+            _last_request = time.monotonic()
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                return r.read(), r.headers.get_content_type()
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise MBError(f"not found: {url}") from None
+            if e.code in (429, 503) and attempt + 1 < retries:
+                time.sleep(2 ** (attempt + 1))  # rate limited: back off
+                continue
+            raise MBError(f"HTTP {e.code} for {url}") from None
+        except urllib.error.URLError as e:
+            if attempt + 1 < retries:
+                time.sleep(2)
+                continue
+            raise MBError(f"{url}: {e.reason}") from None
+    raise MBError(f"giving up on {url}")
+
+
+def _json(path: str, contact: str | None, **params) -> dict:
+    params["fmt"] = "json"
+    body, _ = _get(f"{API}/{path}?{urllib.parse.urlencode(params)}", contact)
+    return json.loads(body)
+
+
+def _lucene_quote(s: str) -> str:
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def credit_name(credits: list[dict]) -> str:
+    return "".join(c.get("name", c["artist"]["name"]) + c.get("joinphrase", "") for c in credits)
+
+
+@dataclass
+class Match:
+    release: dict
+    medium: dict
+    score: float                 # mean |duration diff| in seconds
+    isrc_hits: int
+    method: str                  # "barcode", "catno", "text", "release-id"
+    warnings: list[str] = field(default_factory=list)
+
+    @property
+    def release_id(self) -> str:
+        return self.release["id"]
+
+
+def candidate_ids(disc: Disc, contact: str | None, text_search: bool = False) -> list[tuple[str, str]]:
+    """(release id, method) candidates, best methods first."""
+    out: list[tuple[str, str]] = []
+    seen = set()
+
+    def add(releases, method):
+        for r in releases:
+            if r["id"] not in seen:
+                seen.add(r["id"])
+                out.append((r["id"], method))
+
+    barcode = barcode_of(disc)
+    if barcode:
+        add(_json("release", contact, query=f"barcode:{barcode}", limit=25).get("releases", []), "barcode")
+    for catno in {disc.disc_catalog_number, disc.album_catalog_number} - {""}:
+        if catno and not re.fullmatch(r"0+", catno.replace(" ", "")) and catno != barcode:
+            add(_json("release", contact, query=f"catno:{_lucene_quote(catno)}", limit=25).get("releases", []), "catno")
+    if text_search and not out:
+        title = disc.text.get("album_title") or disc.text.get("disc_title")
+        artist = disc.text.get("album_artist") or disc.text.get("disc_artist")
+        if title:
+            q = f"release:{_lucene_quote(title)}"
+            if artist:
+                q += f" AND artist:{_lucene_quote(artist)}"
+            add(_json("release", contact, query=q, limit=10).get("releases", []), "text")
+    return out
+
+
+def barcode_of(disc: Disc) -> str | None:
+    """The album catalog number is a UPC/EAN on most SACDs."""
+    s = disc.album_catalog_number.replace(" ", "")
+    if re.fullmatch(r"\d{12,14}", s) and not re.fullmatch(r"0+", s):
+        return s
+    return None
+
+
+def lookup_release(release_id: str, contact: str | None) -> dict:
+    return _json(f"release/{release_id}", contact, inc=RELEASE_INC)
+
+
+def physical_discs(media: list[dict]) -> list[int]:
+    """Physical disc number for each medium.
+
+    MusicBrainz lists each layer of a disc as its own medium, e.g.
+    "Hybrid SACD (CD layer)", "Hybrid SACD (SACD layer, 2 channels)",
+    "Hybrid SACD (SACD layer, multichannel)" for one hybrid disc.
+    """
+    out, n, base, seen = [], 0, None, set()
+    for m in media:
+        f = m.get("format") or ""
+        b = f.split(" (")[0]
+        layered = "(" in f and ("layer" in f or "channel" in f)
+        new_disc = (not layered or b != base or f in seen or
+                    ("(CD layer" in f and seen))
+        if new_disc:
+            n, base, seen = n + 1, b, set()
+        seen.add(f)
+        out.append(n)
+    return out
+
+
+def score_medium(release: dict, medium: dict, disc: Disc, area: Area) -> tuple[float, int] | None:
+    tracks = medium.get("tracks") or []
+    if len(tracks) != len(area.tracks):
+        return None
+    diffs = []
+    isrc_hits = 0
+    for mt, at in zip(tracks, area.tracks):
+        if mt.get("length"):
+            diffs.append(abs(mt["length"] / 1000 - at.duration.seconds_float))
+        if at.isrc and at.isrc in (mt.get("recording", {}).get("isrcs") or []):
+            isrc_hits += 1
+    score = sum(diffs) / len(diffs) if diffs else 99.0
+    return score, isrc_hits
+
+
+def find_release(disc: Disc, area: Area, contact: str | None, release_id: str | None = None,
+                 text_search: bool = False, max_mean_diff: float = 3.0) -> Match | None:
+    cands = [(release_id, "release-id")] if release_id else candidate_ids(disc, contact, text_search)
+    best: Match | None = None
+    best_rank = 0.0
+    for rid, method in cands:
+        rel = lookup_release(rid, contact)
+        for medium in rel.get("media", []):
+            s = score_medium(rel, medium, disc, area)
+            if s is None:
+                continue
+            score, hits = s
+            fmt = medium.get("format") or ""
+            # Prefer the SACD layer matching this area, then the disc's position in a set
+            rank = score - hits * 0.2
+            if "SACD" in fmt and "(CD layer" not in fmt:
+                rank -= 0.5
+            if "(CD layer" in fmt:
+                rank += 0.5
+            if ("multichannel" in fmt) == area.is_multichannel and "channel" in fmt:
+                rank -= 0.5
+            if disc.album_set_size > 1:
+                discno = physical_discs(rel["media"])[rel["media"].index(medium)]
+                if discno == disc.album_sequence_number:
+                    rank -= 1
+            if best is None or rank < best_rank:
+                best, best_rank = Match(rel, medium, score, hits, method), rank
+    if best is None:
+        return None
+    if best.score > max_mean_diff and best.isrc_hits < len(area.tracks) // 2 and best.method != "release-id":
+        return None
+    if "SACD" not in (best.medium.get("format") or "") or "(CD layer" in best.medium.get("format", ""):
+        best.warnings.append(f"matched medium format is {best.medium.get('format')!r}, not SACD")
+    if best.method == "text":
+        best.warnings.append("matched by title search: release-level data (date, label, catalog) may be a different pressing")
+    return best
+
+
+def fetch_cover(release: dict, contact: str | None, size: str = "1200") -> tuple[bytes, str] | None:
+    """Front cover from the Cover Art Archive (release, then release group)."""
+    suffix = "front" if size == "full" else f"front-{size}"
+    urls = [f"{CAA}/release/{release['id']}/{suffix}"]
+    rg = release.get("release-group", {}).get("id")
+    if rg:
+        urls.append(f"{CAA}/release-group/{rg}/{suffix}")
+    for url in urls:
+        try:
+            data, ctype = _get(url, contact, accept="image/*")
+            return data, ctype
+        except MBError:
+            continue
+    return None

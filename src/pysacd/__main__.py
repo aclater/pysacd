@@ -1,4 +1,4 @@
-"""python -m pysacd [--json] IMAGE.iso ... — print the TOC of SACD ISO images."""
+"""pysacd command line: `toc` prints SACD TOCs, `convert` extracts tagged audio."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import dataclasses
 import json
 import sys
+from pathlib import Path
 
 from .toc import Disc, SACDError, read_toc
 
@@ -48,12 +49,7 @@ def _print(disc: Disc, path: str) -> None:
         print(f"  warning: {w}")
 
 
-def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="pysacd", description=__doc__)
-    ap.add_argument("images", nargs="+")
-    ap.add_argument("--json", action="store_true", help="emit JSON")
-    args = ap.parse_args(argv)
-
+def _toc(args) -> int:
     rc = 0
     out = []
     for path in args.images:
@@ -71,6 +67,84 @@ def main(argv: list[str] | None = None) -> int:
         json.dump(out if len(out) != 1 else out[0], sys.stdout, ensure_ascii=False, indent=2)
         print()
     return rc
+
+
+def _bool(ap, name, help):
+    ap.add_argument(f"--{name}", dest=name.replace("-", "_"), action=argparse.BooleanOptionalAction,
+                    default=None, help=help)
+
+
+def _convert(args) -> int:
+    from .convert import CONFIG_PATH, Options, convert
+
+    try:
+        opts = Options.from_config(Path(args.config) if args.config else CONFIG_PATH)
+    except (ValueError, OSError) as e:
+        print(f"config: {e}", file=sys.stderr)
+        return 2
+    for k, v in vars(args).items():
+        if v is not None and hasattr(opts, k):
+            setattr(opts, k, v)
+    rc = 0
+    for iso in args.images:
+        try:
+            rc |= convert(iso, opts)
+        except (OSError, SACDError) as e:
+            print(f"{iso}: {e}", file=sys.stderr)
+            rc = 1
+    return rc
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="pysacd", description="SACD ISO tools")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    t = sub.add_parser("toc", help="print the TOC of SACD ISO images")
+    t.add_argument("images", nargs="+")
+    t.add_argument("--json", action="store_true", help="emit JSON")
+    t.set_defaults(func=_toc)
+
+    c = sub.add_parser(
+        "convert", help="extract tracks to DSF/FLAC/WAV and tag them",
+        description="Extract an SACD ISO to tagged files. Defaults come from "
+                    "~/.config/pysacd/config.toml (same names as the long options, "
+                    "with underscores); flags override it.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="template fields: albumartist album artist title composer date year originalyear\n"
+               "  label catalognumber barcode tracknumber tracktotal discnumber disctotal\n"
+               "  disc disc_prefix edition layout channels format\n"
+               "  e.g. --dir-template '{albumartist}/{year} - {album} [{edition}]'\n"
+               "       --file-template '{tracknumber:02d} {title}'\n"
+               "  empty [] / () left by blank fields are removed")
+    c.add_argument("images", nargs="+")
+    c.add_argument("--config", help=f"config file (default {Path('~/.config/pysacd/config.toml')})")
+    c.add_argument("-f", "--format", choices=["dsf", "flac", "wav"], help="output format (default dsf)")
+    c.add_argument("-o", "--output-dir", help="root output directory (default .)")
+    c.add_argument("--dir-template", help="album directory template, may contain /")
+    c.add_argument("--file-template", help="track file name template (no extension)")
+    c.add_argument("--stereo-edition", help="{edition} for the stereo area (default 'SACD')")
+    c.add_argument("--multichannel-edition", help="{edition} for the multichannel area (default 'SACD {layout}')")
+    c.add_argument("-a", "--areas", choices=["stereo", "multichannel", "both"], help="areas to extract (default stereo)")
+    c.add_argument("-t", "--tracks", type=lambda s: [int(x) for x in s.split(",")], help="only these tracks, e.g. 1,4,5")
+    c.add_argument("-r", "--pcm-rate", type=int, choices=[88200, 176400], help="FLAC/WAV sample rate (default 88200)")
+    c.add_argument("--gain-db", type=float, help="PCM gain in dB (default 0; SACD 0 dB = -6 dBFS)")
+    c.add_argument("--flac-level", type=int, choices=range(9), metavar="0-8", help="FLAC compression (default 5)")
+    c.add_argument("-j", "--jobs", type=int, help="worker threads (default: CPU count)")
+    _bool(c, "musicbrainz", "look up the release on MusicBrainz (default on)")
+    c.add_argument("--mb-release", help="use this MusicBrainz release id")
+    _bool(c, "mb-text-search", "fall back to title/artist search when barcode/catalog fail (default off)")
+    c.add_argument("--mb-contact", help="contact (URL or e-mail) for the MusicBrainz User-Agent")
+    _bool(c, "cover", "embed front cover from the Cover Art Archive (default on)")
+    c.add_argument("--cover-size", choices=["250", "500", "1200", "full"], help="cover size (default 1200)")
+    c.add_argument("--cover-file", help="save cover as this file in the album dir ('' to skip)")
+    c.add_argument("--id3-version", type=int, choices=[3, 4], help="ID3 version for DSF/WAV (default 3)")
+    _bool(c, "portable-names", "replace characters invalid on Windows/SMB (default off)")
+    _bool(c, "overwrite", "overwrite existing files (default: skip)")
+    c.add_argument("-n", "--dry-run", action="store_true", default=None, help="show match and paths only")
+    c.set_defaults(func=_convert)
+
+    args = ap.parse_args(argv)
+    return args.func(args)
 
 
 if __name__ == "__main__":

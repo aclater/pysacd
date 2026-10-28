@@ -8,6 +8,7 @@ import json
 import sys
 from pathlib import Path
 
+from . import safetext
 from .toc import Disc, SACDError, read_toc
 
 
@@ -21,6 +22,11 @@ def _to_json(disc: Disc) -> dict:
             td["start_seconds"] = track.start.seconds_float
             td["duration_seconds"] = track.duration.seconds_float
     return d
+
+
+def print(*args, **kwargs) -> None:  # TOC text is untrusted: escape control characters
+    import builtins
+    builtins.print(*(safetext.for_terminal(str(a), keep_tab_newline=True) for a in args), **kwargs)
 
 
 def _print(disc: Disc, path: str) -> None:

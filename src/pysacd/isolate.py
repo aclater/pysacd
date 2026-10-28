@@ -92,7 +92,8 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     try:
         pickle.dump(job, child.stdin, protocol=pickle.HIGHEST_PROTOCOL)
         child.stdin.flush()
-        done = _serve(child, child.stdout, child.stdin, progress, interval, source, specs, Progress)
+        done = _serve(child, child.stdout, child.stdin, progress, interval, source, specs, Progress,
+                      image.total_sectors)
     except BaseException:
         _kill(child)
         raise
@@ -145,11 +146,14 @@ def _kill(child: subprocess.Popen) -> None:
         child.wait()
 
 
-def _serve(child, out: IO[bytes], inp: IO[bytes], progress, interval: float, source, specs, Progress) -> str | None:
+def _serve(child, out: IO[bytes], inp: IO[bytes], progress, interval: float, source, specs, Progress,
+           total_sectors: int) -> str | None:
     """Handle the child's messages until it reports a result. Returns "" on success, the
     error text on failure, or None if the child died without reporting."""
     buf = b""
     fd = out.fileno()
+    for s in specs:
+        s.dst_index = []
     while True:
         ready, _, _ = select.select([fd], [], [], interval)
         if ready:
@@ -159,7 +163,7 @@ def _serve(child, out: IO[bytes], inp: IO[bytes], progress, interval: float, sou
             buf += chunk
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
-                result = _message(line, inp, progress, source, specs, Progress)
+                result = _message(line, inp, progress, source, specs, Progress, total_sectors)
                 if result is not None:
                     return result
             if len(buf) > MAX_LINE:
@@ -174,7 +178,7 @@ def _native_error(msg: str):
     return NativeError(msg)
 
 
-def _message(line: bytes, inp: IO[bytes], progress, source, specs, Progress) -> str | None:
+def _message(line: bytes, inp: IO[bytes], progress, source, specs, Progress, total_sectors: int = 0) -> str | None:
     try:
         m = json.loads(line)
         if not isinstance(m, dict):
@@ -198,6 +202,8 @@ def _message(line: bytes, inp: IO[bytes], progress, source, specs, Progress) -> 
             if source is None:
                 raise ValueError("read request without a sector source")
             lsn, count = _int(m["lsn"], 0, 1 << 32), _int(m["count"], 1, MAX_READ)
+            if lsn + count > total_sectors:     # don't let the child make a PS3 read off the disc
+                raise ValueError(f"read of LSN {lsn} (+{count}) beyond the disc ({total_sectors} sectors)")
             try:
                 data = source(lsn, count)
                 ok = len(data) == count * 2048
@@ -206,6 +212,12 @@ def _message(line: bytes, inp: IO[bytes], progress, source, specs, Progress) -> 
                 data, ok = b"", False
             inp.write(b"\x01" + data if ok else b"\x00")
             inp.flush()
+        elif t == "index":
+            s = specs[_int(m["o"], 0, len(specs) - 1)]
+            v = m["v"]
+            if not isinstance(v, list) or len(s.dst_index) + len(v) > max(0, s.tc_end - s.tc_start):
+                raise ValueError("DST index")
+            s.dst_index += [(_int(a), _int(b, 0, 1 << 32)) for a, b in v]
         elif t == "done":
             outs = m["outputs"]
             if not isinstance(outs, list) or len(outs) != len(specs):
@@ -213,10 +225,6 @@ def _message(line: bytes, inp: IO[bytes], progress, source, specs, Progress) -> 
             for s, o in zip(specs, outs):
                 s.frames_written, s.frames_missing = _int(o["frames_written"]), _int(o["frames_missing"])
                 s.dst_errors, s.samples, s.data_bytes = _int(o["dst_errors"]), _int(o["samples"]), _int(o["data_bytes"])
-                idx = o["dst_index"]
-                if not isinstance(idx, list) or len(idx) > max(0, s.tc_end - s.tc_start):
-                    raise ValueError("DST index")
-                s.dst_index = [(_int(a), _int(b, 0, 1 << 32)) for a, b in idx]
             err = m["error"]
             if not isinstance(err, str):
                 raise ValueError("error text")

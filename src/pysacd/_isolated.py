@@ -19,6 +19,8 @@ import socket  # imported up front: after Landlock the child can't read the stdl
 import sys
 import threading
 
+INDEX_CHUNK = 1024              # DST index entries per message (~25 KiB of JSON)
+
 
 class _Image:
     """What run_area needs to know about the image; the child never parses the TOC."""
@@ -138,9 +140,14 @@ def main() -> int:
                                                  sd=p.sectors_done, st=p.sectors_total))
     except _native.NativeError as e:
         error = str(e) or "engine failed"
+    # A DSDIFF DST index has one entry per frame (hundreds of thousands for a long area), so it
+    # goes in bounded chunks before "done" instead of on one unbounded line.
+    for i, s in enumerate(specs):
+        for k in range(0, len(s.dst_index), INDEX_CHUNK):
+            send(t="index", o=i, v=s.dst_index[k:k + INDEX_CHUNK])
     send(t="done", error=error, outputs=[
         {"frames_written": s.frames_written, "frames_missing": s.frames_missing, "dst_errors": s.dst_errors,
-         "samples": s.samples, "data_bytes": s.data_bytes, "dst_index": s.dst_index} for s in specs])
+         "samples": s.samples, "data_bytes": s.data_bytes} for s in specs])
     return 0
 
 

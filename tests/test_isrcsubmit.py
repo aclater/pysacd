@@ -111,9 +111,11 @@ class Tokens(unittest.TestCase):
 
     def test_private_round_trip(self):
         isrcsubmit.save_token({"access_token": "t"}, self.path)
-        self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
+        if os.name == "posix":      # Windows has no POSIX mode bits
+            self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
         self.assertEqual(isrcsubmit.load_token(self.path), {"access_token": "t"})
 
+    @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), "no O_NOFOLLOW on this platform")
     def test_symlink_refused(self):
         target = Path(self.tmp.name) / "elsewhere"
         target.write_text("{}")

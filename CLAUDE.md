@@ -57,6 +57,11 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
   - commits are authored as `aclater <aclater@gmail.com>`;
   - CI's `no private names` check enforces this.
 - **Packages.** Don't install system packages; ask the owner to.
+- **Portability.** The engine builds on Linux, macOS and Windows (MinGW-w64).
+  Platform differences live only in `csrc/compat.h` (file reads and writes by
+  UTF-8 path, aligned allocation, CPU count) and the Makefile's per-OS block.
+  Keep that layer thin: no `#ifdef _WIN32` elsewhere in `csrc/`. The
+  `portability` workflow tests macOS and Windows when the engine changes.
 
 ## Checks before every PR
 

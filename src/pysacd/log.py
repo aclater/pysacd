@@ -41,7 +41,7 @@ MAX_LOG_BYTES = 64 * 1024 * 1024    # rotate beyond this; two old files are kept
 
 def _open_nofollow(path: str, flags: int) -> int:
     """Log files never follow a symlink planted at their path, and are private."""
-    return os.open(path, flags | os.O_NOFOLLOW, 0o600)
+    return os.open(path, flags | getattr(os, "O_NOFOLLOW", 0), 0o600)    # no O_NOFOLLOW on Windows
 
 
 class _LogFile(logging.handlers.RotatingFileHandler):

@@ -187,6 +187,8 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     #17). That is opt-in. The default stays in-process, and this check is all it costs.
     """
     if isolate:
+        if not sys.platform.startswith("linux"):
+            raise NativeError("--isolate needs Linux (it sandboxes the engine with seccomp and Landlock)")
         from . import isolate as _isolate
         return _isolate.run_area(image, iso_path, area, specs, pcm_rate, gain_db, threads, iso_out,
                                  progress, interval, source)

@@ -1,0 +1,63 @@
+# Code scanning: semantic security analysis of the Python package, the C
+# engine (it parses untrusted disc images) and the workflows themselves.
+#
+# The repository is private without GitHub Advanced Security, so results
+# can't be uploaded to the Security tab: the SARIF is kept as an artifact
+# and any result fails the check instead.
+
+name: codeql
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "23 4 * * 1"  # weekly, picks up new queries without a code change
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: python
+            build-mode: none
+          - language: c-cpp
+            build-mode: manual
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-extended
+
+      - name: Build the C engine
+        if: matrix.build-mode == 'manual'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libflac-dev
+          make PORTABLE=1
+          make test-tools
+
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2  # v4.38.2
+        with:
+          category: /language:${{ matrix.language }}
+          upload: never
+          output: ${{ runner.temp }}/codeql
+
+      - name: Fail on findings
+        run: |
+          n=$(jq -s '[.[].runs[].results[]] | length' "$RUNNER_TEMP"/codeql/*.sarif)
+          jq -r '.runs[].results[] | "\(.ruleId): \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine) \(.message.text)"' \
+            "$RUNNER_TEMP"/codeql/*.sarif
+          echo "CodeQL findings: $n"
+          test "$n" -eq 0

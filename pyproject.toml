@@ -7,12 +7,14 @@ name = "pysacd"
 version = "0.2.0"
 description = "SACD (Scarletbook) ISO reader and DSF/FLAC converter"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "GPL-2.0-or-later"
 dependencies = []
 
 [project.optional-dependencies]
 convert = ["mutagen>=1.45"]
+# ruff and mypy are pinned: an unpinned upgrade can change the rule set on unchanged code.
+dev = ["mutagen>=1.45", "numpy", "pytest==9.1.1", "ruff==0.17.0", "mypy==2.4.0"]
 
 [project.scripts]
 pysacd = "pysacd.__main__:main"
@@ -20,3 +22,11 @@ pysacd-extract = "pysacd.extract:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true

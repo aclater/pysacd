@@ -42,6 +42,7 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-extended
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Build the C engine
         if: matrix.build-mode == 'manual'

@@ -333,9 +333,10 @@ dst_decoder_t *dst_decoder_new(int channels)
 {
     if (channels < 1 || channels > DST_MAX_CHANNELS)
         return NULL;
-    dst_decoder_t *s = aligned_alloc(64, (sizeof(*s) + 63) & ~(size_t)63);
-    if (!s)
+    void *mem = NULL;
+    if (posix_memalign(&mem, 64, sizeof(dst_decoder_t)) != 0)
         return NULL;
+    dst_decoder_t *s = mem;
     memset(s, 0, sizeof(*s));
     s->channels = channels;
     for (int i = 0; i < 256; i++) {

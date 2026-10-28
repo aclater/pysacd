@@ -488,7 +488,7 @@ def _fetch_remote(addr: tuple[str, int], o: Opts) -> tuple[str, str | None]:
     progress = remote.RateMeter(lambda m: (sys.stdout.write(m), sys.stdout.flush()))
     base = Path(o.output_dir) if o.output_dir else Path()
     if o.output_iso:
-        disc, total = remote.read_remote_toc(host, port)
+        disc, _total = remote.read_remote_toc(host, port)
         out_dir = base / sbcompat.album_path(disc, o.artist_flag)
         out_dir.mkdir(parents=True, exist_ok=True)
         path = Path(sbcompat.unique_filename(str(out_dir), sbcompat.album_dir(disc, o.artist_flag), "iso"))
@@ -506,6 +506,7 @@ def _fetch_remote(addr: tuple[str, int], o: Opts) -> tuple[str, str | None]:
 
 
 def _main_local(o: Opts) -> int:
+    assert o.input is not None      # set by main()
     if not os.path.isfile(o.input):
         print(f"{o.input}: only SACD ISO image files and SACD Ripper servers (host:port) are supported",
               file=sys.stderr)

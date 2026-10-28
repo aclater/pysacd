@@ -95,12 +95,11 @@ def _convert(args) -> int:
             if addr:
                 # Fetch the TOCs and the selected areas from the PS3 into a temporary sparse ISO
                 print(f"{iso}: reading from SACD Ripper server", file=sys.stderr)
-                which = opts.areas
+                def wanted(a, which=opts.areas, dry=opts.dry_run):
+                    return not dry and ((a.is_stereo and which in ("stereo", "both")) or
+                                        (a.is_multichannel and which in ("multichannel", "both")))
                 tmp, _ = remote.fetch_temp(
-                    *addr, opts.output_dir or ".",
-                    lambda a: not opts.dry_run and (
-                        (a.is_stereo and which in ("stereo", "both")) or
-                        (a.is_multichannel and which in ("multichannel", "both"))),
+                    *addr, opts.output_dir or ".", wanted,
                     progress=remote.RateMeter(lambda m: (sys.stderr.write(m), sys.stderr.flush())))
             rc |= convert(tmp or iso, opts)
         except (OSError, SACDError) as e:

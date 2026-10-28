@@ -96,9 +96,14 @@ class _Reader:
     def __init__(self, sock: socket.socket):
         self.sock = sock
         self.buf = bytearray()
+        # Monotonic time by which the current message must have arrived. The socket timeout
+        # bounds each recv(); this stops a server trickling a message a byte at a time.
+        self.deadline: float | None = None
 
     def take(self, n: int) -> bytes:
         while len(self.buf) < n:
+            if self.deadline is not None and time.monotonic() > self.deadline:
+                raise TimeoutError("response not complete before the deadline")
             chunk = self.sock.recv(max(65536, n - len(self.buf)))
             if not chunk:
                 raise EOFError("connection closed")
@@ -184,6 +189,7 @@ class PS3Client:
         t0 = time.monotonic()
         try:
             self.sock.sendall(encode_message([(1, req_type), (2, offset), (3, count)]))
+            self.reader.deadline = t0 + self.timeout
             resp = decode_message(self.reader)
         except TimeoutError as e:
             fail("%s(offset=%d, count=%d): no response within %.0f s", name, offset, count, self.timeout)
@@ -406,6 +412,10 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
                         disc.close()
                         time.sleep(min(backoff * 2 ** (failures - 1), 10))
                         disc = RemoteDisc(host, port)
+                        if disc.sectors != total:   # a different disc: don't splice it into this one
+                            log.error("disc size changed from %d to %d sectors on reconnect", total, disc.sectors)
+                            raise RemoteError(f"{host}:{port}: the disc changed during the copy "
+                                              f"({total} -> {disc.sectors} sectors)")
                         continue
                     failures = 0
                     out.seek(lsn * SECTOR_SIZE)

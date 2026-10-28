@@ -244,6 +244,12 @@ class MusicBrainzTypes(unittest.TestCase):
              "recording": {"id": "rec1", "title": "One", "isrcs": ["XX0000000001"]}}]}],
     }
 
+    def test_integer_fields(self):
+        # 32-bit range, digit strings up to 10 long; a huge digit string must not reach int()
+        for v, want in [("2147483647", 2147483647), ("2147483648", None), ("12", 12), (5, 5), (True, None),
+                        ("-1", None), ("\uff11\uff12", None), ("9" * 11, None), ("9" * 5000, None)]:
+            self.assertEqual(musicbrainz._int(v), want, repr(v)[:20])
+
     def test_good_release_kept(self):
         rel = musicbrainz.clean_release(self.GOOD)
         assert rel is not None

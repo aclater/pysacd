@@ -191,8 +191,10 @@ def _num(v) -> float | None:
 def _int(v) -> int | None:
     if isinstance(v, int) and not isinstance(v, bool):
         return v if 0 <= v < 1 << 31 else None
-    if isinstance(v, str) and v.isascii() and v.isdigit() and len(v) < 10:
-        return int(v)
+    # Bound the length first: int() of a huge digit string is slow, or ValueError past 4300 digits
+    if isinstance(v, str) and v.isascii() and v.isdigit() and len(v) <= 10:
+        n = int(v)
+        return n if n < 1 << 31 else None
     return None
 
 

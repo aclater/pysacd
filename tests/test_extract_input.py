@@ -197,6 +197,21 @@ class SectorSource(unittest.TestCase):
             self.assertFalse((self.dir / f".{name}.dsf.partial").exists())
 
 
+    def test_area_outside_image_is_refused_before_reading(self):
+        from pysacd import SACDImage, _native
+        asked = []
+        with SACDImage(self.iso) as img:
+            area = img.read_toc().stereo
+            area.track_end = img.total_sectors + 100      # as a hostile TOC could claim
+            t = area.tracks[-1]
+            spec = _native.OutputSpec("dsf", self.dir / "out.dsf", t.start.total_frames,
+                                      t.start.total_frames + t.duration.total_frames)
+            with self.assertRaisesRegex(_native.NativeError, "outside the image"):
+                _native.run_area(img, "source", area, [spec],
+                                 source=lambda lsn, n: asked.append(lsn) or self.local(lsn, n))
+        self.assertEqual(asked, [])
+
+
 class LogSafety(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

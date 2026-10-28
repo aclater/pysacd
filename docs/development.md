@@ -10,7 +10,7 @@
 
 ```
 make                 # src/pysacd/_sacdconv.so, tuned for this CPU
-make PORTABLE=1      # generic x86-64
+make PORTABLE=1      # generic x86-64; the PCM filters still use AVX2/AVX-512 when the CPU has them
 make test-tools      # the test-only DST encoder
 ```
 

@@ -132,6 +132,22 @@ class Simulator(unittest.TestCase):
                 c.read(10, 10)
             c.close()
 
+    def test_over_returning_server_rejected(self):
+        with self.sim(over_return=5) as s:
+            c = PS3Client(*s.address)
+            c.open()
+            with self.assertRaises(RemoteError):
+                c.read(0, 10)
+            c.close()
+
+    def test_send_failure_is_remote_error(self):
+        with self.sim() as s:
+            c = PS3Client(*s.address)
+            c.open()
+            c.sock.close()
+            with self.assertRaises(RemoteError):
+                c.size()
+
     def test_close_ends_session(self):
         with self.sim() as s:
             c = PS3Client(*s.address)

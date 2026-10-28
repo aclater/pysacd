@@ -136,7 +136,7 @@ def decode_message(r: _Reader) -> dict[int, int | bytes]:
 # --- client ------------------------------------------------------------------------------------
 
 def parse_address(spec: str) -> tuple[str, int] | None:
-    """'host:port' or 'host:' style address as accepted by sacd_extract -i; None if it looks like a path."""
+    """(host, port) for a 'host:port' address as accepted by sacd_extract -i, or None if it looks like a path."""
     if os.path.exists(spec) or ":" not in spec or spec.startswith(("/", ".")):
         return None
     host, _, port = spec.rpartition(":")
@@ -159,8 +159,8 @@ class PS3Client:
         self._open = False
 
     def _call(self, req_type: int, offset: int = 0, count: int = 0, want: int = 0) -> dict:
-        self.sock.sendall(encode_message([(1, req_type), (2, offset), (3, count)]))
         try:
+            self.sock.sendall(encode_message([(1, req_type), (2, offset), (3, count)]))
             resp = decode_message(self.reader)
         except (EOFError, OSError) as e:
             raise RemoteError(f"{self.address}: {e}") from e
@@ -191,7 +191,9 @@ class PS3Client:
             r = self._call(REQ_READ, lsn, count, want=RESP_READ)
             got = r[2]
             data = r.get(3, b"")
-            if got <= 0 or len(data) != got * SECTOR_SIZE:
+            # The server must return between 1 and `count` sectors: anything else (including
+            # over-returning, which would drive `count` negative) is a protocol error.
+            if not 0 < got <= count or len(data) != got * SECTOR_SIZE:
                 raise RemoteError(f"{self.address}: read failed at LSN {lsn} (result {got}, {len(data)} bytes)")
             out += data
             lsn += got
@@ -279,15 +281,17 @@ class PS3Simulator:
 
     Test knobs: `rate` (bytes/s, emulates the PS3 drive), `latency` (seconds per request),
     `drop_after` (close the connection after N reads), `fail_lsn` (reads covering this LSN
-    return result -1), `no_disc` (DISC_OPEN fails).
+    return result -1), `no_disc` (DISC_OPEN fails), `over_return` (send N sectors more than
+    requested, to test that clients reject a misbehaving server).
     """
 
     def __init__(self, iso: str | os.PathLike, host: str = "127.0.0.1", port: int = DEFAULT_PORT, *,
                  rate: float = 0, latency: float = 0, drop_after: int = 0, fail_lsn: int | None = None,
-                 no_disc: bool = False, log=None):
+                 no_disc: bool = False, over_return: int = 0, log=None):
         self.iso = iso
         self.rate, self.latency, self.drop_after, self.fail_lsn = rate, latency, drop_after, fail_lsn
         self.no_disc = no_disc
+        self.over_return = over_return
         self.log = log or (lambda msg: None)
         self.reads = 0
         sim = self
@@ -353,6 +357,8 @@ class PS3Simulator:
                             block_size = min(enc[3] + 1 - offset, MAX_BLOCK)
                         block_size = min(end_lsn - offset, block_size)
                         n = max(0, min(block_size, img.total_sectors - offset))
+                        if self.over_return:
+                            n = min(n + self.over_return, img.total_sectors - offset)
                         if self.fail_lsn is not None and offset <= self.fail_lsn < offset + max(n, 1):
                             result = -1
                         elif n > 0:

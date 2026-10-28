@@ -167,9 +167,12 @@ class Decoding(unittest.TestCase):
             out = root / "out"
             from pysacd import __main__ as cli
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                self.assertEqual(cli.main(["convert", "--no-musicbrainz", "--no-cover", "-o", str(out), str(iso)]), 0)
+                # explicit templates: the result mustn't depend on the user's own config file
+                self.assertEqual(cli.main(["convert", "--no-musicbrainz", "--no-cover", "--dir-template", "x",
+                                           "--file-template", "{tracknumber:02d} - {title}",
+                                           "-o", str(out), str(iso)]), 0)
             names = [p.name for p in out.rglob("*.dsf")]
-            self.assertEqual(sorted(names), ["01 許功蓋.dsf", "02 成功.dsf"])
+            self.assertEqual(sorted(names), ["01 - 許功蓋.dsf", "02 - 成功.dsf"])
 
     def run_both(self, root: Path, iso: Path) -> list[dict[bytes, bytes]]:
         src = Path(__file__).resolve().parents[1] / "src"

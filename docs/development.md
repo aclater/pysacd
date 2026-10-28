@@ -84,11 +84,15 @@ Every pull request runs:
   description and diff to Google's Gemini API**, a third party, even though
   the repository is private. Without the secret the workflow sends nothing.
 
-CI installs its dev dependencies from `requirements-dev.txt`, with every package pinned
-and hash-checked (`pip install --require-hashes`). It installs pysacd itself with
-`--no-build-isolation`, so nothing unhashed is downloaded. To update a pin, edit `PINS` in
-`tools/lock_dev.py` and run `python3 -I tools/lock_dev.py`. It rewrites the file from PyPI's
-hashes and refuses releases younger than two weeks. For local work, `pip install -e '.[dev]'`
+CI installs its Python dependencies with every package pinned and hash-checked
+(`pip install --require-hashes`):
+
+- `requirements-dev.txt` holds everything: test dependencies, linters and the build backend;
+- `requirements-test.txt` holds only what the tests need, for the Windows and fuzz jobs.
+
+CI installs pysacd itself with `--no-build-isolation`, so nothing unhashed is downloaded. To
+update a pin, edit `PINS` in `tools/lock_dev.py` and run `python3 -I tools/lock_dev.py`. It
+rewrites both files from PyPI's hashes and refuses releases younger than two weeks. For local work, `pip install -e '.[dev]'`
 still works. Dependabot keeps the SHA-pinned actions current, with a two-week cooldown.
 
 Contributor rules (clean room, byte-identity, benchmarks, privacy) are in [CLAUDE.md](../CLAUDE.md).

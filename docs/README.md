@@ -35,6 +35,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Conditions](performance.md#conditions)
   - [Extracting to DSF](performance.md#extracting-to-dsf)
   - [Thread scaling](performance.md#thread-scaling)
+  - [DST decoder speed](performance.md#dst-decoder-speed)
   - [FLAC instead of DSF](performance.md#flac-instead-of-dsf)
   - [Reading a TOC: in-process against a subprocess](performance.md#reading-a-toc-in-process-against-a-subprocess)
 - **[Security](security.md)**: hostile discs, servers and text.

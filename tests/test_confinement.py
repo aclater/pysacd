@@ -94,7 +94,8 @@ class Confinement(unittest.TestCase):
             if stat.S_ISDIR(st.st_mode):
                 continue
             self.assertTrue(stat.S_ISREG(st.st_mode), f"not a regular file: {rel}")
-            self.assertEqual(stat.S_IMODE(st.st_mode), 0o644, f"{rel}: mode {oct(st.st_mode)}")
+            if os.name != "nt":         # Windows has no POSIX mode bits
+                self.assertEqual(stat.S_IMODE(st.st_mode), 0o644, f"{rel}: mode {oct(st.st_mode)}")
         return made
 
     def test_every_writer(self):

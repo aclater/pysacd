@@ -85,7 +85,8 @@ class SafeIO(unittest.TestCase):
         self.assertEqual(outside.read_bytes(), b"canary")      # the symlink was replaced, not followed
         self.assertFalse(final.is_symlink())
         self.assertEqual(final.read_bytes(), b"data")
-        self.assertEqual(stat.S_IMODE(final.stat().st_mode), 0o644)
+        if os.name != "nt":             # Windows has no POSIX mode bits
+            self.assertEqual(stat.S_IMODE(final.stat().st_mode), 0o644)
         self.assertEqual([p.name for p in self.dir.iterdir() if p.name.endswith(".partial")], [])
 
 

@@ -122,10 +122,11 @@ jobs:
         run: |
           sudo sysctl -w vm.mmap_rnd_bits=28
           export LD_PRELOAD="$(gcc -print-file-name=libtsan.so.2)"   # the runtime, not the linker script
-          export TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1
+          # Reports go to a file: pytest captures stderr, and halt_on_error exits before it can print it.
+          export TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:log_path=$RUNNER_TEMP/tsan
           # Without the runtime the engine doesn't load and its tests would silently skip.
           PYTHONPATH=src python -c "from pysacd import _native; _native._load()"
-          PYTHONPATH=src python -m pytest -q tests
+          PYTHONPATH=src python -m pytest -v tests || { cat "$RUNNER_TEMP"/tsan* 2>/dev/null; exit 1; }
 
   oracle:
     # Build the real sacd_extract from a pinned sacd-ripper commit and run the

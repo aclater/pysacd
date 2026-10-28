@@ -6,7 +6,17 @@
 
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
-ifeq ($(UNAME_S),Darwin)
+ifeq ($(OS),Windows_NT)
+# Windows: MinGW-w64 gcc (MSYS2 UCRT64). Everything is linked statically
+# (winpthreads, libgcc, libFLAC), so the DLL needs nothing beside it (#8).
+CC      ?= gcc
+LIBEXT  := dll
+SHARED  := -shared -static -static-libgcc
+NATIVE  := -march=native
+PIC     :=
+PKGFLAGS := --static
+FLAC_DEFS := -DFLAC__NO_DLL
+else ifeq ($(UNAME_S),Darwin)
 # macOS: clang, a .dylib, and -mcpu=native on Apple silicon (#8)
 CC      ?= cc
 LIBEXT  := dylib
@@ -26,13 +36,14 @@ ARCH    := $(NATIVE)
 endif
 CFLAGS  ?= -O3 -ffast-math -fno-finite-math-only $(ARCH)
 # override: required flags survive `make CFLAGS=...` on the command line
-override CFLAGS += -fPIC -std=gnu17 -Wall -pthread
+PIC     ?= -fPIC
+override CFLAGS += $(PIC) -std=gnu17 -Wall -pthread
 LDLIBS  := -lm -pthread
 
-FLAC_CFLAGS := $(shell pkg-config --cflags flac 2>/dev/null)
-FLAC_LIBS   := $(shell pkg-config --libs flac 2>/dev/null)
+FLAC_CFLAGS := $(shell pkg-config $(PKGFLAGS) --cflags flac 2>/dev/null)
+FLAC_LIBS   := $(shell pkg-config $(PKGFLAGS) --libs flac 2>/dev/null)
 ifneq ($(FLAC_LIBS),)
-override CFLAGS += -DHAVE_FLAC $(FLAC_CFLAGS)
+override CFLAGS += -DHAVE_FLAC $(FLAC_DEFS) $(FLAC_CFLAGS)
 LDLIBS  += $(FLAC_LIBS)
 ifeq ($(shell pkg-config --atleast-version=1.5.0 flac && echo y),y)
 override CFLAGS += -DHAVE_FLAC_MT
@@ -65,7 +76,7 @@ test-tools: $(TEST_TOOLS)
 
 build/dstenc.so: tests/native/dstenc.c
 	@mkdir -p $(dir $@)
-	$(CC) -O2 $(ARCH) -fPIC $(SHARED) -std=gnu17 -Wall -o $@ $< -lm
+	$(CC) -O2 $(ARCH) $(PIC) $(SHARED) -std=gnu17 -Wall -o $@ $< -lm
 
 clean:
 	rm -rf build src/pysacd/_sacdconv.so src/pysacd/_sacdconv.dylib src/pysacd/_sacdconv.dll

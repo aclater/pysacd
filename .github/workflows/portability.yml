@@ -1,5 +1,5 @@
-# Build and test the engine on macOS (#8), where it isn't built by ci.yml.
-# macOS runner minutes cost ten times Linux ones on a private repository, so
+# Build and test the engine on macOS and Windows (#8), which ci.yml doesn't cover.
+# macOS minutes cost ten times Linux ones (Windows twice) on a private repository, so
 # this runs only when the engine, its build or its loader change, plus weekly.
 
 name: portability
@@ -45,3 +45,43 @@ jobs:
 
       - name: Tests
         run: PYTHONPATH=src pytest -q tests
+
+  windows:
+    # MinGW-w64 (MSYS2 UCRT64) builds the DLL, linked statically; the tests run
+    # under the regular python.org-style CPython that users have.
+    name: tests (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e  # v2.33.0
+        with:
+          msystem: UCRT64
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-flac
+
+      - name: Build the engine (warnings are errors)
+        shell: msys2 {0}
+        run: |
+          make CFLAGS="-O2 -Werror"
+          make test-tools
+          objdump -p src/pysacd/_sacdconv.dll | grep "DLL Name"
+
+      - name: Tests
+        shell: bash
+        env:
+          PYTHONPATH: src
+          PYTHONUTF8: "1"
+        run: |
+          # the dev extras from pyproject.toml; `pip install -e .` would need make on PATH
+          python -m pip install --upgrade pip
+          python -m pip install mutagen numpy pytest==9.1.1
+          python -m pysacd --version
+          python -m pytest -q tests

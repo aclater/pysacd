@@ -22,7 +22,6 @@
 
 #define _GNU_SOURCE
 #include <errno.h>
-#include <fcntl.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -32,13 +31,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <unistd.h>
 
 #ifdef HAVE_FLAC
 #include <FLAC/metadata.h>
 #include <FLAC/stream_encoder.h>
 #endif
 
+#include "compat.h"
 #include "demux.h"
 #include "dsp.h"
 #include "dstdec.h"
@@ -366,7 +365,8 @@ static void *reader_main(void *arg)
 {
     engine_t *e = arg;
     sc_area_t *a = e->a;
-    int fd = -1, rc = 0;
+    sc_file_t fd = SC_NO_FILE;
+    int rc = 0;
     FILE *iso = NULL;
     uint8_t *raw = NULL, *plain = NULL;
     frame_acc_t *acc = NULL;
@@ -381,17 +381,14 @@ static void *reader_main(void *arg)
         goto out;
     }
     if (!a->read_fn) {
-        if ((fd = open(a->iso_path, O_RDONLY | O_CLOEXEC)) < 0) {
+        if ((fd = sc_open_read(a->iso_path)) == SC_NO_FILE) {
             set_error(e, "%s: %s", a->iso_path, strerror(errno));
             goto out;
         }
-#ifdef POSIX_FADV_SEQUENTIAL   /* not on macOS, whose read-ahead does this by itself */
-        posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
-#endif
     }
 
     if (a->iso_out_path) {
-        if (!(iso = fopen(a->iso_out_path, "wb"))) {
+        if (!(iso = sc_fopen_write(a->iso_out_path))) {
             set_error(e, "%s: %s", a->iso_out_path, strerror(errno));
             goto out;
         }
@@ -421,7 +418,7 @@ static void *reader_main(void *arg)
             }
         } else {
             while (got < want) {
-                ssize_t k = pread(fd, raw + got, want - got, (off_t)lsn * a->sector_size + got);
+                long long k = sc_pread(fd, raw + got, want - got, (uint64_t)lsn * a->sector_size + got);
                 if (k <= 0) {
                     set_error(e, "read error at LSN %u: %s", lsn, k < 0 ? strerror(errno) : "unexpected end of image");
                     goto out;
@@ -482,8 +479,8 @@ static void *reader_main(void *arg)
 out:
     if (iso && fclose(iso) != 0)
         set_error(e, "%s: %s", a->iso_out_path, strerror(errno));
-    if (fd >= 0)
-        close(fd);
+    if (fd != SC_NO_FILE)
+        sc_close(fd);
     pthread_mutex_lock(&e->mu);
     e->reader_done = 1;
     e->total_batches = r.seq;
@@ -768,7 +765,7 @@ static int out_open(engine_t *e, sc_output_t *o, out_state_t *st)
 #endif
     }
 
-    if (!(st->fp = fopen(o->path, "wb")))
+    if (!(st->fp = sc_fopen_write(o->path)))
         return out_fail(o, "%s: %s", o->path, strerror(errno));
     setvbuf(st->fp, NULL, _IOFBF, OUT_BUFFER);
     switch (o->format) {
@@ -1144,7 +1141,7 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
         free(probe);
     }
 
-    nworkers = a->threads > 0 ? a->threads : (int)sysconf(_SC_NPROCESSORS_ONLN);
+    nworkers = a->threads > 0 ? a->threads : sc_ncpus();
     if (nworkers < 1)
         nworkers = 1;
     e.npool = nworkers * 2 + 4;

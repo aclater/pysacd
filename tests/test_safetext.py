@@ -187,5 +187,22 @@ class HostileDisc(unittest.TestCase):
                     self.assertFalse(re.search(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e\u200b-\u200f]", str(v)), (p, v))
 
 
+class HostileMusicBrainz(unittest.TestCase):
+    def test_isrc_plan_output(self):
+        # MusicBrainz titles and formats are shown before ISRCs are submitted (#34)
+        import types
+        from unittest import mock
+
+        from pysacd import isrcsubmit, musicbrainz
+        rid = "00000000-0000-4000-8000-000000000000"
+        medium = {"format": "SACD\x1b[2J\u202e", "tracks": [{"title": "t\x1b]52;c;AAAA\x07\nFAKE", "recording": {"id": rid}}]}
+        m = musicbrainz.Match({"id": rid}, medium, 0.0, 0, "barcode")
+        out: list[str] = []
+        area = types.SimpleNamespace(tracks=[types.SimpleNamespace(isrc="GBAAA0400001")])
+        with mock.patch.object(isrcsubmit, "_isrc_recordings", return_value=[]):
+            isrcsubmit.offer(m, area, None, dry_run=True, out=out.append)
+        self.assertFalse(re.search(r"[\x00-\x08\x0a-\x1f\x7f-\x9f\u202a-\u202e]", "".join(out)))
+
+
 if __name__ == "__main__":
     unittest.main()

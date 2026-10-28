@@ -16,6 +16,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Extensions](sacd_extract.md#extensions)
   - [Don't take our word for it](sacd_extract.md#dont-take-our-word-for-it)
 - **[Converting with `pysacd convert`](converting.md)**: naming templates, tags, MusicBrainz, gapless PCM.
+  - [Submitting ISRCs to MusicBrainz](converting.md#submitting-isrcs-to-musicbrainz)
 - **[The Python library](library.md)**: the Python API, what's parsed, image formats.
   - [What's parsed](library.md#whats-parsed)
   - [Image formats](library.md#image-formats)
@@ -40,6 +41,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Hostile text](security.md#hostile-text)
   - [Threat model](security.md#threat-model)
   - [Running as root](security.md#running-as-root)
+  - [MusicBrainz credentials](security.md#musicbrainz-credentials)
   - [PS3 network protocol](security.md#ps3-network-protocol)
   - [Fuzzing](security.md#fuzzing)
 - **[Clean room and licences](clean-room.md)**: where the code came from, licences, acknowledgements.

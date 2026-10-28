@@ -6,7 +6,8 @@
 
 CC      ?= gcc
 ifdef PORTABLE
-ARCH    :=
+# generic x86-64, with the PCM filters picked at load time for the CPU (see csrc/dsp.c)
+ARCH    := -DSC_DISPATCH
 else
 ARCH    := -march=native
 endif

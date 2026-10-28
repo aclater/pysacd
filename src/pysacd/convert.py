@@ -44,7 +44,7 @@ class Options:
     dry_run: bool = False
 
     @classmethod
-    def from_config(cls, path: Path = CONFIG_PATH) -> "Options":
+    def from_config(cls, path: Path = CONFIG_PATH) -> Options:
         opts = cls()
         if path.exists():
             with open(path, "rb") as f:
@@ -245,7 +245,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
             if fmt != "dsf":
                 tagging.write_tags(str(spec.path), fmt, tags, embed, opts.id3_version)
             os.replace(spec.path, path)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - one track's tagging failure mustn't abort the disc
             failures += 1
             Path(spec.path).unlink(missing_ok=True)
             _log(f"  {t.number:2d} FAILED: {e}")

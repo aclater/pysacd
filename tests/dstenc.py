@@ -55,7 +55,7 @@ def load() -> ctypes.CDLL:
         _tmpdir = tempfile.TemporaryDirectory(prefix="dstenc")
         path = Path(_tmpdir.name) / "dstenc.so"
         r = subprocess.run([cc, "-O2", "-fPIC", "-shared", "-std=gnu17", "-o", str(path), str(_SRC), "-lm"],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, check=False)
         if r.returncode:
             raise EncoderUnavailable(f"cannot compile {_SRC}: {r.stderr[-500:]}")
     lib = ctypes.CDLL(str(path))

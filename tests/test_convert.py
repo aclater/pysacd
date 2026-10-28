@@ -20,7 +20,7 @@ try:
     from pysacd import _native
     _native._load()
     HAVE_NATIVE = True
-except Exception:
+except Exception:  # noqa: BLE001 - any failure to load means "not built"; tests skip
     HAVE_NATIVE = False
 
 

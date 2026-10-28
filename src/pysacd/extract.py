@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import __version__, _native, sbcompat
-from .toc import FRAME_RATE, START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage
+from .toc import START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage
 
 FRAME_BYTES = 4704
 DSF_BLOCK = 4096
@@ -152,8 +152,7 @@ def _dirarg(s: str | None) -> str | None:
     s = s.lstrip("=")
     if len(s) >= 2 and s[0] == '"':
         s = s[1:]
-    if s.endswith('"'):
-        s = s[:-1]
+    s = s.removesuffix('"')
     return s if len(s) >= 2 else None
 
 
@@ -163,7 +162,8 @@ def read_cfg(o: Opts) -> bool:
     if not path.is_file():
         return False
     for line in path.read_text(errors="replace").splitlines():
-        has = lambda *keys: any(k in line for k in keys)
+        def has(*keys: str, line: str = line) -> bool:
+            return any(k in line for k in keys)
         if has("artist=1", "artist=yes"):
             o.artist_flag = True
         if has("performer=1", "performer=yes"):
@@ -203,8 +203,11 @@ def print_disc(img: SACDImage, disc: Disc) -> None:
     t = disc.text
     say("\nDisc Information:")
     say(f"\tVersion: {disc.version[0]:2d}.{disc.version[1]:02d}")
-    say("\tCreation date: %4d-%02d-%02d" % disc.date)
-    say(f"\tDisc Catalog Number: {raw[88:104].split(b'\0')[0].decode('latin-1')}")
+    y, m, d = disc.date
+    say(f"\tCreation date: {y:4d}-{m:02d}-{d:02d}")
+    disc_catalog = raw[88:104].split(b"\0")[0].decode("latin-1")
+    album_catalog = raw[24:40].split(b"\0")[0].decode("latin-1")
+    say(f"\tDisc Catalog Number: {disc_catalog}")
     for g in disc.disc_genres:
         if g.category:
             say(f"\tDisc Category: {CATEGORIES[g.category] if g.category < 3 else '?'}")
@@ -216,7 +219,7 @@ def print_disc(img: SACDImage, disc: Disc) -> None:
         say(f"\tLocale: (zero) unspecified, asume Code character set:[{cs}], {CHARSET_NAMES[cs & 7]}")
     _print_text(t, "disc")
     say("\nAlbum Information:")
-    say(f"\tAlbum Catalog Number: {raw[24:40].split(b'\0')[0].decode('latin-1')}")
+    say(f"\tAlbum Catalog Number: {album_catalog}")
     say(f"\tSequence Number: {disc.album_sequence_number}")
     say(f"\tSet Size: {disc.album_set_size}")
     for g in disc.album_genres:
@@ -365,9 +368,13 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
                 carry = 0 if last_of_area else total % DSF_BLOCK
                 spec.tail_bytes = carry
             prev_end = end
-            spec.footer = (tagging.id3_bytes(tags, cover, 3 if o.id3_mode < 4 else 4) if o.musicbrainz
-                           else sbcompat.id3_tag(disc, area, first, o.id3_mode))
+            if o.musicbrainz:
+                assert tags is not None
+                spec.footer = tagging.id3_bytes(tags, cover, 3 if o.id3_mode < 4 else 4)
+            else:
+                spec.footer = sbcompat.id3_tag(disc, area, first, o.id3_mode)
         elif kind == "flac":
+            assert tags is not None     # PCM outputs always carry tags
             spec.flac_padding = tagging.flac_metadata_size(tags, cover)
         jobs.append(Job(spec, path, kind, first, tags=tags, cover=cover))
     return jobs
@@ -547,6 +554,7 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
     for j in jobs:
         j.final.parent.mkdir(parents=True, exist_ok=True)
     try:
+        assert o.input is not None
         _native.run_area(img, o.input, area, specs, o.pcm_rate, o.gain_db, o.threads,
                          iso_out=iso_path, progress=_progress)
     except BaseException:
@@ -559,6 +567,7 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
         if j.dst:
             finish_dff(disc, area, j, o)
         if j.kind in ("flac", "wav"):
+            assert j.tags is not None
             tagging.write_tags(str(s.path), j.kind, j.tags, j.cover, 4 if o.id3_mode >= 4 else 3)
         os.replace(s.path, j.final)
         if s.frames_missing or s.dst_errors:

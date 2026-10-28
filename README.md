@@ -125,9 +125,28 @@ Template fields:
   `catalognumber`, `barcode`
 - Track: `artist`, `title`, `composer`, `tracknumber`, `tracktotal`
 - Disc: `discnumber`, `disctotal`, `disc` (`Disc N`, only set on multi-disc
-  releases), `disc_prefix` (`N-`, multi-disc only)
+  releases), `disc_prefix` (`N-`, multi-disc only). These come from `--disc N/M`
+  if given, otherwise from the MusicBrainz match, otherwise from the TOC's
+  album set fields (set size and sequence number).
 - Area and format: `edition` (from `stereo_edition` or `multichannel_edition`),
   `layout` (`Stereo`, `5.0` or `5.1`), `channels`, `format`
+
+**Different discs, same folder.** Before writing, `pysacd convert` checks
+whether the target folder already holds tracks of a *different* disc. That
+means a different MusicBrainz release, or failing that a different catalogue
+number or barcode. Discs of one set (same album and artist, different disc
+numbers) and re-runs of the same disc are fine. On a clash, the new disc goes
+to `<folder> [<catalogue number>]` and a warning says so.
+
+Some sets are mastered with every disc claiming to be disc 1 of 1, such as
+Miles Davis's *Live-Evil*. For those, the warning may add a hint: when the
+discs share title, artist and label and their catalogue numbers differ only
+in a trailing counter, it suggests re-running with `--disc N/M`. pysacd never
+acts on that guess by itself. With `--disc` the discs share one folder,
+separated by `{disc_prefix}`.
+
+Tracks that already exist are skipped unless `--overwrite` is given, and the
+run summary says how many were skipped.
 
 Python format specs work (`{tracknumber:02d}`). Empty `[]` or `()` left by blank
 fields are removed, and `/` inside values is replaced. `--portable-names` also
@@ -186,9 +205,24 @@ Extensions (long options only):
 | `--threads N` | number of worker threads |
 | `--id3tag N` | the cfg's `id3tag` setting, as a flag |
 | `--no-cfg` | ignore `./sacd_extract.cfg` |
+| `--disc N/M` | treat a set mastered as 1/1 (e.g. *Live-Evil*) as disc N of M; names and tags follow `sacd_extract`'s own set layout (`Title/Disc N`) |
 
 Differences from `sacd_extract`:
 
+- **Two discs that would share a folder (deliberate exception).**
+  `sacd_extract` silently mixes such discs into one folder, and overwrites
+  one disc's tracks with the other's when the file names match. This
+  happens with sets mastered with every disc claiming to be disc 1 of 1, such
+  as *Live-Evil*. `pysacd-extract` doesn't do that:
+  - **Detection:** a folder holds another disc if it contains audio files
+    this disc doesn't produce, or same-named files whose album, title,
+    track number or ISRC differ.
+  - **Action:** this disc goes to `<album> [<catalogue number>]` instead,
+    and a warning on stderr explains why and suggests `--disc N/M`.
+  - **Unaffected:** re-running the same disc, and correctly mastered sets,
+    behave exactly as in `sacd_extract`.
+  - **Limitation:** `sacd_extract`'s tags carry no catalogue number, so two
+    discs whose tags match in every one of those fields can't be told apart.
 - **Input:** ISO images, and PS3 SACD Ripper servers (`-i 192.168.1.10:2002`).
   Optical drives aren't supported. A dropped PS3 connection is reopened and the
   copy resumes; sacd_extract gives up. See

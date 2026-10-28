@@ -26,11 +26,20 @@ or the terminal displaying a name.
 pysacd never executes text: it runs no shell, no `subprocess`, no `eval`. On top of that,
 `pysacd.safetext` neutralises untrusted text everywhere pysacd writes or prints it.
 
+Characters are judged by Unicode category, not by a list of ranges. "Invisible" means
+categories Cc (controls), Cf (format: bidi controls, zero-width characters, BOM, soft hyphen,
+and the tag characters U+E0000-E007F that can smuggle hidden ASCII past a human reader into an
+LLM agent), Cs (surrogates), Co (private use), Cn (unassigned, including the noncharacters
+U+FFFE and U+FFFF), Zl and Zp (U+2028 and U+2029, which `splitlines()` and JavaScript treat as
+line breaks). A control or line separator is replaced by a space so the words around it stay
+apart; every other invisible character is removed.
+
 | Where | Function | What happens |
 |---|---|---|
-| File and directory names (`convert`, and the `sacd_extract`-compatible names) | `name_component()`, `sbcompat._sanitize()` | control, bidi and zero-width characters removed; `` ` $ \| ; < > `` replaced with `_`; no component starts with `-` or `.`; `/` can't split a component; names stay inside the output directory |
-| Tags (ID3, Vorbis), cue sheets, XML | `clean_text()`, `strip_controls()` | control, bidi and zero-width characters removed (XML keeps tab and newline, escaped); cue fields can't break onto a new line; XML is escaped |
-| Terminal and logs (`-P`, `pysacd toc`, progress, warnings, errors) | `for_terminal()` | control characters are shown as escapes (`\x1b`), so text can't drive the terminal (colour, title, OSC 52 clipboard writes, keystroke injection) |
+| File and directory names (`convert`, and the `sacd_extract`-compatible names) | `name_component()`, `sbcompat._sanitize()` | invisible characters removed; other spaces (no-break, ideographic, …) become a plain space in `convert` names; `` ` $ \| ; < > `` replaced with `_`; no component starts with `-` or `.`; `/` can't split a component; names stay inside the output directory |
+| Tags (ID3, Vorbis), cue sheets, XML | `clean_text()`, `strip_controls()` | invisible characters removed (XML keeps tab and newline, escaped); `clean_text()` also makes every space a plain one and normalises to NFC; cue fields can't break onto a new line; XML is escaped |
+| Terminal and logs (`-P`, `pysacd toc`, progress, warnings, errors) | `for_terminal()` | invisible characters are shown as escapes (`\x1b`, `\u202e`, `\U000e0041`), so text can't drive the terminal (colour, title, OSC 52 clipboard writes, keystroke injection) or disguise what is shown (Trojan Source bidi tricks, zero-width characters) |
+| Error messages and tracebacks (stderr, log files) | `for_terminal()`, `format_exception()` | one-line failures are escaped; uncaught exceptions and logged tracebacks keep their stack but escape every exception message, newlines included, so an `OSError` on a hostile file name can't forge lines |
 
 Characters that are common in real titles and only dangerous to scripts that already mishandle
 names (`&`, `'`, `()`, `[]`, `!`) are kept. No sanitiser can make a name safe for a script that
@@ -41,9 +50,12 @@ substitution, which real titles practically never contain.
 ### Differences from sacd_extract
 
 The `sacd_extract`-compatible names follow sacd_extract's rules, plus the ones above. A disc
-whose text contains `` ` ``, `$`, `;` or a leading `-`, or non-ASCII control or bidi
-characters, therefore gets different names from `sacd_extract` (`Ke$ha` becomes `Ke_ha`). Every
-other disc is byte-identical. That deviation is deliberate.
+whose text contains `` ` ``, `$`, `;` or a leading `-`, or invisible characters, therefore gets
+different names from `sacd_extract` (`Ke$ha` becomes `Ke_ha`). Every other disc is
+byte-identical: those paths remove invisible characters only, and keep no-break and ideographic
+spaces (common on Japanese discs). The names, cue sheets, XML, ID3 tags and `-P` text of 110
+real discs were checked to be identical before and after the category rules. That deviation is
+deliberate.
 
 ### Rule for contributors
 

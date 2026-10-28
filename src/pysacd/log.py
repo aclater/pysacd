@@ -58,6 +58,14 @@ def _escape_message(record: logging.LogRecord) -> bool:
     return True
 
 
+class _Safe(logging.Formatter):
+    """Tracebacks quote exception messages, which can carry disc text (an OSError's file
+    name): escape them like the messages themselves (#47)."""
+
+    def formatException(self, ei) -> str:
+        return safetext.format_exception(ei[1]).rstrip("\n") if ei[1] is not None else super().formatException(ei)
+
+
 class _Brief(logging.Formatter):
     """Console format: one line per message; tracebacks belong in the log file."""
 
@@ -115,7 +123,7 @@ def setup(level: str | None = None, path: str | os.PathLike | None = None, argv:
     if path is not None:
         handler = _LogFile(path, mode="a", encoding="utf-8", maxBytes=MAX_LOG_BYTES, backupCount=2)
         handler.addFilter(_escape_message)
-        handler.setFormatter(logging.Formatter(FORMAT, DATEFMT))
+        handler.setFormatter(_Safe(FORMAT, DATEFMT))
         handler.setLevel(file_level)
         root.addHandler(handler)
         # Native crashes (segfaults in the engine) go to the same file
@@ -123,7 +131,7 @@ def setup(level: str | None = None, path: str | os.PathLike | None = None, argv:
         faulthandler.enable(_crash_file, all_threads=True)
     else:
         console.setLevel(file_level)
-        console.setFormatter(logging.Formatter(FORMAT, DATEFMT))
+        console.setFormatter(_Safe(FORMAT, DATEFMT))
     root.setLevel(file_level)
     log_environment(argv if argv is not None else sys.argv)
 

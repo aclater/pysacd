@@ -33,7 +33,9 @@ jobs:
           python-version: "3.13"
 
       - name: Build the harness and the seed corpus
+        # the seed generator uses the tests' DST encoder, which needs numpy
         run: |
+          python -m pip install numpy
           make fuzz
           make test-tools
           PYTHONPATH=src:tests python fuzz/make_seeds.py build/fuzz-seeds

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fail if tracked files or commit identities contain private names: anything
-# under .home.arpa, plus the regex in $PRIVATE_NAMES (kept outside the repo).
+# in the home.arpa special-use domain, plus the regex in $PRIVATE_NAMES (kept
+# outside the repo).
 # Commits are checked from $BASE_SHA (exclusive) to HEAD, or all of history.
 set -euo pipefail
 

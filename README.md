@@ -223,8 +223,10 @@ Differences from `sacd_extract`:
     behave exactly as in `sacd_extract`.
   - **Limitation:** `sacd_extract`'s tags carry no catalogue number, so two
     discs whose tags match in every one of those fields can't be told apart.
-- **Input:** ISO images only. Drives and PS3 network servers aren't
-  supported.
+- **Input:** ISO images, and PS3 SACD Ripper servers (`-i 192.0.2.10:2002`).
+  Optical drives aren't supported. A dropped PS3 connection is reopened and the
+  copy resumes; sacd_extract gives up. See
+  [PS3 network protocol](#ps3-network-protocol).
 - **Raw-sector images** (2064 or 2054 bytes per sector) are read, where
   `sacd_extract` refuses them. `-I` writes them out as plain 2048-byte ISOs.
 - **The DSDIFF "creating machine" comment, and the version lines in `.cue` and
@@ -262,12 +264,54 @@ The sector layout is detected by looking for `SACDMTOC` at LSN 510:
 | 2064   | 12          | raw DVD sectors (ID/IED/CPR_MAI header + EDC) |
 | 2054   | 6           | raw sectors with ID/IED header only          |
 
+## PS3 network protocol
+
+`sacd_extract -i HOST:2002` reads discs from a PS3 running SACD Ripper. The PS3
+decrypts the disc, so only plain sectors cross the network.
+`pysacd.remote` implements both ends of that protocol, and both CLIs accept a
+PS3 address wherever they take an ISO:
+
+```
+pysacd-extract -I -i 192.0.2.10:2002          # copy the disc to an ISO
+pysacd-extract -s -I -i 192.0.2.10:2002       # ISO + DSF; the disc crosses the network once
+pysacd-extract -2 -s -i 192.0.2.10:2002       # DSF; only the TOCs and the stereo area are fetched
+pysacd convert 192.0.2.10:2002                # tagged DSF, as for an ISO
+```
+
+How it works:
+
+- **With `-I`,** the whole disc is streamed into the output ISO first, and any
+  other outputs are produced from that file.
+- **Without `-I`,** pysacd fetches only the TOCs and the areas it needs into a
+  temporary sparse ISO next to the output, converts it as usual, then deletes it.
+  The audio of areas you didn't ask for is skipped.
+- **Dropped connections:** the connection is reopened (up to 3 times in a row,
+  with backoff) and the copy resumes where it stopped.
+
+The library:
+
+
+- `RemoteDisc(host, port)`: a disc on a PS3 as a seekable file object, usable
+  with `SACDImage` and `read_toc()`.
+- `pysacd ps3sim disc.iso [--port 2002]`: a server that behaves like the PS3,
+  for testing clients without one. It serves an already-decrypted ISO and copies
+  the PS3's read sizes and area-boundary cuts. `--rate`, `--latency`,
+  `--drop-after`, `--fail-lsn` and `--no-disc` simulate slow drives and failures.
+
+`sacd_extract -I` through `ps3sim` produces an ISO byte-identical to the source.
+The wire format and the checks against `sacd_extract` are in
+[docs/ps3-protocol.md](docs/ps3-protocol.md).
+
 ## Tests
 
 ```
 make && PYTHONPATH=src python3 -m unittest discover -s tests
 PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s tests
 ```
+
+With `SACD_EXTRACT=/path/to/sacd_extract` and `PYSACD_TEST_ISO` set, the tests also
+copy the ISO through `ps3sim` with the real `sacd_extract -I` and check that the copy
+is byte-identical.
 
 ## CI
 
@@ -282,7 +326,9 @@ Every pull request runs:
 - **CodeQL** (Python, C, workflows) and **semgrep**.
 - **A check for private names**, in files and commit identities.
 - **An AI review** from a second model, using PR-Agent. It needs the
-  `GEMINI_API_KEY` repository secret.
+  `GEMINI_API_KEY` repository secret. **This sends each PR's title,
+  description and diff to Google's Gemini API**, a third party, even though
+  the repository is private. Without the secret the workflow sends nothing.
 
 Dependabot keeps the SHA-pinned actions and the Python dev dependencies
 current, with a two-week cooldown. Contributor rules are in

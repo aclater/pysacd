@@ -3,6 +3,7 @@
 pysacd reads disc images and metadata that may come from anyone. This document records what
 pysacd treats as untrusted, and how each kind of input is contained. Related issues: #12
 (PS3 network protocol), #14 (engine, filesystem, HTTP, build), #17 (untrusted images).
+To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
 ## Hostile text
 
@@ -64,3 +65,30 @@ as hostile:
 default, warns when given another address, and closes connections that stay idle for
 `--idle-timeout` seconds (default 60), so one silent client can't hold the single connection
 for ever.
+
+## Fuzzing
+
+`tests/test_fuzz.py` runs seeded mutation fuzzing on the Python code that parses untrusted
+bytes:
+
+- `decode_message`, on mutated and random byte streams delivered in random-sized chunks;
+- the PS3 client (`open`, `size`, `read_some`, `close`), against mutated server responses
+  and fields sent with the wrong wire type;
+- `read_toc`, on images whose master or area TOC has been corrupted or truncated, followed by
+  `needed_ranges()` on whatever parses;
+- the `ps3sim` request handler, which must keep serving a well-behaved client afterwards.
+
+The rule each target is held to: hostile input produces the module's own error
+(`RemoteError`, `SACDError`, `EOFError`) or a sane result, never another exception, an
+out-of-range value or a hang. It runs in the normal test suite (300 cases per target) and
+reproduces from the seed in a failure. `PYSACD_FUZZ=N` runs N cases. Fixed when it was added
+(the first two found by the fuzzer, the others by review and now covered by targeted cases):
+
+- varints longer than 64 bits;
+- a response whose data field isn't length-delimited;
+- requests whose fields have the wrong wire type, which crashed the `ps3sim` handler;
+- a track-text offset pointing past the end of the area TOC (now a warning, and the track
+  keeps no text).
+
+The native engine's parsers are covered by the hostile-image corpus planned in #17, under
+ASan and UBSan.

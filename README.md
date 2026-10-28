@@ -363,6 +363,12 @@ With `SACD_EXTRACT=/path/to/sacd_extract` and `PYSACD_TEST_ISO` set, the tests a
 copy the ISO through `ps3sim` with the real `sacd_extract -I` and check that the copy
 is byte-identical.
 
+`tests/test_fuzz.py` feeds seeded, mutated input to the protocol decoder, the PS3 client,
+the TOC reader and the `ps3sim` handler. It runs 300 cases per target by default;
+`PYSACD_FUZZ=5000` runs more. A failure names the seed that reproduces it.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
 ## CI
 
 Every pull request runs:

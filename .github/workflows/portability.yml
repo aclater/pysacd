@@ -33,8 +33,8 @@ jobs:
       - name: Install
         run: |
           brew install flac pkg-config
-          python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+          pip install --require-hashes -r requirements-dev.txt     # hash-locked (#14)
+          pip install --no-deps --no-build-isolation -e .
 
       - name: Build the engine (warnings are errors)
         run: |
@@ -80,8 +80,7 @@ jobs:
           PYTHONPATH: src
           PYTHONUTF8: "1"
         run: |
-          # the dev extras from pyproject.toml; `pip install -e .` would need make on PATH
-          python -m pip install --upgrade pip
-          python -m pip install mutagen numpy pytest==9.1.1
+          # the test dependencies, hash-locked (#14); `pip install -e .` would need make on PATH
+          python -m pip install --require-hashes -r requirements-test.txt
           python -m pysacd --version
           python -m pytest -q tests

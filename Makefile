@@ -1,6 +1,7 @@
 # Builds the native helper src/pysacd/_sacdconv.so (DSF/DSDIFF/WAV always, FLAC if libFLAC is found).
 #   make                 build, tuned for this CPU (-march=native)
 #   make PORTABLE=1      build for generic x86-64
+#   make HARDEN=0        without the hardening flags (sanitizer builds)
 #   make clean
 #   make test-tools      also build the test-only DST encoder (build/dstenc.so)
 
@@ -42,6 +43,23 @@ PIC     ?= -fPIC
 override CFLAGS += $(PIC) $(OS_DEFS) -std=gnu17 -Wall -pthread
 LDLIBS  := -lm -pthread
 
+# Hardening (#14): fortified libc calls, stack protector and stack-clash protection, CET on
+# x86, full RELRO and a non-executable stack. Linux only: macOS's ld and MinGW reject the -z
+# flags. Sanitizer builds turn it off with HARDEN=0 (_FORTIFY_SOURCE gets in ASan's way and
+# needs optimisation). Cost: docs/performance.md#hardening.
+HARDEN ?= 1
+ifeq ($(HARDEN)$(UNAME_S),1Linux)
+ifneq ($(OS),Windows_NT)
+HARDEN_CFLAGS  := -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3 -fstack-protector-strong -fstack-clash-protection
+HARDEN_LDFLAGS := -Wl,-z,relro,-z,now,-z,noexecstack
+ifneq ($(filter x86_64 i686,$(UNAME_M)),)
+HARDEN_CFLAGS  += -fcf-protection
+endif
+endif
+endif
+override CFLAGS  += $(HARDEN_CFLAGS)
+override LDFLAGS += $(HARDEN_LDFLAGS)
+
 PKG_CONFIG  ?= pkg-config
 FLAC_CFLAGS := $(shell $(PKG_CONFIG) $(PKGFLAGS) --cflags flac 2>/dev/null)
 FLAC_LIBS   := $(shell $(PKG_CONFIG) $(PKGFLAGS) --libs flac 2>/dev/null)
@@ -65,7 +83,7 @@ ifeq ($(FLAC_LIBS),)
 endif
 
 $(LIB): $(OBJ)
-	$(CC) $(SHARED) $(CFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) $(SHARED) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
 $(BUILD)/%.o: csrc/%.c $(wildcard csrc/*.h)
 	@mkdir -p $(dir $@)

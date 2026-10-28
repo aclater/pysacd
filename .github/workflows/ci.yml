@@ -29,8 +29,10 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends libflac-dev
-          python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+          # hash-locked (tools/lock_dev.py); pysacd itself without build isolation, so the
+          # locked setuptools builds it and nothing unhashed is downloaded (#14)
+          pip install --require-hashes -r requirements-dev.txt
+          pip install --no-deps --no-build-isolation -e .
 
       - name: ruff
         run: ruff check .
@@ -66,14 +68,16 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends libflac-dev
-          python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+          # hash-locked (tools/lock_dev.py); pysacd itself without build isolation, so the
+          # locked setuptools builds it and nothing unhashed is downloaded (#14)
+          pip install --require-hashes -r requirements-dev.txt
+          pip install --no-deps --no-build-isolation -e .
 
       - name: Build with sanitizers
         run: |
           SAN="-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined"
           echo "SAN=$SAN" >> "$GITHUB_ENV"
-          make PORTABLE=1 CFLAGS="$SAN"
+          make PORTABLE=1 HARDEN=0 CFLAGS="$SAN"
           make test-tools CFLAGS="$SAN"
 
       - name: Tests
@@ -85,6 +89,42 @@ jobs:
           export UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
           # tests/test_fuzz_engine.py builds the C fuzz harnesses with these flags too
           export PYSACD_FUZZ_CFLAGS="$SAN"
+          PYTHONPATH=src python -m pytest -q tests
+
+  tsan:
+    # The engine hands batches between its reader, worker and writer threads: run the suite
+    # under ThreadSanitizer too (#14).
+    name: tests under TSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libflac-dev
+          pip install --require-hashes -r requirements-dev.txt
+          pip install --no-deps --no-build-isolation -e .
+
+      - name: Build with TSan
+        run: |
+          SAN="-O1 -g -fno-omit-frame-pointer -fsanitize=thread"
+          make PORTABLE=1 HARDEN=0 CFLAGS="$SAN"
+          make test-tools CFLAGS="$SAN"
+
+      - name: Tests
+        # TSan's shadow memory needs a smaller ASLR range than recent kernels default to.
+        # Python isn't instrumented, so the runtime is preloaded.
+        run: |
+          sudo sysctl -w vm.mmap_rnd_bits=28
+          export LD_PRELOAD="$(gcc -print-file-name=libtsan.so.2)"   # the runtime, not the linker script
+          export TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1
+          # Without the runtime the engine doesn't load and its tests would silently skip.
+          PYTHONPATH=src python -c "from pysacd import _native; _native._load()"
           PYTHONPATH=src python -m pytest -q tests
 
   oracle:
@@ -108,8 +148,10 @@ jobs:
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q --no-install-recommends libflac-dev cmake
-          python -m pip install --upgrade pip
-          pip install -e '.[dev]'
+          # hash-locked (tools/lock_dev.py); pysacd itself without build isolation, so the
+          # locked setuptools builds it and nothing unhashed is downloaded (#14)
+          pip install --require-hashes -r requirements-dev.txt
+          pip install --no-deps --no-build-isolation -e .
           make PORTABLE=1
           make test-tools
 

@@ -7,6 +7,7 @@ import re
 import sys
 import time
 import tomllib
+import unicodedata
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
@@ -73,23 +74,77 @@ _UNSAFE = re.compile(r'[<>:"\\|?*\x00-\x1f]')
 _RESERVED = re.compile(r"(?i)^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])[ .]*(\..*)?$")
 
 
+NAME_MAX_BYTES = 240     # per component, leaving room for " (2)" and ".flac" under 255
+
+
+def _extends(ch: str) -> bool:
+    """Whether ch continues the grapheme cluster before it: combining marks, ZWJ, variation
+    selectors, emoji skin tones and Hangul vowel/final jamo. This approximates extended
+    grapheme clusters (UAX #29) without a segmentation library."""
+    cp = ord(ch)
+    return (unicodedata.category(ch) in ("Mn", "Mc", "Me") or cp == 0x200D or 0xFE00 <= cp <= 0xFE0F
+            or 0xE0100 <= cp <= 0xE01EF or 0x1F3FB <= cp <= 0x1F3FF or 0x1160 <= cp <= 0x11FF)
+
+
+def _clusters(s: str) -> list[str]:
+    out: list[str] = []
+    prev = ""
+    ri = 0                                      # regional indicators so far in this run
+    for ch in s:
+        is_ri = 0x1F1E6 <= ord(ch) <= 0x1F1FF
+        if out and (_extends(ch) or prev == "\u200d" or (is_ri and ri % 2)):
+            out[-1] += ch                       # a flag is a pair of regional indicators
+        else:
+            out.append(ch)
+        ri = ri + 1 if is_ri else 0
+        prev = ch
+    return out
+
+
+def _cut(s: str, limit: int = NAME_MAX_BYTES) -> str:
+    """s cut to at most `limit` UTF-8 bytes on a grapheme boundary (#47)."""
+    if len(s.encode()) <= limit:
+        return s
+    out, size = [], 0
+    for c in _clusters(s):
+        size += len(c.encode())
+        if size > limit:
+            break
+        out.append(c)
+    return "".join(out)
+
+
 def _clean_component(s: str, portable: bool) -> str:
     # Disc and MusicBrainz text is untrusted: no control/bidi characters, no command
     # substitution, pipes or redirection, no leading '-' or '.' (docs/security.md).
     portable = portable or sys.platform == "win32"     # Windows can't create the others at all
-    s = safetext.name_component(s)
+    s = unicodedata.normalize("NFC", safetext.name_component(s))
     if portable:
         s = _UNSAFE.sub("_", s)
     s = re.sub(r"\s*(\[\s*\]|\(\s*\))", "", s)       # empty [] / () from blank fields
-    s = re.sub(r"\s{2,}", " ", s).strip().rstrip(".")
-    s = s.lstrip(".") or "_"
-    while len(s.encode()) > 240:
-        s = s[:-1]
-    if portable:
-        s = s.rstrip(" .") or "_"       # Windows drops trailing spaces and dots
-        if _RESERVED.match(s):
-            s = "_" + s
+    s = re.sub(r"\s{2,}", " ", s).strip()
+    # Cut after sanitising, then tidy what the cut exposed (#47)
+    s = _cut(s.rstrip(" .")).rstrip(" .").lstrip(".") or "_"
+    if portable and _RESERVED.match(s):
+        s = "_" + s
     return s
+
+
+def name_key(path: str | os.PathLike) -> str:
+    """Names that macOS, SMB and NTFS treat as the same file: case-folded and NFC (#47)."""
+    return unicodedata.normalize("NFC", os.fspath(path)).casefold()
+
+
+def unique_path(path: Path, seen: set[str]) -> Path:
+    """`path`, or `stem (2).ext`, `stem (3).ext`... if its name_key() is in `seen`, which it
+    joins. Two tracks called "Intro" and "intro" would otherwise be one file on a
+    case-insensitive filesystem, and the second would replace the first."""
+    p, n = path, 2
+    while name_key(p) in seen:
+        p = path.with_name(f"{path.stem} ({n}){path.suffix}")
+        n += 1
+    seen.add(name_key(p))
+    return p
 
 
 def render(template: str, values: dict, portable: bool) -> str:
@@ -102,11 +157,18 @@ def _layout(area: Area) -> str:
     return {"Stereo": "Stereo", "5ch": "5.0", "5.1ch": "5.1"}.get(area.speaker_config, f"{area.channel_count}ch")
 
 
+def _tag_int(s: str, default: int) -> int:
+    """A tag's number for templates like {tracknumber:02d}. Tags can come from MusicBrainz
+    ("A1", "3/12"), so use the leading digits, or `default` (#47)."""
+    m = re.match(r"\s*(\d{1,6})", s or "")
+    return int(m.group(1)) if m else default
+
+
 def naming_values(tags: tagging.Tags, area: Area, opts: Options) -> dict:
     first = lambda k: tags.get(k, [""])[0]
     date = first("DATE")
-    discnumber = int(first("DISCNUMBER") or 1)
-    disctotal = int(first("DISCTOTAL") or 1)
+    discnumber = _tag_int(first("DISCNUMBER"), 1)
+    disctotal = _tag_int(first("DISCTOTAL"), 1)
     layout = _layout(area)
     edition_t = opts.stereo_edition if area.is_stereo else opts.multichannel_edition
     v = {
@@ -121,8 +183,8 @@ def naming_values(tags: tagging.Tags, area: Area, opts: Options) -> dict:
         "label": first("LABEL"),
         "catalognumber": first("CATALOGNUMBER"),
         "barcode": first("BARCODE"),
-        "tracknumber": int(first("TRACKNUMBER") or 0),
-        "tracktotal": int(first("TRACKTOTAL") or 0),
+        "tracknumber": _tag_int(first("TRACKNUMBER"), 0),
+        "tracktotal": _tag_int(first("TRACKTOTAL"), 0),
         "discnumber": discnumber,
         "disctotal": disctotal,
         "disc_prefix": f"{discnumber}-" if disctotal > 1 else "",
@@ -283,7 +345,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
         except musicbrainz.MBError as e:
             _log(f"warning: MusicBrainz lookup failed: {e}")
         if match:
-            _log(f"MusicBrainz: {match.release['title']} — {musicbrainz.credit_name(match.release.get('artist-credit', []))}"
+            _log(f"MusicBrainz: {match.release.get('title', '?')} — {musicbrainz.credit_name(match.release.get('artist-credit', []))}"
                  f" ({match.release.get('date', '?')}, {match.medium.get('format')}) "
                  f"https://musicbrainz.org/release/{match.release_id}  [{match.method}, "
                  f"mean Δ {match.score:.2f}s, ISRC {match.isrc_hits}/{len(area.tracks)}]")
@@ -325,6 +387,8 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
         plan.append((t, tags, Path(opts.output_dir) / rel))
 
     plan = _avoid_other_discs(plan, opts.portable_names)
+    seen: set[str] = set()
+    plan = [(t, tags, unique_path(p, seen)) for t, tags, p in plan]
     dirs = sorted({p.parent for _, _, p in plan})
     _log(f"{label}: {len(plan)} tracks -> {', '.join(map(str, dirs))}")
     if opts.dry_run:

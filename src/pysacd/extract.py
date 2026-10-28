@@ -389,6 +389,7 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
             groups.append(([i], sbcompat.music_filename(disc, area, i, "", o.performer_flag)))
 
     carry = 0                      # DSF nopad: bytes/channel carried into the next file
+    seen: set[str] = set()         # --templates: names equal case-folded/NFC get " (2)" (#47)
     prev_end = None
     for idx, (tracks, name) in enumerate(groups):
         first, last = tracks[0], tracks[-1]
@@ -396,7 +397,8 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
         end = track_range(area, last, o.trimming)[1]
         path = Path(sbcompat.make_filename(str(out_dir), name, ext))
         if o.templates:
-            path = _template_path(disc, area, first, ext, o, match)
+            from .convert import unique_path
+            path = unique_path(_template_path(disc, area, first, ext, o, match), seen)
         tmp = safeio.temp_name(path)
 
         if kind == "dff":

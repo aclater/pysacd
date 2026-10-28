@@ -37,6 +37,11 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
 - **Hostile input.** Disc images and network data may be malformed. Bound
   every length and allocation; a bad frame or sector must not crash or
   corrupt other output.
+- **Untrusted text.** Disc TOC text, MusicBrainz data and network input are
+  attacker-controlled. Anything that writes or prints them (file names, tags, cue, XML,
+  terminal, logs) must go through `pysacd.safetext`, and `tests/test_safetext.py` must cover
+  the new path. Never pass such text to a shell, `subprocess` or `eval`. See
+  [docs/security.md](docs/security.md).
 - **Performance.** The engine is meant to be fast. Measure before and after
   any change to a hot path, using an image copied to local storage, never
   read directly from a network share (other clients skew the numbers). Run

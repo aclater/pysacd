@@ -82,9 +82,14 @@ sacd_extract -I -i 127.0.0.1:2002            # copy the disc back as an ISO
 ```
 
 `pysacd.remote.PS3Simulator` follows `src/server.c`, including the boundary cuts and the
-carried-over block size, and adds knobs for testing clients: `--rate` (MB/s, to emulate
+carried-over block size. Unlike the PS3, it listens on `127.0.0.1` unless `--host` says
+otherwise, and it closes connections idle for `--idle-timeout` seconds (default 60). It also
+adds knobs for testing clients: `--rate` (MB/s, to emulate
 the PS3 drive), `--latency` (ms per request), `--drop-after N` (close the connection
 after N reads), `--fail-lsn L` (reads covering LSN L return -1) and `--no-disc`.
+From Python there are also `over_return` (send more sectors than requested) and
+`disc_size` (report a different DISC_SIZE). The client must reject both. See
+[docs/security.md](security.md) for the client's limits.
 
 Checked against sacd-ripper's `sacd_extract` (built from source, 2026-10-28):
 

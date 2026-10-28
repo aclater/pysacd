@@ -154,6 +154,28 @@ class Simulator(_SimBase):
             with self.assertRaises(RemoteError):
                 c.size()
 
+    def test_disc_size_cap(self):
+        from pysacd.remote import MAX_DISC_SECTORS
+        with self.sim(disc_size=MAX_DISC_SECTORS + 1) as s, self.assertRaises(RemoteError), \
+                self.assertLogs("pysacd.remote", "ERROR") as logs:
+            RemoteDisc(*s.address)
+        self.assertIn("exceeds the largest SACD", logs.output[0])
+        self.assertNotIn("127.0.0.1", "".join(logs.output))     # addresses are debug-only
+
+    def test_idle_connection_is_closed_and_next_client_served(self):
+        import socket
+        import time
+        with self.sim(idle_timeout=0.3) as s:
+            idle = socket.create_connection(s.address)
+            time.sleep(0.8)
+            idle.settimeout(2)
+            self.assertEqual(idle.recv(1), b"")             # server hung up
+            idle.close()
+            c = PS3Client(*s.address)
+            c.open()
+            self.assertEqual(c.size(), TOTAL)
+            c.close()
+
     def test_close_ends_session(self):
         with self.sim() as s:
             c = PS3Client(*s.address)
@@ -180,6 +202,24 @@ class Fetch(_SimBase):
             with open(out, "rb") as f:
                 self.assertEqual(f.read(), self.data)
 
+    def test_malformed_toc_rejected(self):
+        # The area claims audio up to LSN 1000, but the served disc ends at 900.
+        with tempfile.TemporaryDirectory() as d:
+            short = os.path.join(d, "short.iso")
+            with open(short, "wb") as f:
+                f.write(self.data[:900 * S])
+            with PS3Simulator(short, "127.0.0.1", 0) as s:
+                disc, total = read_remote_toc(*s.address)
+            with self.assertRaises(RemoteError), self.assertLogs("pysacd.remote", "ERROR") as logs:
+                needed_ranges(disc, total, [])
+            self.assertIn("malformed TOC", logs.output[-1])
+
+    def test_fetch_clamps_ranges_to_disc(self):
+        with self.sim() as s, tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "c.iso")
+            fetch(*s.address, out, [(TOTAL - 10, TOTAL + 10_000)], backoff=0)
+            self.assertEqual(os.path.getsize(out), TOTAL * S)
+
     def test_needed_ranges_skip_unwanted_area_audio(self):
         with self.sim() as s:
             disc, total = read_remote_toc(*s.address)
@@ -194,6 +234,65 @@ class Fetch(_SimBase):
             self.assertEqual(got[:600 * S], self.data[:600 * S])
             self.assertEqual(got[600 * S:1001 * S], bytes(401 * S))      # hole
             self.assertEqual(read_toc(out).title, read_toc(self.iso).title)
+
+
+def _native_ok() -> bool:
+    try:
+        from pysacd import _native
+        _native._load()
+        return True
+    except (ImportError, OSError, RuntimeError):
+        return False
+
+
+@unittest.skipUnless(_native_ok(), "native engine not built")
+class HostileDiscOverNetwork(unittest.TestCase):
+    """A hostile disc served by a PS3 must not write outside the output directory (#12)."""
+
+    def test_output_confined(self):
+        import contextlib
+        import io
+        from pathlib import Path
+
+        import sacdgen
+        import test_safetext as hs
+
+        from pysacd import extract
+        from pysacd.convert import Options, convert
+        from pysacd.remote import fetch_temp
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            fr = bytes([0x69]) * (4704 * 2)
+            n = len(hs.DISC_TITLES)
+            iso = root / "hostile.iso"
+            sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [fr] * (10 * n), [10] * n, dst=False,
+                                                     titles=hs.DISC_TITLES)], title=hs.ALBUM)
+            out = root / "work" / "out"
+            out.mkdir(parents=True)
+            with PS3Simulator(iso, "127.0.0.1", 0) as s:
+                addr = f"{s.address[0]}:{s.address[1]}"
+                old = os.getcwd()
+                os.chdir(out)
+                try:
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        self.assertEqual(extract.main(["-2", "-s", "-C", "-i", addr, "--no-cfg"]), 0)
+                finally:
+                    os.chdir(old)
+                tmp, _ = fetch_temp(*s.address, str(out), lambda a: a.is_stereo)
+                try:
+                    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                        self.assertEqual(convert(tmp, Options(output_dir=str(out), musicbrainz=False,
+                                                              cover=False, format="dsf")), 0)
+                finally:
+                    os.unlink(tmp)
+            outside = [p for p in root.rglob("*") if out not in p.parents and p != out
+                       and p not in (iso, root / "work")]
+            self.assertEqual(outside, [])
+            for p in out.rglob("*"):
+                self.assertTrue(p.resolve().is_relative_to(out.resolve()))
+                for part in p.relative_to(out).parts:
+                    self.assertFalse(hs.FORBIDDEN.search(part), repr(part))
+                    self.assertFalse(part.startswith("-"), repr(part))
 
 
 @unittest.skipUnless(os.environ.get("PYSACD_TEST_ISO"), "set PYSACD_TEST_ISO to test the CLI against a real disc")

@@ -348,6 +348,11 @@ The library:
   the PS3's read sizes and area-boundary cuts. `--rate`, `--latency`,
   `--drop-after`, `--fail-lsn` and `--no-disc` simulate slow drives and failures.
 
+**Security:** the protocol has no authentication or encryption, so use it on trusted networks
+only. pysacd treats everything a server sends as hostile: lengths, disc size, TOC and time are
+all bounded, and output stays inside the output directory. `ps3sim` listens on localhost by
+default. See [docs/security.md](docs/security.md#ps3-network-protocol).
+
 `sacd_extract -I` through `ps3sim` produces an ISO byte-identical to the source.
 The wire format and the checks against `sacd_extract` are in
 [docs/ps3-protocol.md](docs/ps3-protocol.md).

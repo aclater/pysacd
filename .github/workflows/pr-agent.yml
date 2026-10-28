@@ -1,0 +1,58 @@
+# AI pull-request review by a model from a different vendor than the one
+# that writes most of the code.  Runs the open-source PR-Agent on a
+# Google AI Studio key (repo secret GEMINI_API_KEY).  Review rules live in
+# .pr_agent.toml.  Advisory: it comments, it doesn't gate; CLAUDE.md requires
+# its comments to be answered before merging.
+
+name: ai-review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+# Pushes supersede each other; owner comment commands run in their own queue
+# and never cancel an in-flight review (the bug in aclater/pqc-readiness#277).
+concurrency:
+  group: ai-review-${{ github.event_name }}-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  review:
+    # Bots (Dependabot) get no repo secrets.  Comment commands (/review,
+    # /improve, /ask) are accepted from the repo owner only, so outside
+    # comments can't spend the API quota or steer the reviewer.
+    if: >-
+      github.event.sender.type != 'Bot' &&
+      (github.event_name == 'pull_request' && !github.event.pull_request.draft ||
+       github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       github.event.comment.author_association == 'OWNER')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      # Pinned by digest per the project's SECURITY.md; build attestation
+      # verified with `gh attestation verify --repo The-PR-Agent/pr-agent`.
+      # Dependabot can't update docker:// steps, so bump tag and digest by hand.
+      - name: review  # 0.46.0-github_action
+        uses: docker://pragent/pr-agent@sha256:65e5b196e38cecd7df8a71fe29942052e081a0c6645132c2ac874df60b1760c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Names from the API's model list for this key.  Free-tier keys get
+          # no Pro quota, so Flash models only, then Flash-Lite, which is
+          # less often overloaded.  Not all are in the reviewer's built-in
+          # token table, so set the window here.
+          CONFIG.MODEL: gemini/gemini-3.8-flash
+          CONFIG.FALLBACK_MODELS: '["gemini/gemini-3.7-flash", "gemini/gemini-3.5-flash-lite", "gemini/gemini-3.1-flash-lite"]'
+          CONFIG.CUSTOM_MODEL_MAX_TOKENS: "1048576"
+          GITHUB_ACTION_CONFIG.AUTO_REVIEW: "true"
+          GITHUB_ACTION_CONFIG.AUTO_IMPROVE: "true"
+          # Never rewrite the PR title or description.
+          GITHUB_ACTION_CONFIG.AUTO_DESCRIBE: "false"

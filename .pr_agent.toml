@@ -1,0 +1,46 @@
+# Settings for the AI pull-request reviewer (.github/workflows/pr-agent.yml).
+# The model is set in the workflow's env, so it applies even before this file
+# reaches the default branch.
+
+[github_action_config]
+# Re-review after each push, not only when the PR opens.
+handle_push_trigger = true
+push_commands = ["/review"]
+
+[pr_reviewer]
+require_tests_review = true
+require_security_review = true
+require_estimate_effort_to_review = false
+extra_instructions = """
+pysacd reads SACD disc images: a Python TOC reader, a multithreaded C engine
+(csrc/, loaded through ctypes) and pysacd-extract, a drop-in replacement for
+sacd_extract. CLAUDE.md holds the full rules. Review against these first:
+
+- Clean room: the Philips/ISO MPEG-4 reference DST code is GPL-incompatible
+  and must never enter the repository, directly or paraphrased. DST changes
+  are written from docs/dst-bitstream.md and FFmpeg (LGPL) only. Flag code
+  or comments that look lifted from the reference decoder or sacd-ripper's
+  libdstdec.
+- Licences: new code is GPL-2.0-or-later; csrc/dstdec.c stays
+  LGPL-2.1-or-later. Flag dependencies or copied code under incompatible terms.
+- Untrusted input: disc images and network data may be malformed or hostile.
+  In C, flag unchecked lengths, out-of-bounds reads or writes, integer
+  overflow in size arithmetic, and unbounded allocation; in Python, unchecked
+  struct.unpack lengths and path traversal from disc text used in file names.
+- sacd_extract compatibility: pysacd-extract output (file names, DSF, DSDIFF,
+  cue, xml, -P text) must stay byte-identical to sacd_extract. Flag changes
+  to sbcompat.py, extract.py or the writers without a comparison test.
+- Concurrency: the engine's reader, workers and writer share batches; flag
+  races, missed wakeups and output that depends on the thread count.
+- Privacy: no hostnames, home-network names or personal details in code,
+  docs, tests or commit identities.
+- Docs ship with the change; bug fixes include a regression test.
+
+Don't comment on formatting or import order (ruff enforces them).
+"""
+
+[pr_code_suggestions]
+extra_instructions = """
+Follow the same rules as the review: clean room, licences, hostile input,
+byte-identical sacd_extract output. Skip pure style suggestions.
+"""

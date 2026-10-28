@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 import threading
 from collections.abc import Callable
@@ -44,6 +45,13 @@ class _Output(ctypes.Structure):
     ]
 
 
+# int read_fn(void *ctx, uint32_t lsn, uint32_t count, uint8_t *buf)
+_READ_FN = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32,
+                            ctypes.POINTER(ctypes.c_uint8))
+# void log_fn(void *ctx, int level, const char *msg)
+_LOG_FN = ctypes.CFUNCTYPE(None, ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p)
+
+
 class _Area(ctypes.Structure):
     # Must match sc_area_t in csrc/sacdconv.c
     _fields_ = [
@@ -64,11 +72,22 @@ class _Area(ctypes.Structure):
         ("sectors_done", ctypes.c_uint64),
         ("sectors_total", ctypes.c_uint64),
         ("error", ctypes.c_char * 256),
+        ("read_fn", _READ_FN),
+        ("read_ctx", ctypes.c_void_p),
+        ("log_fn", _LOG_FN),
+        ("log_ctx", ctypes.c_void_p),
+        ("log_level", ctypes.c_int),
     ]
 
 
 class NativeError(RuntimeError):
     pass
+
+
+log = logging.getLogger("pysacd.engine")
+
+# Reads 2048-byte sectors (lsn, count) -> bytes, e.g. from a disc on a network server
+SectorSource = Callable[[int, int], bytes]
 
 
 _lib = None
@@ -84,12 +103,22 @@ def _load():
         lib.sacdconv_area_run.argtypes = [ctypes.POINTER(_Area), ctypes.POINTER(_Output), ctypes.c_int]
         lib.sacdconv_area_run.restype = ctypes.c_int
         lib.sacdconv_has_flac.restype = ctypes.c_int
+        lib.sacdconv_build_info.restype = ctypes.c_char_p
         _lib = lib
     return _lib
 
 
 def has_flac() -> bool:
     return bool(_load().sacdconv_has_flac())
+
+
+def library_path() -> str:
+    return str(Path(__file__).with_name("_sacdconv.so"))
+
+
+def build_info() -> str:
+    """Compiler and features the engine was built with, for diagnostic logs."""
+    return _load().sacdconv_build_info().decode()
 
 
 @dataclass
@@ -142,11 +171,15 @@ def _scan_range(area: Area, specs: list[OutputSpec]) -> tuple[int, int]:
 def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, specs: list[OutputSpec],
              pcm_rate: int = 88200, gain_db: float = 0.0, threads: int = 0,
              iso_out: str | os.PathLike | None = None,
-             progress: Callable[[Progress], None] | None = None, interval: float = 0.5) -> None:
+             progress: Callable[[Progress], None] | None = None, interval: float = 0.5,
+             source: SectorSource | None = None) -> None:
     """Produce all outputs from one area in a single pass. Blocking, multithreaded.
 
     `progress` is called from this thread every `interval` seconds while the
     engine runs. Raises NativeError on failure; results are stored on the specs.
+    With `source`, sectors come from that callable instead of the file at
+    iso_path (which is then only a name for messages). Engine diagnostics go to
+    the "pysacd.engine" logger.
     """
     lib = _load()
     outs = (_Output * max(1, len(specs)))()
@@ -183,8 +216,38 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
         a.iso_out_path = os.fsencode(iso_out)
         a.iso_sectors = image.total_sectors
 
+    # Callbacks run on engine threads; they must never raise into C.
+    def on_log(_ctx, level, msg):
+        log.log(level, msg.decode(errors="replace"))
+
+    def on_read(_ctx, lsn, count, buf):
+        try:
+            data = source(lsn, count)
+            if len(data) != count * 2048:
+                raise OSError(f"short read: {len(data)} of {count * 2048} bytes")
+            ctypes.memmove(buf, data, len(data))
+            return 0
+        except Exception as e:
+            log.exception("sector source failed at LSN %d (+%d)", lsn, count)
+            a.error = str(e).encode(errors="replace")[:255]
+            return -1
+
+    callbacks = [_LOG_FN(on_log)]
+    a.log_fn = callbacks[0]
+    a.log_level = log.getEffectiveLevel()
+    if source is not None:
+        if image.sector_size != 2048:
+            raise NativeError("a sector source must deliver plain 2048-byte sectors")
+        callbacks.append(_READ_FN(on_read))
+        a.read_fn = callbacks[1]
+    for s in specs:
+        log.debug("output %s %s: frames %d-%d%s", s.format, s.path, s.tc_start, s.tc_end,
+                  f", nopad head {s.head_bytes}@{s.head_frame} tail {s.tail_bytes}" if s.head_frame >= 0 or s.tail_bytes
+                  else "")
+
     result = []
-    t = threading.Thread(target=lambda: result.append(lib.sacdconv_area_run(ctypes.byref(a), outs, len(specs))))
+    t = threading.Thread(target=lambda: result.append(lib.sacdconv_area_run(ctypes.byref(a), outs, len(specs))),
+                         name="engine")
     t.start()
     try:
         while t.is_alive():

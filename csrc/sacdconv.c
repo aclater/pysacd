@@ -31,6 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #ifdef HAVE_FLAC
@@ -94,6 +95,15 @@ typedef struct {
     volatile uint64_t frames_done, frames_total;
     volatile uint64_t sectors_done, sectors_total;
     char            error[256];
+    /* optional sector source instead of reading iso_path (e.g. a disc on a
+       network server): fill buf with count 2048-byte sectors from lsn,
+       return 0, or -1 with a message in error */
+    int           (*read_fn)(void *ctx, uint32_t lsn, uint32_t count, uint8_t *buf);
+    void           *read_ctx;
+    /* optional diagnostics sink; messages below log_level aren't formatted */
+    void          (*log_fn)(void *ctx, int level, const char *msg);
+    void           *log_ctx;
+    int             log_level;
 } sc_area_t;
 
 /* ------------------------------------------------------------ batches */
@@ -131,6 +141,9 @@ typedef struct {
     _Atomic int     failed;
 } engine_t;
 
+static void sc_log(sc_area_t *a, int level, const char *fmt, ...)
+    __attribute__((format(printf, 3, 4)));
+
 static void set_error(engine_t *e, const char *fmt, ...)
 {
     pthread_mutex_lock(&e->mu);
@@ -140,6 +153,9 @@ static void set_error(engine_t *e, const char *fmt, ...)
         vsnprintf(e->a->error, sizeof(e->a->error), fmt, ap);
         va_end(ap);
         e->failed = 1;
+        pthread_mutex_unlock(&e->mu);
+        sc_log(e->a, SC_ERROR, "engine: %s", e->a->error);
+        pthread_mutex_lock(&e->mu);
     }
     pthread_cond_broadcast(&e->cv_free);
     pthread_cond_broadcast(&e->cv_work);
@@ -150,6 +166,41 @@ static void set_error(engine_t *e, const char *fmt, ...)
 static int stopping(engine_t *e)
 {
     return e->failed || e->a->cancel;
+}
+
+static void sc_log(sc_area_t *a, int level, const char *fmt, ...)
+{
+    char msg[512];
+    va_list ap;
+    if (!a->log_fn || level < a->log_level)
+        return;
+    va_start(ap, fmt);
+    vsnprintf(msg, sizeof(msg), fmt, ap);
+    va_end(ap);
+    a->log_fn(a->log_ctx, level, msg);
+}
+
+static double now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
+}
+
+/* Timecode as mm:ss:ff (75 frames per second) */
+static const char *tc_str(uint32_t tc, char buf[16])
+{
+    snprintf(buf, 16, "%02u:%02u:%02u", tc / (60 * FRAME_RATE), tc / FRAME_RATE % 60, tc % FRAME_RATE);
+    return buf;
+}
+
+/* Does any output want a frame in [lo, hi)? */
+static int range_wanted(engine_t *e, uint32_t lo, uint32_t hi)
+{
+    for (int i = 0; i < e->nouts; i++)
+        if (e->outs[i].tc_start < hi && e->outs[i].tc_end > lo)
+            return 1;
+    return 0;
 }
 
 /* ------------------------------------------------------------ reader */
@@ -281,6 +332,11 @@ static int stage_frame(reader_t *r, uint32_t tc, const uint8_t *data, int len, i
 
 static int fill_until(reader_t *r, uint32_t tc)
 {
+    if (r->next_tc < tc && range_wanted(r->e, r->next_tc, tc)) {
+        char a[16], b[16];
+        sc_log(r->e->a, SC_WARNING, "frames %s-%s (%u) not found on the disc; filled with silence",
+               tc_str(r->next_tc, a), tc_str(tc - 1, b), tc - r->next_tc);
+    }
     for (; r->next_tc < tc; r->next_tc++)
         if (stage_frame(r, r->next_tc, NULL, 0, 0, 1) < 0)
             return -1;
@@ -324,11 +380,13 @@ static void *reader_main(void *arg)
         set_error(e, "out of memory");
         goto out;
     }
-    if ((fd = open(a->iso_path, O_RDONLY | O_CLOEXEC)) < 0) {
-        set_error(e, "%s: %s", a->iso_path, strerror(errno));
-        goto out;
+    if (!a->read_fn) {
+        if ((fd = open(a->iso_path, O_RDONLY | O_CLOEXEC)) < 0) {
+            set_error(e, "%s: %s", a->iso_path, strerror(errno));
+            goto out;
+        }
+        posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
     }
-    posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 
     if (a->iso_out_path) {
         if (!(iso = fopen(a->iso_out_path, "wb"))) {
@@ -350,14 +408,26 @@ static void *reader_main(void *arg)
     for (uint32_t lsn = first; lsn <= last && !stopping(e); lsn += READ_SECTORS) {
         uint32_t n = last - lsn + 1 < READ_SECTORS ? last - lsn + 1 : READ_SECTORS;
         size_t want = (size_t)n * a->sector_size, got = 0;
-        while (got < want) {
-            ssize_t k = pread(fd, raw + got, want - got, (off_t)lsn * a->sector_size + got);
-            if (k <= 0) {
-                set_error(e, "read error at LSN %u: %s", lsn, k < 0 ? strerror(errno) : "unexpected end of image");
+        double t0 = now_ms();
+        if (a->read_fn) {
+            if (a->read_fn(a->read_ctx, lsn, n, raw) != 0) {
+                /* the source leaves its reason in a->error, which set_error overwrites */
+                char why[sizeof(a->error)];
+                snprintf(why, sizeof(why), "%s", a->error[0] ? a->error : "source failed");
+                set_error(e, "read error at LSN %u (+%u): %s", lsn, n, why);
                 goto out;
             }
-            got += k;
+        } else {
+            while (got < want) {
+                ssize_t k = pread(fd, raw + got, want - got, (off_t)lsn * a->sector_size + got);
+                if (k <= 0) {
+                    set_error(e, "read error at LSN %u: %s", lsn, k < 0 ? strerror(errno) : "unexpected end of image");
+                    goto out;
+                }
+                got += k;
+            }
         }
+        sc_log(a, SC_DEBUG, "read LSN %u+%u (%zu bytes) in %.1f ms", lsn, n, want, now_ms() - t0);
         const uint8_t *sec = raw;
         if (a->sector_size != LSN_SIZE) {
             for (uint32_t i = 0; i < n; i++)
@@ -376,6 +446,11 @@ static void *reader_main(void *arg)
                 rc = demux_sector(sec + (size_t)i * LSN_SIZE, acc, e->channels, on_frame, &r);
                 if (rc < 0)
                     goto out;
+                if (rc == DEMUX_CORRUPT) {
+                    sc_log(a, SC_WARNING, "malformed audio sector at LSN %u: part or all of it dropped", s);
+                    rc = 0;
+                    continue;
+                }
                 if (rc > 0) {
                     demuxing = 0;   /* past the last frame needed */
                     break;
@@ -448,9 +523,16 @@ static void process_batch(engine_t *e, batch_t *b, dst_decoder_t **dec, dsd2pcm_
                     set_error(e, "out of memory");
                     return;
                 }
-                if (dst_decode_frame(*dec, b->raw + b->off[i], b->len[i], out) != 0) {
+                int err = dst_decode_frame(*dec, b->raw + b->off[i], b->len[i], out);
+                if (err != 0) {
                     b->bad[i] = 1;
                     memset(out, DST_ERROR_FILL, fb);
+                    if (i >= b->pre && i < b->pre + b->n) {   /* context frames are logged by their own batch */
+                        char t[16];
+                        uint32_t tc = b->tc0 + (uint32_t)(i - b->pre);
+                        sc_log(e->a, SC_WARNING, "DST frame at %s (frame %u, %u bytes) could not be decoded "
+                               "(error %d); filled with 0x55", tc_str(tc, t), tc, b->len[i], err);
+                    }
                 }
             } else {
                 memcpy(out, b->raw + b->off[i], fb);
@@ -807,6 +889,10 @@ static int out_close(engine_t *e, sc_output_t *o, out_state_t *st)
     st->fp = NULL;
     free(st->wbuf);
     st->wbuf = NULL;
+    sc_log(e->a, rc ? SC_ERROR : (o->frames_missing || o->dst_errors) ? SC_WARNING : SC_DEBUG,
+           "%s %s: %u frames, %u missing, %u DST errors, %llu data bytes%s%s",
+           rc ? "failed" : "wrote", o->path, o->frames_written, o->frames_missing, o->dst_errors,
+           (unsigned long long)o->data_bytes, rc ? ": " : "", rc ? o->error : "");
     return rc;
 }
 
@@ -938,6 +1024,32 @@ static int writer_run(engine_t *e)
 
 /* ------------------------------------------------------------ API */
 
+/* Build details for diagnostic logs */
+const char *sacdconv_build_info(void)
+{
+    return "gcc " __VERSION__
+#ifdef HAVE_FLAC
+           ", libFLAC"
+#endif
+#ifdef HAVE_FLAC_MT
+           " (multithreaded)"
+#endif
+#ifdef __AVX512F__
+           ", AVX-512"
+#elif defined(__AVX2__)
+           ", AVX2"
+#elif defined(__SSE4_2__)
+           ", SSE4.2"
+#endif
+#ifdef __SANITIZE_ADDRESS__
+           ", ASan"
+#endif
+#ifndef __OPTIMIZE__
+           ", unoptimized"
+#endif
+           ;
+}
+
 int sacdconv_has_flac(void)
 {
 #ifdef HAVE_FLAC
@@ -955,6 +1067,10 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
 
     a->error[0] = 0;
     a->frames_done = a->sectors_done = 0;
+    if (a->read_fn && (a->sector_size != LSN_SIZE || a->data_offset != 0)) {
+        snprintf(a->error, sizeof(a->error), "a sector source must deliver plain 2048-byte sectors");
+        return -1;
+    }
     if (a->channels < 1 || a->channels > MAX_CHANNELS_SACD) {
         snprintf(a->error, sizeof(a->error), "unsupported channel count %d", a->channels);
         return -1;
@@ -1033,6 +1149,13 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
         e.free_list = b;
     }
 
+    sc_log(a, SC_INFO, "engine: %d channels, %d outputs, frames %u-%u, LSN %u-%u%s, %d worker threads%s%s",
+           a->channels, nouts, e.need_lo, e.need_hi, a->scan_lsn_start, a->scan_lsn_end,
+           a->read_fn ? " via sector source" : "", nworkers, want_pcm ? ", PCM " : "",
+           want_pcm ? (a->pcm_rate == 88200 ? "88.2 kHz" : "176.4 kHz") : "");
+    if (a->iso_out_path)
+        sc_log(a, SC_INFO, "engine: copying %u sectors to %s", a->iso_sectors, a->iso_out_path);
+    double t_start = now_ms();
     int started = 0;
     for (; started < nworkers; started++)
         if (pthread_create(&workers[started], NULL, worker_main, &e) != 0)
@@ -1051,6 +1174,9 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
         pthread_join(workers[i], NULL);
 
     rc = e.failed ? -1 : a->cancel ? (snprintf(a->error, sizeof(a->error), "cancelled"), -1) : 0;
+    sc_log(a, rc ? SC_ERROR : SC_INFO, "engine: %s after %.2f s: %llu frames, %llu sectors read%s%s",
+           rc ? "failed" : "finished", (now_ms() - t_start) / 1e3, (unsigned long long)a->frames_done,
+           (unsigned long long)a->sectors_done, rc ? ": " : "", rc ? a->error : "");
     goto cleanup;
 
 oom:

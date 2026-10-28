@@ -205,6 +205,7 @@ Extensions (long options only):
 | `--threads N` | number of worker threads |
 | `--id3tag N` | the cfg's `id3tag` setting, as a flag |
 | `--no-cfg` | ignore `./sacd_extract.cfg` |
+| `--log-file`, `--log-level` | diagnostic log (see [Logging](#logging)) |
 | `--disc N/M` | treat a set mastered as 1/1 (e.g. *Live-Evil*) as disc N of M; names and tags follow `sacd_extract`'s own set layout (`Title/Disc N`) |
 
 Differences from `sacd_extract`:
@@ -223,8 +224,9 @@ Differences from `sacd_extract`:
     behave exactly as in `sacd_extract`.
   - **Limitation:** `sacd_extract`'s tags carry no catalogue number, so two
     discs whose tags match in every one of those fields can't be told apart.
-- **Input:** ISO images, and PS3 SACD Ripper servers (`-i 192.168.1.10:2002`).
-  Optical drives aren't supported. A dropped PS3 connection is reopened and the
+- **Input:** ISO images, block devices (read-only), and PS3 SACD Ripper
+  servers (`-i 192.168.1.10:2002`). PC optical drives can't read the SACD
+  layer. A dropped PS3 connection is reopened and the
   copy resumes; sacd_extract gives up. See
   [PS3 network protocol](#ps3-network-protocol).
 - **Hostile text:** disc text with control or bidi characters, `` ` $ ; | < > `` or a leading
@@ -241,6 +243,49 @@ Differences from `sacd_extract`:
   tracks.
 - **Speed:** everything for an area is produced in one read pass, and DST is
   decoded on all cores.
+
+## Logging
+
+Both tools write a detailed diagnostic log on request. That log is what to
+attach when something fails, for example against a PS3, a drive or a damaged
+disc.
+
+```
+pysacd-extract -2 -s -i 192.0.2.10:2002 --log-file pysacd.log
+pysacd --log-file pysacd.log convert disc.iso
+PYSACD_LOG=debug:/tmp/pysacd.log pysacd-extract ...    # for GUIs and scripts
+```
+
+A log file records everything at `debug` level unless `--log-level` says
+otherwise. `--log-level` without a file sends the log to stderr. `logging=1` in
+`sacd_extract.cfg` writes `logfile-sacd_extract.txt`, or `$LOG_FILE`, as
+`sacd_extract` does.
+
+The log contains:
+
+- **The environment:** pysacd and Python versions, OS and CPU, the engine's
+  compiler and features, and the command line.
+- **The input:** its kind (file, block device or server), its size and sector
+  layout, every TOC warning, and the planned outputs with their frame ranges.
+- **PS3 traffic:** every request and response with its timing, short reads,
+  timeouts and dropped connections, and a summary of requests, bytes and rate.
+- **Engine events:** each read, malformed audio sectors, frames missing from
+  the disc, DST frames that fail to decode (with their timecode and error
+  code), and per-file results.
+- **Failures:** the full traceback. If the engine itself crashes, the C and
+  Python stacks of all threads are written too (`faulthandler`).
+
+Logs are safe to share and safe to keep:
+- **Escaped text:** disc and network text is written escaped, so it can't
+  forge log lines or carry terminal escape sequences.
+- **No addresses at info level:** server addresses and file paths appear
+  only at `debug` level.
+- **Private, symlink-safe files:** the file is created owner-only and never
+  through a symlink.
+- **Size cap:** it rotates at 64 MB, keeping two old files.
+
+On the terminal, warnings are shown and a failure prints one line, with a hint
+to rerun with `--log-file` if no log was being written.
 
 ## What's parsed
 

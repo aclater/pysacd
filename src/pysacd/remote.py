@@ -113,6 +113,8 @@ class _Reader:
             b = self.take(1)[0]
             val |= (b & 0x7F) << shift
             if not b & 0x80:
+                if val >> 64:       # a 10th byte above 1 overflows int64
+                    raise RemoteError("malformed varint")
                 return val
             shift += 7
             if shift > 63:
@@ -205,6 +207,9 @@ class PS3Client:
         if not isinstance(result, int):
             log.error("%s: malformed result field", name)
             raise RemoteError(f"{self.address}: malformed result field")
+        if not isinstance(data, bytes):
+            log.error("%s: malformed data field", name)
+            raise RemoteError(f"{self.address}: malformed data field")
         resp[2] = _signed64(result)
         return resp
 
@@ -540,6 +545,9 @@ class PS3Simulator:
                 except (EOFError, OSError, RemoteError):
                     break
                 rtype, offset, count = req.get(1, 0), req.get(2, 0), req.get(3, 0)
+                if not (isinstance(rtype, int) and isinstance(offset, int) and isinstance(count, int)):
+                    self.log("malformed request, closing the connection")
+                    break
                 if self.latency:
                     time.sleep(self.latency)
                 result, data = -1, None

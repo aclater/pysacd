@@ -406,6 +406,9 @@ class SACDImage:
         except SACDError as e:
             warnings.append(f"{label} area: {e}")
             return None
+        except (IndexError, struct.error) as e:    # a field points past the end of the TOC
+            warnings.append(f"{label} area: malformed TOC ({e})")
+            return None
 
 
 def _parse_master_toc(mtoc: bytes) -> Disc:
@@ -552,6 +555,9 @@ def _parse_track_text(data: bytes, base: int, track_count: int, codec: str,
         if not pos:
             continue
         q = base + pos
+        if q + 4 > len(data):
+            warnings.append(f"track {i + 1}: text offset {pos} lies outside the area TOC")
+            continue
         item_count = data[q]
         q += 4
         for j in range(item_count):

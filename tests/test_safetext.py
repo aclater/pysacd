@@ -68,6 +68,15 @@ class Functions(unittest.TestCase):
             want = t.replace("/", "-")
             self.assertEqual(safetext.name_component(t), want)
 
+    def test_sacd_extract_paths_keep_ordinary_text_byte_identical(self):
+        # Real discs carry trailing spaces ("TOMMY ") and whitespace runs; sacd_extract keeps them,
+        # so the compatible paths only drop control/bidi/zero-width characters.
+        from pysacd import sbcompat
+        for t in ["TOMMY ", "Emotional  Rescue", " lead", "Caf\u0065\u0301 decomposed", "Sigur R\u00f3s"]:
+            self.assertEqual(sbcompat._b(t), t.encode("utf-8"))
+            self.assertEqual(safetext.strip_controls(t), t)
+        self.assertEqual(sbcompat._b("a\x1bb\u202ec"), b"a b c")
+
     def test_terminal_and_text(self):
         for t in HOSTILE:
             self.assertFalse(re.search(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e]", safetext.for_terminal(t)), t)
@@ -138,6 +147,26 @@ class HostileDisc(unittest.TestCase):
         for x in [p for p in files if p.suffix == ".xml"]:
             ET.parse(x)                                 # well-formed, no injected markup
             self.assertFalse(re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", x.read_text(errors="replace")))
+
+    def test_collision_warnings_are_escaped(self):
+        # #16: a second, different disc rendering into the same directory gets a warning that
+        # quotes disc text; it must be escaped too.
+        from pysacd.convert import Options, convert
+        fr = bytes([0x69]) * (4704 * 2)
+        isos = []
+        for i, cat in enumerate(["CAT\x1b]0;x\x07-1", "CAT-2"]):
+            iso = self.root / f"d{i}.iso"
+            info = sacdgen.DiscInfo(title=ALBUM, disc_catalog=cat)
+            sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [fr] * 20, [10, 10], dst=False,
+                                                     titles=DISC_TITLES[:2])], info=info)
+            isos.append(iso)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            for iso in isos:
+                convert(str(iso), Options(output_dir=str(self.out), musicbrainz=False, cover=False, format="dsf"))
+        self.assertIn("warning", err.getvalue().lower())
+        self.assertFalse(re.search(r"[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f\u202a-\u202e]", err.getvalue()))
+        self._check_tree()
 
     def test_convert_names_and_tags(self):
         from pysacd.convert import Options, convert

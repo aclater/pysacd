@@ -1,10 +1,11 @@
-"""ctypes binding for the native engine (_sacdconv.so, built by `make`)."""
+"""ctypes binding for the native engine (_sacdconv.so/.dylib/.dll, built by `make`)."""
 
 from __future__ import annotations
 
 import ctypes
 import logging
 import os
+import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -91,12 +92,13 @@ SectorSource = Callable[[int, int], bytes]
 
 
 _lib = None
+LIBRARY = {"win32": "_sacdconv.dll", "darwin": "_sacdconv.dylib"}.get(sys.platform, "_sacdconv.so")
 
 
 def _load():
     global _lib
     if _lib is None:
-        path = Path(__file__).with_name("_sacdconv.so")
+        path = Path(__file__).with_name(LIBRARY)
         if not path.exists():
             raise NativeError(f"{path} not built; run `make` in the pysacd source tree")
         lib = ctypes.CDLL(str(path))
@@ -113,7 +115,7 @@ def has_flac() -> bool:
 
 
 def library_path() -> str:
-    return str(Path(__file__).with_name("_sacdconv.so"))
+    return str(Path(__file__).with_name(LIBRARY))
 
 
 def build_info() -> str:

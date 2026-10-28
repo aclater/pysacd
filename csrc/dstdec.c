@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "compat.h"
 #include "dstdec.h"
 
 #define DST_MAX_CHANNELS 6
@@ -333,10 +334,9 @@ dst_decoder_t *dst_decoder_new(int channels)
 {
     if (channels < 1 || channels > DST_MAX_CHANNELS)
         return NULL;
-    void *mem = NULL;
-    if (posix_memalign(&mem, 64, sizeof(dst_decoder_t)) != 0)
+    dst_decoder_t *s = sc_aligned_alloc(64, sizeof(dst_decoder_t));
+    if (!s)
         return NULL;
-    dst_decoder_t *s = mem;
     memset(s, 0, sizeof(*s));
     s->channels = channels;
     for (int i = 0; i < 256; i++) {
@@ -351,23 +351,24 @@ dst_decoder_t *dst_decoder_new(int channels)
 
 void dst_decoder_free(dst_decoder_t *s)
 {
-    free(s);
+    sc_aligned_free(s);
 }
 
-/* Code bits for the arithmetic decoder; bits past the end of the frame read as 0 */
-static inline unsigned peek_bits(const uint8_t *buf, size_t nbytes, size_t index, int n)
+/* 0 to 11 code bits at `index`, for the branch-free renormalisation (n = 0 gives 0);
+   bits past the end of the frame read as 0 */
+static inline unsigned peek_code_bits(const uint8_t *buf, size_t nbytes, size_t index, int n)
 {
     size_t byte = index >> 3;
-    uint32_t v;
-    if (__builtin_expect(byte + 4 <= nbytes, 1)) {
-        memcpy(&v, buf + byte, 4);
-        v = __builtin_bswap32(v);
+    uint64_t w;
+    if (__builtin_expect(byte + 8 <= nbytes, 1)) {
+        memcpy(&w, buf + byte, 8);
+        w = __builtin_bswap64(w);
     } else {
-        v = 0;
-        for (int i = 0; i < 4; i++)
-            v = v << 8 | (byte + i < nbytes ? buf[byte + i] : 0);
+        w = 0;
+        for (int i = 0; i < 8; i++)
+            w = w << 8 | (byte + i < nbytes ? buf[byte + i] : 0);
     }
-    return (v << (index & 7)) >> (32 - n);
+    return (unsigned)(((w << (index & 7)) >> 1) >> (63 - n));
 }
 
 /* Decode bits [from, to) of every channel (both multiples of 8); the filter
@@ -424,10 +425,12 @@ static void decode_range(dst_decoder_t *s, uint8_t *dsd, unsigned from, unsigned
                     a = q;
                     c -= a_q;
                 }
-                if (a < 2048) {
+                {
+                    /* Renormalise without a branch (n = 0 when a >= 2048): whether it
+                       happens is data-dependent and mispredicts often (#21). */
                     int n = 11 - av_log2(a);
                     a <<= n;
-                    c = (c << n) | peek_bits(buf, nbytes, index, n);
+                    c = (c << n) | peek_code_bits(buf, nbytes, index, n);
                     index += n;
                 }
 

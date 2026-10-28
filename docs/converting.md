@@ -64,7 +64,7 @@ images are untrusted input (see [security](security.md#running-as-root)).
 
 Python format specs work (`{tracknumber:02d}`). Empty `[]` or `()` left by blank
 fields are removed, and `/` inside values is replaced. `--portable-names` also
-replaces characters that are invalid on Windows/SMB.
+replaces characters that are invalid on Windows/SMB (always on, on Windows).
 
 How it works:
 
@@ -95,3 +95,36 @@ How it works:
   fallback search by title and artist. FLAC gets Vorbis comments; DSF and WAV
   get ID3 tags (v2.3 by default). Both follow Picard's field names, including
   the MusicBrainz IDs.
+
+## Submitting ISRCs to MusicBrainz
+
+Most SACDs carry an ISRC for every track, and many MusicBrainz recordings are
+missing theirs. pysacd can add them, which also helps later lookups (by
+pysacd or anyone else) match the right release. Nothing is ever submitted
+without asking.
+
+```sh
+pysacd mb-login --client-id ID              # once: OAuth sign-in, token saved owner-only
+pysacd submit-isrcs -n album.iso            # dry run: show what would be added
+pysacd submit-isrcs album.iso               # show the same table, ask, then submit
+pysacd convert --submit-isrcs album.iso     # offer it after the MusicBrainz match while converting
+```
+
+- **Which release:** only one matched by barcode or catalog number, or named
+  with `--mb-release`, never one found by title search. Track N of the area
+  maps to track N of the matched medium (stereo and multichannel separately).
+- **What's skipped:** malformed or all-zero ISRCs, the same ISRC on two
+  tracks, ISRCs the recording already has, and ISRCs MusicBrainz already lists
+  on a different recording. The table says why for each track.
+- **Signing in:** register an application of type "installed" at
+  <https://musicbrainz.org/account/applications> for the client id and
+  secret, then run `pysacd mb-login`. The token lives in
+  `~/.config/pysacd/musicbrainz-token.json`, readable only by you. Or pass
+  `--mb-user NAME` to `submit-isrcs` for HTTP digest auth: the password is
+  asked for each time (or read from `PYSACD_MB_PASSWORD`) and never stored.
+- **Trying it out:** `--mb-server https://test.musicbrainz.org` (on both
+  `mb-login` and `submit-isrcs`) uses the MusicBrainz test server, whose data
+  is reset regularly.
+- **Scripts:** `--yes` submits without asking. Without a terminal and
+  without `--yes`, nothing is submitted.
+

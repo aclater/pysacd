@@ -98,6 +98,8 @@ paths from environment variables and skip without them.
   If no review has arrived 15 minutes after the last push, say so in the PR
   and merge when everything else is green. Comments starting with `/` are
   PR-Agent commands; other comments don't start a run.
+- **Releases** follow docs/development.md "Packaging and releases". Never
+  turn on PyPI publishing (`PYPI_PUBLISH`) yourself: it makes the code public.
 - Commits explain why, one logical change each, and end with the
   `Co-Authored-By:` trailer for the model in use.
 - Verify every version (actions, images, packages) from its primary source

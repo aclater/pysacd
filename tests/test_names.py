@@ -314,6 +314,12 @@ class MusicBrainzTypes(unittest.TestCase):
             tagging.apply_musicbrainz(tags, match, track)
         self.assertEqual(tags, before)
 
+    def test_int_field_bounds(self):
+        from pysacd.musicbrainz import _int
+        for v, want in ((7, 7), ("2147483647", 2147483647), ("2147483648", None), ("9" * 5000, None),
+                        (True, None), (-1, None), ("-1", None), ("١٢", None), (3.0, None)):
+            self.assertEqual(_int(v), want, repr(v)[:20])
+
     def test_tag_numbers(self):
         for s, want in (("7", 7), ("3/12", 3), ("A1", 0), ("", 0), (" 12 ", 12)):
             self.assertEqual(convert._tag_int(s, 0), want, s)

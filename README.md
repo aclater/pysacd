@@ -54,7 +54,8 @@ ln -s "$(command -v pysacd-extract)" ~/bin/sacd_extract    # that's the whole mi
 ## Why you shouldn't use pysacd (yet)
 
 - **Linux only for now** (#8).
-- **No prebuilt packages:** you build the engine with `make` (#9).
+- **Not on PyPI (yet):** wheels for Linux x86-64 and aarch64 come from GitHub
+  releases; elsewhere you build from source.
 - **Never tested against a real PS3.** The network client is verified against
   a protocol simulator and `sacd_extract`, but not against hardware (#10).
 - **It isn't faster on DST discs.**

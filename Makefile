@@ -26,8 +26,10 @@ endif
 endif
 
 SRC := $(addprefix csrc/,sacdconv.c demux.c dsp.c dstdec.c)
-OBJ := $(patsubst csrc/%.c,build/%.o,$(SRC))
-LIB := src/pysacd/_sacdconv.so
+# BUILD and LIB can be overridden: the wheel build (setup.py) uses a private directory.
+BUILD ?= build
+OBJ := $(patsubst csrc/%.c,$(BUILD)/%.o,$(SRC))
+LIB ?= src/pysacd/_sacdconv.so
 
 all: $(LIB)
 ifeq ($(FLAC_LIBS),)
@@ -37,7 +39,7 @@ endif
 $(LIB): $(OBJ)
 	$(CC) -shared $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-build/%.o: csrc/%.c $(wildcard csrc/*.h)
+$(BUILD)/%.o: csrc/%.c $(wildcard csrc/*.h)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 

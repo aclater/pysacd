@@ -1052,6 +1052,9 @@ const char *sacdconv_build_info(void)
 #elif defined(__SSE4_2__)
            ", SSE4.2"
 #endif
+#ifdef SC_DISPATCH
+           ", portable (PCM filter SIMD chosen at load time)"
+#endif
 #ifdef __SANITIZE_ADDRESS__
            ", ASan"
 #endif

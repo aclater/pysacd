@@ -125,9 +125,28 @@ Template fields:
   `catalognumber`, `barcode`
 - Track: `artist`, `title`, `composer`, `tracknumber`, `tracktotal`
 - Disc: `discnumber`, `disctotal`, `disc` (`Disc N`, only set on multi-disc
-  releases), `disc_prefix` (`N-`, multi-disc only)
+  releases), `disc_prefix` (`N-`, multi-disc only). These come from `--disc N/M`
+  if given, otherwise from the MusicBrainz match, otherwise from the TOC's
+  album set fields (set size and sequence number).
 - Area and format: `edition` (from `stereo_edition` or `multichannel_edition`),
   `layout` (`Stereo`, `5.0` or `5.1`), `channels`, `format`
+
+**Different discs, same folder.** Before writing, `pysacd convert` checks
+whether the target folder already holds tracks of a *different* disc. That
+means a different MusicBrainz release, or failing that a different catalogue
+number or barcode. Discs of one set (same album and artist, different disc
+numbers) and re-runs of the same disc are fine. On a clash, the new disc goes
+to `<folder> [<catalogue number>]` and a warning says so.
+
+Some sets are mastered with every disc claiming to be disc 1 of 1, such as
+Miles Davis's *Live-Evil*. For those, the warning may add a hint: when the
+discs share title, artist and label and their catalogue numbers differ only
+in a trailing counter, it suggests re-running with `--disc N/M`. pysacd never
+acts on that guess by itself. With `--disc` the discs share one folder,
+separated by `{disc_prefix}`.
+
+Tracks that already exist are skipped unless `--overwrite` is given, and the
+run summary says how many were skipped.
 
 Python format specs work (`{tracknumber:02d}`). Empty `[]` or `()` left by blank
 fields are removed, and `/` inside values is replaced. `--portable-names` also

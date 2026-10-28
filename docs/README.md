@@ -39,6 +39,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
 - **[Security](security.md)**: hostile discs, servers and text.
   - [Hostile text](security.md#hostile-text)
   - [Threat model](security.md#threat-model)
+  - [Hostile images](security.md#hostile-images)
   - [Running as root](security.md#running-as-root)
   - [Extra isolation](security.md#extra-isolation)
   - [PS3 network protocol](security.md#ps3-network-protocol)

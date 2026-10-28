@@ -40,3 +40,27 @@ other disc is byte-identical. That deviation is deliberate.
 Any new code path that writes or prints disc, MusicBrainz or network text must go through
 `pysacd.safetext`. `tests/test_safetext.py` builds a disc with hostile titles and checks every
 writer and printer. Extend it when you add one.
+
+## PS3 network protocol
+
+The SACD Ripper protocol (`docs/ps3-protocol.md`) has **no authentication and no encryption**.
+Real PS3s speak it as is, so pysacd can't change that. Anyone on the network path can read or
+alter the sectors. Use it on trusted networks only. pysacd treats everything the server sends
+as hostile:
+
+- **Messages:** length-delimited fields are capped at one 512-sector read plus 1 KiB, and a
+  message may have at most 16 fields.
+- **Reads:** a reply must return between 1 and the requested number of sectors, with exactly
+  that much data.
+- **`DISC_SIZE`:** capped at 2^22 sectors (8 GiB), just above a dual-layer SACD, so a server
+  can't make the client create an enormous sparse file.
+- **TOC over the network:** areas whose TOC or audio lies outside the disc, or whose end comes
+  before their start, are rejected as malformed. Fetch ranges are clamped to the disc.
+- **Text on the disc:** it's still disc text. Names, tags and output are neutralised as
+  described under [Hostile text](#hostile-text), and every output path stays inside the output
+  directory.
+
+`pysacd ps3sim` serves an ISO to anyone who can reach its port. It listens on `127.0.0.1` by
+default, warns when given another address, and closes connections that stay idle for
+`--idle-timeout` seconds (default 60), so one silent client can't hold the single connection
+for ever.

@@ -6,6 +6,9 @@ for DSF/WAV using Picard's conventions.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 from . import __version__
 from .musicbrainz import Match, barcode_of, credit_name, physical_discs
 from .toc import Area, Disc, Track
@@ -144,6 +147,50 @@ def flac_metadata_size(tags: Tags, cover: tuple[bytes, str] | None) -> int:
     if cover:
         size += len(cover[0]) + len(cover[1]) + 64
     return size + 4096
+
+
+def read_tags(path: str | os.PathLike) -> Tags:
+    """Tags of an existing DSF, FLAC or WAV file, as Vorbis-style keys
+    (the inverse of the writers above); {} if the file has none or can't be read."""
+    p = Path(path)
+    try:
+        if p.suffix.lower() == ".flac":
+            from mutagen.flac import FLAC
+
+            f = FLAC(p)
+            vorbis: Tags = {}
+            items: list[tuple[object, object]] = list(f.tags.items()) if f.tags is not None else []
+            for key, value in items:
+                values = value if isinstance(value, list) else [value]   # mutagen versions differ
+                vorbis.setdefault(str(key).upper(), []).extend(str(v) for v in values)
+            return vorbis
+        from mutagen.dsf import DSF
+        from mutagen.wave import WAVE
+
+        id3 = (DSF if p.suffix.lower() == ".dsf" else WAVE)(p).tags
+    except Exception:  # noqa: BLE001 - unreadable files just have no identity
+        return {}
+    if id3 is None:
+        return {}
+    out: Tags = {}
+    for key, frame in _ID3_TEXT.items():
+        if frame in id3:
+            out[key] = [str(x) for x in id3[frame].text]
+    for key, desc in _ID3_TXXX.items():
+        f = id3.get(f"TXXX:{desc}")
+        if f is not None:
+            out[key] = [str(x) for x in f.text]
+    for key in ("CATALOGNUMBER", "BARCODE"):
+        f = id3.get(f"TXXX:{key}")
+        if f is not None:
+            out[key] = [str(x) for x in f.text]
+    for frame, num, tot in (("TRCK", "TRACKNUMBER", "TRACKTOTAL"), ("TPOS", "DISCNUMBER", "DISCTOTAL")):
+        if frame in id3:
+            n, _, t = str(id3[frame].text[0]).partition("/")
+            out[num] = [n]
+            if t:
+                out[tot] = [t]
+    return out
 
 
 def _write_flac(path: str, tags: Tags, cover) -> None:

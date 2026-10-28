@@ -106,8 +106,36 @@ def _load():
         lib.sacdconv_area_run.restype = ctypes.c_int
         lib.sacdconv_has_flac.restype = ctypes.c_int
         lib.sacdconv_build_info.restype = ctypes.c_char_p
+        _check_abi(lib, path)
         _lib = lib
     return _lib
+
+
+ABI = 1    # SACDCONV_ABI in csrc/sacdconv.c
+
+
+def _layout(struct) -> list[int]:
+    return [ctypes.sizeof(struct)] + [getattr(struct, name).offset for name, _ in struct._fields_]
+
+
+def _check_abi(lib, path) -> None:
+    """Refuse an engine built from different struct definitions than the ctypes mirrors here:
+    a mismatch would make the engine read and write the wrong fields."""
+    try:
+        abi = lib.sacdconv_abi()
+    except AttributeError:
+        abi = 0
+    if abi != ABI:
+        raise NativeError(f"{path} has engine ABI {abi}, this pysacd needs {ABI}; rebuild it (make clean all)")
+    lib.sacdconv_layout.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_uint32), ctypes.c_int]
+    for which, struct in ((0, _Area), (1, _Output)):
+        want = _layout(struct)
+        buf = (ctypes.c_uint32 * 64)()
+        n = lib.sacdconv_layout(which, buf, 64)
+        got = list(buf[:min(n, 64)])
+        if got != want:
+            raise NativeError(f"{path}: {struct.__name__} layout differs from the engine's "
+                              f"(engine {got}, pysacd {want}); rebuild it (make clean all)")
 
 
 def has_flac() -> bool:

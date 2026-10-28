@@ -33,8 +33,10 @@ import socketserver
 import threading
 import time
 from collections.abc import Sequence
+from pathlib import Path
 from typing import BinaryIO, cast
 
+from . import safeio
 from .toc import MASTER_TOC_LEN, SECTOR_SIZE, START_OF_MASTER_TOC, SACDError, SACDImage
 
 DEFAULT_PORT = 2002
@@ -405,8 +407,9 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
         log.warning("fetch ranges clamped to the disc's %d sectors: %r -> %r", total, asked, ranges)
     todo = sum(e - s for s, e in ranges)
     done = failures = 0
+    tmp = safeio.temp_name(path)    # written under a new, unpredictable name; moved into place at the end
     try:
-        with open(path, "wb") as out:
+        with os.fdopen(safeio.create(tmp), "wb") as out:
             out.truncate(total * SECTOR_SIZE)
             for start, end in ranges:
                 lsn = start
@@ -434,6 +437,10 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
                     done += n
                     if progress:
                         progress(done, todo)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
     finally:
         disc.close()
     return total
@@ -451,18 +458,11 @@ def read_remote_toc(host: str, port: int):
 def fetch_temp(host: str, port: int, workdir: str | os.PathLike, want_area, progress=None):
     """Fetch what's needed to convert the areas selected by `want_area(area)` into a temporary
     sparse ISO in `workdir`. Returns (path, Disc); the caller deletes the file."""
-    import tempfile
-
     disc, total = read_remote_toc(host, port)
     areas = [a for a in disc.areas if want_area(a)]
     os.makedirs(workdir, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".pysacd-remote-", suffix=".iso", dir=workdir)
-    os.close(fd)
-    try:
-        fetch(host, port, tmp, needed_ranges(disc, total, areas), progress=progress)
-    except BaseException:
-        os.unlink(tmp)
-        raise
+    tmp = str(safeio.temp_name(Path(workdir) / "remote.iso"))
+    fetch(host, port, tmp, needed_ranges(disc, total, areas), progress=progress)    # removes it on failure
     return tmp, disc
 
 

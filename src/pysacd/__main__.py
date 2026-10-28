@@ -120,10 +120,20 @@ def _convert(args) -> int:
 
 
 def _ps3sim(args) -> int:
-    from .remote import PS3Simulator
+    import ipaddress
 
+    from .remote import PS3Simulator
+    try:
+        loopback = ipaddress.ip_address(args.host).is_loopback
+    except ValueError:
+        loopback = args.host == "localhost"
+    if not loopback:
+        print(f"warning: listening on {args.host}: anyone who can reach this port can read {args.image}. "
+              "The protocol has no authentication or encryption; use only on a trusted network.",
+              file=sys.stderr)
     sim = PS3Simulator(args.image, args.host, args.port, rate=args.rate * 1e6, latency=args.latency / 1000,
                        drop_after=args.drop_after, fail_lsn=args.fail_lsn, no_disc=args.no_disc,
+                       idle_timeout=args.idle_timeout,
                        log=lambda m: print(m, file=sys.stderr, flush=True))
     host, port = sim.address[0], sim.address[1]
     print(f"serving {args.image} as a SACD Ripper server on {host!s}:{port} (Ctrl-C to stop)", file=sys.stderr)
@@ -195,13 +205,16 @@ def main(argv: list[str] | None = None) -> int:
         description="Serve an already-decrypted SACD ISO over the SACD Ripper network protocol, "
                     "so `sacd_extract -i HOST:PORT` or pysacd can be tested without a PS3.")
     s.add_argument("image")
-    s.add_argument("--host", default="0.0.0.0", help="listen address (default 0.0.0.0)")
+    s.add_argument("--host", default="127.0.0.1",
+                   help="listen address (default 127.0.0.1; use 0.0.0.0 only on a trusted network)")
     s.add_argument("--port", type=int, default=2002, help="listen port (default 2002, as on the PS3)")
     s.add_argument("--rate", type=float, default=0, help="throttle to this many MB/s (0 = unlimited)")
     s.add_argument("--latency", type=float, default=0, help="delay each request by this many ms")
     s.add_argument("--drop-after", type=int, default=0, help="close the connection after N reads")
     s.add_argument("--fail-lsn", type=int, help="make reads covering this LSN fail (result -1)")
     s.add_argument("--no-disc", action="store_true", help="fail DISC_OPEN, as with an empty drive")
+    s.add_argument("--idle-timeout", type=float, default=60.0,
+                   help="close a connection idle for this many seconds (default 60; 0 = never)")
     s.set_defaults(func=_ps3sim)
 
     args = ap.parse_args(argv)

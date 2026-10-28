@@ -342,7 +342,8 @@ The library:
 
 - `RemoteDisc(host, port)`: a disc on a PS3 as a seekable file object, usable
   with `SACDImage` and `read_toc()`.
-- `pysacd ps3sim disc.iso [--port 2002]`: a server that behaves like the PS3,
+- `pysacd ps3sim disc.iso [--port 2002]`: a server that behaves like the PS3
+  (listening on 127.0.0.1 unless `--host` is given),
   for testing clients without one. It serves an already-decrypted ISO and copies
   the PS3's read sizes and area-boundary cuts. `--rate`, `--latency`,
   `--drop-after`, `--fail-lsn` and `--no-disc` simulate slow drives and failures.

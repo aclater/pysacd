@@ -16,6 +16,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* printf-style checking: MinGW's plain "printf" means Microsoft's rules (no %zu) */
+#if defined(__MINGW32__)
+#define SC_PRINTF gnu_printf
+#else
+#define SC_PRINTF printf
+#endif
+
 #ifdef _WIN32
 
 #ifndef WIN32_LEAN_AND_MEAN

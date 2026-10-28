@@ -29,9 +29,9 @@ import io
 import os
 import socket
 import socketserver
-import struct
 import threading
 import time
+from collections.abc import Sequence
 
 from .toc import SECTOR_SIZE, SACDError, SACDImage
 
@@ -69,7 +69,7 @@ def _signed64(n: int) -> int:
     return n - (1 << 64) if n >= 1 << 63 else n
 
 
-def encode_message(fields: list[tuple[int, int | bytes]]) -> bytes:
+def encode_message(fields: Sequence[tuple[int, int | bytes]]) -> bytes:
     """Encode (field number, value) pairs - ints as varints, bytes as length-delimited - plus the 0 terminator."""
     out = bytearray()
     for num, val in fields:
@@ -165,8 +165,11 @@ class PS3Client:
         except (EOFError, OSError) as e:
             raise RemoteError(f"{self.address}: {e}") from e
         if resp.get(1) != want:
-            raise RemoteError(f"{self.address}: unexpected response type {resp.get(1)} (wanted {want})")
-        resp[2] = _signed64(resp.get(2, 0))
+            raise RemoteError(f"{self.address}: unexpected response type {resp.get(1)!r} (wanted {want})")
+        result = resp.get(2, 0)
+        if not isinstance(result, int):
+            raise RemoteError(f"{self.address}: malformed result field")
+        resp[2] = _signed64(result)
         return resp
 
     def open(self) -> None:
@@ -305,7 +308,7 @@ class PS3Simulator:
     def serve_forever(self) -> None:
         self._server.serve_forever()
 
-    def start(self) -> "PS3Simulator":
+    def start(self) -> PS3Simulator:
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
         return self
@@ -314,7 +317,7 @@ class PS3Simulator:
         self._server.shutdown()
         self._server.server_close()
 
-    def __enter__(self) -> "PS3Simulator":
+    def __enter__(self) -> PS3Simulator:  # noqa: PYI034 (Self needs Python 3.11)
         return self.start()
 
     def __exit__(self, *exc) -> None:

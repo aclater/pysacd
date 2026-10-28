@@ -101,8 +101,8 @@ def _ps3sim(args) -> int:
     sim = PS3Simulator(args.image, args.host, args.port, rate=args.rate * 1e6, latency=args.latency / 1000,
                        drop_after=args.drop_after, fail_lsn=args.fail_lsn, no_disc=args.no_disc,
                        log=lambda m: print(m, file=sys.stderr, flush=True))
-    host, port = sim.address
-    print(f"serving {args.image} as a SACD Ripper server on {host}:{port} (Ctrl-C to stop)", file=sys.stderr)
+    host, port = sim.address[0], sim.address[1]
+    print(f"serving {args.image} as a SACD Ripper server on {host!s}:{port} (Ctrl-C to stop)", file=sys.stderr)
     try:
         sim.serve_forever()
     except KeyboardInterrupt:

@@ -13,12 +13,22 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
-from test_toc import make_image  # noqa: E402
+from test_toc import make_image
 
-from pysacd import read_toc  # noqa: E402
-from pysacd.remote import (  # noqa: E402
-    MAX_BLOCK, REQ_READ, RESP_READ, PS3Client, PS3Simulator, RemoteDisc, RemoteError,
-    decode_message, encode_message, parse_address, _Reader, _signed64,
+from pysacd import read_toc
+from pysacd.remote import (
+    MAX_BLOCK,
+    REQ_READ,
+    RESP_READ,
+    PS3Client,
+    PS3Simulator,
+    RemoteDisc,
+    RemoteError,
+    _Reader,
+    _signed64,
+    decode_message,
+    encode_message,
+    parse_address,
 )
 
 S = 2048
@@ -47,6 +57,7 @@ class Codec(unittest.TestCase):
 
     def test_hostile_lengths_rejected(self):
         import socket
+
         from pysacd.remote import MAX_FIELD, _varint
         a, b = socket.socketpair()
         a.sendall(_varint(3 << 3 | 2) + _varint(MAX_FIELD + 1))      # huge bytes field
@@ -111,9 +122,8 @@ class Simulator(unittest.TestCase):
             with self.assertRaises(RemoteError):
                 c.read(650, 100)
             c.close()
-        with self.sim(no_disc=True) as s:
-            with self.assertRaises(RemoteError):
-                RemoteDisc(*s.address)
+        with self.sim(no_disc=True) as s, self.assertRaises(RemoteError):
+            RemoteDisc(*s.address)
         with self.sim(drop_after=1) as s:
             c = PS3Client(*s.address)
             c.open()

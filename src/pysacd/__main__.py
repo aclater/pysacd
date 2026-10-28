@@ -84,6 +84,10 @@ def _bool(ap, name, help):
 
 def _convert(args) -> int:
     from .convert import CONFIG_PATH, Options, convert
+    from .rootcheck import refuse_root
+
+    if refuse_root("pysacd convert", args.allow_root):
+        return 2
 
     try:
         opts = Options.from_config(Path(args.config) if args.config else CONFIG_PATH)
@@ -197,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--id3-version", type=int, choices=[3, 4], help="ID3 version for DSF/WAV (default 3)")
     _bool(c, "portable-names", "replace characters invalid on Windows/SMB (default off)")
     _bool(c, "overwrite", "overwrite existing files (default: skip)")
+    c.add_argument("--allow-root", action="store_true",
+                   help="run even as root (not recommended: disc images are untrusted; see docs/security.md)")
     c.add_argument("-n", "--dry-run", action="store_true", default=None, help="show match and paths only")
     c.set_defaults(func=_convert)
 

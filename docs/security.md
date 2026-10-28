@@ -58,6 +58,18 @@ U+FF0F) are ordinary characters on every filesystem, so they can only make a nam
 nested; they can't nest it. With `--portable-names`, trailing spaces and dots are removed and Windows
 device names (`CON`, `NUL`, `COM1`, `COM¹`, …, with any extension) get a leading `_`.
 
+## Running as root
+
+The engine parses attacker-controlled images, and an image that exploited a bug in it would
+run with the privileges of whoever ran pysacd. As root, that's the whole machine.
+
+- `pysacd convert` refuses to run as root. `--allow-root` overrides that, with a warning.
+- `pysacd-extract` only warns, with one line on stderr and in the log. It is a drop-in for
+  `sacd_extract`, which runs as root, and `sudo` is a common way to read `/dev/sr0`.
+  Refusing would break scripts that work with `sacd_extract`.
+
+Neither replaces a sandbox; see #17 for the opt-in isolated mode.
+
 ## PS3 network protocol
 
 The SACD Ripper protocol (`docs/ps3-protocol.md`) has **no authentication and no encryption**.

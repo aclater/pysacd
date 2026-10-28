@@ -35,7 +35,7 @@ import time
 from collections.abc import Sequence
 from typing import BinaryIO, cast
 
-from .toc import SECTOR_SIZE, SACDError, SACDImage
+from .toc import MASTER_TOC_LEN, SECTOR_SIZE, START_OF_MASTER_TOC, SACDError, SACDImage
 
 DEFAULT_PORT = 2002
 MAX_BLOCK = 512                 # MAX_PROCESSING_BLOCK_SIZE in sacd-ripper's scarletbook.h
@@ -96,9 +96,14 @@ class _Reader:
     def __init__(self, sock: socket.socket):
         self.sock = sock
         self.buf = bytearray()
+        # Monotonic time by which the current message must have arrived. The socket timeout
+        # bounds each recv(); this stops a server trickling a message a byte at a time.
+        self.deadline: float | None = None
 
     def take(self, n: int) -> bytes:
         while len(self.buf) < n:
+            if self.deadline is not None and time.monotonic() > self.deadline:
+                raise TimeoutError("response not complete before the deadline")
             chunk = self.sock.recv(max(65536, n - len(self.buf)))
             if not chunk:
                 raise EOFError("connection closed")
@@ -184,7 +189,11 @@ class PS3Client:
         t0 = time.monotonic()
         try:
             self.sock.sendall(encode_message([(1, req_type), (2, offset), (3, count)]))
-            resp = decode_message(self.reader)
+            self.reader.deadline = t0 + self.timeout
+            try:
+                resp = decode_message(self.reader)
+            finally:
+                self.reader.deadline = None
         except TimeoutError as e:
             fail("%s(offset=%d, count=%d): no response within %.0f s", name, offset, count, self.timeout)
             raise RemoteError(f"{self.address}: {name} timed out after {self.timeout:.0f} s") from e
@@ -297,7 +306,12 @@ class RemoteDisc(io.RawIOBase):
         # A fresh server session starts with block size 0, and on a single-area disc nothing
         # sets it for reads after the audio area (they return 0 sectors). Reading one sector
         # before the first area primes it, as sacd_extract's own TOC reads do.
-        self.client.read_some(0, 1)
+        # The master TOC lies before the first area, so reading it primes the block size too,
+        # and fetch() compares it on reconnect to make sure it's still the same disc.
+        if self.sectors >= START_OF_MASTER_TOC + MASTER_TOC_LEN:
+            self.master_toc = self.client.read(START_OF_MASTER_TOC, MASTER_TOC_LEN)
+        else:
+            self.master_toc = self.client.read_some(0, 1)
         self._pos = 0
         self._readahead = readahead
         self._cache_lsn = -1
@@ -383,6 +397,8 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
     """
     disc = RemoteDisc(host, port)
     total = disc.sectors
+    # Size plus the master TOC: another pressing of the same album can share the size.
+    ident = (total, disc.master_toc)
     asked = ranges or [(0, total)]
     ranges = [(max(0, s), min(e, total)) for s, e in asked if min(e, total) > max(0, s)]
     if ranges != asked:
@@ -406,6 +422,10 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
                         disc.close()
                         time.sleep(min(backoff * 2 ** (failures - 1), 10))
                         disc = RemoteDisc(host, port)
+                        if (disc.sectors, disc.master_toc) != ident:     # a different disc: don't splice it into this one
+                            log.error("the disc changed on reconnect (size %d -> %d sectors, or a different "
+                                      "master TOC)", total, disc.sectors)
+                            raise RemoteError(f"{host}:{port}: the disc changed during the copy")
                         continue
                     failures = 0
                     out.seek(lsn * SECTOR_SIZE)

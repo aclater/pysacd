@@ -11,6 +11,18 @@
 #include "dsp.h"
 
 /*
+ * Portable builds (no -march) would run the filters with SSE2 only. With
+ * SC_DISPATCH, GCC compiles dsd2pcm_frame (and the filters inlined into it)
+ * for AVX-512, AVX2+FMA and the baseline, and picks one at load time from the
+ * CPU (an ifunc), so a wheel runs as fast as a native build (#21).
+ */
+#if defined(SC_DISPATCH) && defined(__GNUC__) && !defined(__clang__) && defined(__x86_64__) && defined(__ELF__)
+#define SC_CLONES __attribute__((target_clones("arch=x86-64-v4", "arch=x86-64-v3", "default")))
+#else
+#define SC_CLONES
+#endif
+
+/*
  * Three linear-phase Kaiser-windowed FIR stages:
  *   1. 2.8224 MHz -> 352.8 kHz (/8), byte-wise lookup tables
  *   2. 352.8 kHz  -> 176.4 kHz (/2), pass <60 kHz, stop >88.2 kHz
@@ -68,8 +80,8 @@ static void fir2_free(fir2_t *f)
     free(f->buf);
 }
 
-/* n even; writes n/2 outputs */
-static void fir2_run(fir2_t *f, const float *in, int n, float *out)
+/* n even; writes n/2 outputs. Inlined, so each clone of dsd2pcm_frame vectorises it for its CPU. */
+static inline __attribute__((always_inline)) void fir2_run(fir2_t *f, const float *in, int n, float *out)
 {
     int hist = f->ntaps - 1;
     memcpy(f->buf + hist, in, sizeof(float) * n);
@@ -136,7 +148,7 @@ void dsd2pcm_free(dsd2pcm_t *d)
 }
 
 /* One SACD frame (interleaved MSB-first bytes) -> out[c][0..out_per_frame) */
-void dsd2pcm_frame(dsd2pcm_t *d, const uint8_t *frame)
+SC_CLONES void dsd2pcm_frame(dsd2pcm_t *d, const uint8_t *frame)
 {
     int ch = d->channels;
     for (int c = 0; c < ch; c++) {

@@ -35,15 +35,30 @@ def _user_agent(contact: str | None) -> str:
     return f"pysacd/{__version__} ( {contact or 'https://musicbrainz.org/doc/MusicBrainz_API'} )"
 
 
-def _get(url: str, contact: str | None, accept: str = "application/json", retries: int = 5) -> tuple[bytes, str]:
+def set_server(base: str) -> None:
+    """Use another MusicBrainz server, e.g. https://test.musicbrainz.org for trying submissions."""
+    global API
+    u = urllib.parse.urlsplit(base)
+    if u.scheme != "https" or not u.hostname:
+        raise MBError(f"MusicBrainz server must be an https:// URL: {base!r}")
+    API = f"https://{u.netloc}/ws/2"
+
+
+def _throttle(url: str) -> None:
+    """MusicBrainz allows about one request per second per client."""
     global _last_request
+    host = urllib.parse.urlsplit(url).hostname or ""
+    with _lock:
+        wait = _last_request + 1.1 - time.monotonic()
+        if wait > 0 and (host == "musicbrainz.org" or host.endswith(".musicbrainz.org")):
+            time.sleep(wait)
+        _last_request = time.monotonic()
+
+
+def _get(url: str, contact: str | None, accept: str = "application/json", retries: int = 5) -> tuple[bytes, str]:
     req = urllib.request.Request(url, headers={"User-Agent": _user_agent(contact), "Accept": accept})
     for attempt in range(retries):
-        with _lock:  # MusicBrainz allows ~1 request/second
-            wait = _last_request + 1.1 - time.monotonic()
-            if wait > 0 and urllib.parse.urlsplit(url).hostname == "musicbrainz.org":
-                time.sleep(wait)
-            _last_request = time.monotonic()
+        _throttle(url)
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 return r.read(), r.headers.get_content_type()

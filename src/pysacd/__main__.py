@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import getpass
 import json
 import sys
 from pathlib import Path
@@ -75,6 +76,53 @@ def _toc(args) -> int:
         json.dump(out if len(out) != 1 else out[0], sys.stdout, ensure_ascii=False, indent=2)
         print()
     return rc
+
+
+def _submit_isrcs(args) -> int:
+    from . import isrcsubmit, musicbrainz, remote
+    try:
+        if args.mb_server:
+            musicbrainz.set_server(args.mb_server)
+        addr = remote.parse_address(args.image)
+        disc = remote.read_remote_toc(*addr)[0] if addr else read_toc(args.image)
+    except (OSError, SACDError, musicbrainz.MBError) as e:
+        print(f"{args.image}: {e}", file=sys.stderr)
+        return 1
+    areas = [a for a in (disc.stereo, disc.multichannel) if a is not None
+             and (args.area == "both" or (args.area == "multichannel") == a.is_multichannel)]
+    rc = 0
+    for area in areas:
+        if not any(t.isrc for t in area.tracks):
+            print(f"{area.speaker_config}: the disc has no ISRCs")
+            continue
+        try:
+            match = musicbrainz.find_release(disc, area, args.mb_contact, args.mb_release, text_search=False)
+            if match is None:
+                print(f"{area.speaker_config}: no confident MusicBrainz match (try --mb-release)", file=sys.stderr)
+                rc = 1
+                continue
+            isrcsubmit.offer(match, area, args.mb_contact, dry_run=args.dry_run, yes=args.yes, user=args.mb_user)
+        except musicbrainz.MBError as e:
+            print(f"{area.speaker_config}: {e}", file=sys.stderr)
+            rc = 1
+    return rc
+
+
+def _mb_login(args) -> int:
+    from . import isrcsubmit, musicbrainz
+    try:
+        if args.mb_server:
+            musicbrainz.set_server(args.mb_server)
+        print("Open this URL, allow pysacd to submit ISRCs, then paste the code it shows:\n\n  "
+              + isrcsubmit.authorize_url(args.client_id) + "\n")
+        code = input("code: ")
+        secret = args.client_secret or getpass.getpass("client secret: ")
+        isrcsubmit.finish_login(args.client_id, secret, code, args.mb_contact)
+        print(f"saved the token to {isrcsubmit.TOKEN_FILE} (readable only by you)")
+    except (OSError, musicbrainz.MBError) as e:
+        print(f"mb-login: {e}", file=sys.stderr)
+        return 1
+    return 0
 
 
 class _Version(argparse.Action):
@@ -207,6 +255,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--mb-release", help="use this MusicBrainz release id")
     _bool(c, "mb-text-search", "fall back to title/artist search when barcode/catalog fail (default off)")
     c.add_argument("--mb-contact", help="contact (URL or e-mail) for the MusicBrainz User-Agent")
+    _bool(c, "submit-isrcs", "offer the disc's ISRCs to the matched MusicBrainz release; asks first, needs `pysacd mb-login` (default off)")
     _bool(c, "cover", "embed front cover from the Cover Art Archive (default on)")
     c.add_argument("--cover-size", choices=["250", "500", "1200", "full"], help="cover size (default 1200)")
     c.add_argument("--cover-file", help="save cover as this file in the album dir ('' to skip)")
@@ -217,6 +266,32 @@ def main(argv: list[str] | None = None) -> int:
                    help="run even as root (not recommended: disc images are untrusted; see docs/security.md)")
     c.add_argument("-n", "--dry-run", action="store_true", default=None, help="show match and paths only")
     c.set_defaults(func=_convert)
+
+    i = sub.add_parser(
+        "submit-isrcs", help="add the disc's ISRCs to its MusicBrainz release (asks first)",
+        description="Submit the ISRCs in a disc's TOC to the matching MusicBrainz release. Only a barcode, "
+                    "catalog-number or --mb-release match is used; ISRCs already on another recording are "
+                    "skipped. Sign in once with `pysacd mb-login`, or use --mb-user (HTTP digest).")
+    i.add_argument("image", help="ISO image or PS3 address (host:port)")
+    i.add_argument("--area", choices=["stereo", "multichannel", "both"], default="both")
+    i.add_argument("--mb-release", help="use this MusicBrainz release id")
+    i.add_argument("--mb-contact", help="contact (URL or e-mail) for the MusicBrainz User-Agent")
+    i.add_argument("--mb-server", help="another MusicBrainz server, e.g. https://test.musicbrainz.org")
+    i.add_argument("--mb-user", help="MusicBrainz user name for digest auth (password asked, never stored)")
+    i.add_argument("-n", "--dry-run", action="store_true", help="show what would be submitted")
+    i.add_argument("-y", "--yes", action="store_true", help="submit without asking")
+    i.set_defaults(func=_submit_isrcs)
+
+    g = sub.add_parser(
+        "mb-login", help="sign in to MusicBrainz (OAuth) for ISRC submission",
+        description="Out-of-band OAuth2 sign-in with the submit_isrc scope. Register an application at "
+                    "https://musicbrainz.org/account/applications (type: installed) to get a client id and "
+                    "secret. The token is saved owner-only under ~/.config/pysacd/.")
+    g.add_argument("--client-id", required=True)
+    g.add_argument("--client-secret", help="asked for if not given")
+    g.add_argument("--mb-contact", help="contact (URL or e-mail) for the MusicBrainz User-Agent")
+    g.add_argument("--mb-server", help="another MusicBrainz server, e.g. https://test.musicbrainz.org")
+    g.set_defaults(func=_mb_login)
 
     s = sub.add_parser(
         "ps3sim", help="serve an ISO like a PS3 running SACD Ripper (for testing network clients)",

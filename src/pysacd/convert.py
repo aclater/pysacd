@@ -67,8 +67,9 @@ class _Blank(dict):
 
 
 _UNSAFE = re.compile(r'[<>:"\\|?*\x00-\x1f]')
-# Windows device names, reserved with any extension ("CON", "nul.txt", "COM1 - x" is fine)
-_RESERVED = re.compile(r"(?i)^(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(\..*)?$")
+# Windows device names, reserved with any extension and with trailing spaces or dots, which
+# Windows ignores ("CON", "nul.txt", "CON .", "COM¹"; "COM10" and "COM1 - x" are fine)
+_RESERVED = re.compile(r"(?i)^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])[ .]*(\..*)?$")
 
 
 def _clean_component(s: str, portable: bool) -> str:
@@ -82,8 +83,10 @@ def _clean_component(s: str, portable: bool) -> str:
     s = s.lstrip(".") or "_"
     while len(s.encode()) > 240:
         s = s[:-1]
-    if portable and _RESERVED.match(s):
-        s = "_" + s
+    if portable:
+        s = s.rstrip(" .") or "_"       # Windows drops trailing spaces and dots
+        if _RESERVED.match(s):
+            s = "_" + s
     return s
 
 

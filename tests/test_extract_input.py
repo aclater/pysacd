@@ -72,6 +72,8 @@ class ExtractInputs(unittest.TestCase):
     def test_unwritable_output_fails_cleanly(self):
         # An output that can't be created (read-only directory, full disk) used to crash the
         # engine: out_close finished it through a NULL FILE*.
+        if os.name != "posix":
+            self.skipTest("POSIX directory permissions")
         if os.geteuid() == 0:
             self.skipTest("root ignores directory permissions")
         for args in (["-s"], ["-s", "-z"], ["-p"], ["-e"]):
@@ -237,6 +239,7 @@ class LogSafety(unittest.TestCase):
         self.assertNotIn("\x1b", text)
         self.assertNotIn("\nFAKE", text)
 
+    @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), "no O_NOFOLLOW on this platform")
     def test_symlinked_log_path_refused(self):
         from pysacd import log as pslog
         target = self.dir / "target"

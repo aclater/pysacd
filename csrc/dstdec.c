@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "compat.h"
 #include "dstdec.h"
 
 #define DST_MAX_CHANNELS 6
@@ -333,10 +334,9 @@ dst_decoder_t *dst_decoder_new(int channels)
 {
     if (channels < 1 || channels > DST_MAX_CHANNELS)
         return NULL;
-    void *mem = NULL;
-    if (posix_memalign(&mem, 64, sizeof(dst_decoder_t)) != 0)
+    dst_decoder_t *s = sc_aligned_alloc(64, sizeof(dst_decoder_t));
+    if (!s)
         return NULL;
-    dst_decoder_t *s = mem;
     memset(s, 0, sizeof(*s));
     s->channels = channels;
     for (int i = 0; i < 256; i++) {
@@ -351,7 +351,7 @@ dst_decoder_t *dst_decoder_new(int channels)
 
 void dst_decoder_free(dst_decoder_t *s)
 {
-    free(s);
+    sc_aligned_free(s);
 }
 
 /* 0 to 11 code bits at `index`, for the branch-free renormalisation (n = 0 gives 0);

@@ -76,6 +76,7 @@ _RESERVED = re.compile(r"(?i)^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])[ .
 def _clean_component(s: str, portable: bool) -> str:
     # Disc and MusicBrainz text is untrusted: no control/bidi characters, no command
     # substitution, pipes or redirection, no leading '-' or '.' (docs/security.md).
+    portable = portable or sys.platform == "win32"     # Windows can't create the others at all
     s = safetext.name_component(s)
     if portable:
         s = _UNSAFE.sub("_", s)

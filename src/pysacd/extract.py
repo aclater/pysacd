@@ -21,6 +21,7 @@ from pathlib import Path
 
 from . import __version__, _native, remote, safetext, sbcompat
 from . import log as pslog
+from .rootcheck import warn_root
 from .toc import START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage
 
 FRAME_BYTES = 4704
@@ -499,6 +500,8 @@ def _hint_log() -> None:
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     o = parse_args(args)
+    # sacd_extract runs as root (sudo for /dev/sr0), so the drop-in only warns (#17)
+    warn_root("pysacd-extract")
     say(f"\nsacd_extract compatible client: pysacd {__version__}")
     say(f"\nCurrent (working) directory (for the app and 'sacd_extract.cfg' file): {os.getcwd()}")
     has_cfg = o.use_cfg and read_cfg(o)

@@ -26,6 +26,7 @@ side in `src/server.c`:
 from __future__ import annotations
 
 import io
+import logging
 import os
 import socket
 import socketserver
@@ -45,6 +46,10 @@ MAX_FIELDS = 16                                 # the protocol's messages have 3
 
 REQ_OPEN, REQ_CLOSE, REQ_READ, REQ_SIZE = 1, 2, 3, 4
 RESP_OPENED, RESP_CLOSED, RESP_READ, RESP_SIZE = 1, 2, 3, 4
+
+
+log = logging.getLogger("pysacd.remote")
+_REQ_NAMES = {1: "DISC_OPEN", 2: "DISC_CLOSE", 3: "DISC_READ", 4: "DISC_SIZE"}
 
 
 class RemoteError(SACDError):
@@ -150,25 +155,52 @@ class PS3Client:
     """Talks to a SACD Ripper server (a PS3, or PS3Simulator)."""
 
     def __init__(self, host: str, port: int = DEFAULT_PORT, timeout: float = 60.0):
+        self.address = f"{host}:{port}"
+        self.timeout = timeout
+        # Addresses only at debug level: logs get pasted into issues
+        log.debug("connecting to %s (timeout %.0f s)", self.address, timeout)
+        t0 = time.monotonic()
         try:
             self.sock = socket.create_connection((host, port), timeout=timeout)
         except OSError as e:
+            log.error("cannot connect to the server after %.1f s: %s", time.monotonic() - t0, e)
             raise RemoteError(f"cannot connect to {host}:{port}: {e}") from e
         self.sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        log.info("connected to the server in %.0f ms", (time.monotonic() - t0) * 1e3)
         self.reader = _Reader(self.sock)
-        self.address = f"{host}:{port}"
         self._open = False
+        self.requests = self.bytes_read = 0
+        self.busy = 0.0                 # seconds spent waiting for responses
+        self._started = time.monotonic()
 
-    def _call(self, req_type: int, offset: int = 0, count: int = 0, want: int = 0) -> dict:
+    def _call(self, req_type: int, offset: int = 0, count: int = 0, want: int = 0, quiet: bool = False) -> dict:
+        name = _REQ_NAMES.get(req_type, str(req_type))
+        fail = log.debug if quiet else log.error
+        t0 = time.monotonic()
         try:
             self.sock.sendall(encode_message([(1, req_type), (2, offset), (3, count)]))
             resp = decode_message(self.reader)
+        except TimeoutError as e:
+            fail("%s(offset=%d, count=%d): no response within %.0f s", name, offset, count, self.timeout)
+            raise RemoteError(f"{self.address}: {name} timed out after {self.timeout:.0f} s") from e
         except (EOFError, OSError) as e:
-            raise RemoteError(f"{self.address}: {e}") from e
-        if resp.get(1) != want:
-            raise RemoteError(f"{self.address}: unexpected response type {resp.get(1)!r} (wanted {want})")
+            fail("%s(offset=%d, count=%d) failed after %.0f ms: %r", name, offset, count,
+                 (time.monotonic() - t0) * 1e3, e)
+            raise RemoteError(f"{self.address}: {name}: {e or type(e).__name__}") from e
+        elapsed = time.monotonic() - t0
+        self.requests += 1
+        self.busy += elapsed
+        data = resp.get(3, b"")
         result = resp.get(2, 0)
+        log.debug("%s(offset=%d, count=%d) -> type %r result %r, %d data bytes, %.1f ms", name, offset, count,
+                  resp.get(1), _signed64(result) if isinstance(result, int) else result,
+                  len(data) if isinstance(data, bytes) else 0, elapsed * 1e3)
+        if resp.get(1) != want:
+            log.error("%s: unexpected response (wanted type %d): %r", name, want,
+                      {k: (v if not isinstance(v, bytes) else f"<{len(v)} bytes>") for k, v in resp.items()})
+            raise RemoteError(f"{self.address}: unexpected response type {resp.get(1)!r} (wanted {want})")
         if not isinstance(result, int):
+            log.error("%s: malformed result field", name)
             raise RemoteError(f"{self.address}: malformed result field")
         resp[2] = _signed64(result)
         return resp
@@ -176,13 +208,17 @@ class PS3Client:
     def open(self) -> None:
         r = self._call(REQ_OPEN, want=RESP_OPENED)
         if r[2] != 0:
+            log.error("disc open/authentication failed (result %d); is a disc in the drive?", r[2])
             raise RemoteError(f"{self.address}: disc open/authentication failed (result {r[2]})")
+        log.info("disc opened")
         self._open = True
 
     def size(self) -> int:
         r = self._call(REQ_SIZE, want=RESP_SIZE)
         if r[2] <= 0:
+            log.error("no disc size (result %d)", r[2])
             raise RemoteError(f"{self.address}: no disc size (result {r[2]})")
+        log.info("disc has %d sectors (%.2f GB)", r[2], r[2] * SECTOR_SIZE / 1e9)
         return r[2]
 
     def read_some(self, lsn: int, count: int) -> bytes:
@@ -190,7 +226,9 @@ class PS3Client:
         r = self._call(REQ_READ, lsn, count, want=RESP_READ)
         got, data = r[2], r.get(3, b"")
         if not 0 < got <= count or len(data) != got * SECTOR_SIZE:
+            log.error("read failed at LSN %d (+%d): result %d, %d data bytes", lsn, count, got, len(data))
             raise RemoteError(f"{self.address}: read failed at LSN {lsn} (result {got}, {len(data)} bytes)")
+        self.bytes_read += len(data)
         return data
 
     def read(self, lsn: int, count: int) -> bytes:
@@ -203,7 +241,11 @@ class PS3Client:
             # The server must return between 1 and `count` sectors: anything else (including
             # over-returning, which would drive `count` negative) is a protocol error.
             if not 0 < got <= count or len(data) != got * SECTOR_SIZE:
+                log.error("read failed at LSN %d (+%d): result %d, %d data bytes", lsn, count, got, len(data))
                 raise RemoteError(f"{self.address}: read failed at LSN {lsn} (result {got}, {len(data)} bytes)")
+            if got < count:
+                log.debug("short read at LSN %d: %d of %d sectors", lsn, got, count)
+            self.bytes_read += len(data)
             out += data
             lsn += got
             count -= got
@@ -212,12 +254,17 @@ class PS3Client:
     def close(self) -> None:
         try:
             if self._open:
-                self._call(REQ_CLOSE, want=RESP_CLOSED)
-        except (RemoteError, OSError):
-            pass
+                self._call(REQ_CLOSE, want=RESP_CLOSED, quiet=True)
+        except (RemoteError, OSError) as e:
+            # Usually follows an earlier failure that was already logged
+            log.info("DISC_CLOSE failed: %s", e)
         finally:
             self._open = False
             self.sock.close()
+            span = time.monotonic() - self._started
+            log.info("connection closed after %.1f s: %d requests, %.1f MB read, %.1f MB/s while waiting on the "
+                     "server", span, self.requests, self.bytes_read / 1e6,
+                     self.bytes_read / 1e6 / self.busy if self.busy else 0.0)
 
 
 class RemoteDisc(io.RawIOBase):

@@ -6,10 +6,11 @@ All multi-byte integers on disc are big-endian; one logical sector is 2048 bytes
 
 from __future__ import annotations
 
+import io
 import os
 import struct
 from dataclasses import dataclass, field
-from typing import BinaryIO, Self
+from typing import BinaryIO, Self, cast
 
 SECTOR_SIZE = 2048
 START_OF_MASTER_TOC = 510
@@ -313,13 +314,13 @@ class SACDImage:
     read_sectors() always returns 2048-byte logical sectors.
     """
 
-    def __init__(self, source: str | os.PathLike | BinaryIO):
+    def __init__(self, source: str | os.PathLike | BinaryIO | io.RawIOBase):
         if isinstance(source, (str, os.PathLike)):
             # Owned for the object's lifetime; closed by close() / __exit__
             self._fh: BinaryIO = open(source, "rb")  # noqa: SIM115
             self._owns = True
         else:
-            self._fh = source
+            self._fh = cast(BinaryIO, source)   # anything with seek/read: files, RemoteDisc
             self._owns = False
         try:
             self.sector_size, self.data_offset = self._detect_layout()

@@ -58,9 +58,11 @@ def _print(disc: Disc, path: str) -> None:
 def _toc(args) -> int:
     rc = 0
     out = []
+    from . import remote
     for path in args.images:
         try:
-            disc = read_toc(path)
+            addr = remote.parse_address(path)
+            disc = remote.read_remote_toc(*addr)[0] if addr else read_toc(path)
         except (OSError, SACDError) as e:
             print(f"{path}: {e}", file=sys.stderr)
             rc = 1
@@ -136,6 +138,9 @@ def _ps3sim(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="pysacd", description="SACD ISO tools")
+    ap.add_argument("--log-file", help="write a diagnostic log here (default level: debug)")
+    ap.add_argument("--log-level", choices=["debug", "info", "warning", "error"],
+                    help="log detail; without --log-file the log goes to stderr")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     t = sub.add_parser("toc", help="print the TOC of SACD ISO images")
@@ -200,6 +205,15 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(func=_ps3sim)
 
     args = ap.parse_args(argv)
+    from . import log as pslog
+    level, path = args.log_level, args.log_file
+    if level is None and path is None:
+        level, path = pslog.from_env()
+    try:
+        pslog.setup(level, path, ["pysacd", *(sys.argv[1:] if argv is None else argv)])
+    except (OSError, ValueError) as e:
+        print(f"logging: {e}", file=sys.stderr)
+        return 2
     return args.func(args)
 
 

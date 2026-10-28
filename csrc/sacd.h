@@ -9,4 +9,7 @@
 #define MAX_FRAME_SIZE      (64 * 1024)
 #define DSD_SILENCE         0x69
 
+/* Log levels, the same numbers as Python's logging module */
+enum { SC_DEBUG = 10, SC_INFO = 20, SC_WARNING = 30, SC_ERROR = 40 };
+
 #endif

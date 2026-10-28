@@ -173,10 +173,11 @@ class Expectations(unittest.TestCase):
         cls.images = {h.name: h.image for h in sacdgen.hostile_corpus()}
 
     def _disc(self, name: str):
-        with tempfile.NamedTemporaryFile(suffix=".iso") as f:
-            f.write(self.images[name])
-            f.flush()
-            return read_toc(f.name)
+        # a directory, not NamedTemporaryFile: Windows can't reopen a file that's still open
+        with tempfile.TemporaryDirectory(prefix="pysacd-hostile") as tmp:
+            iso = Path(tmp) / "in.iso"
+            iso.write_bytes(self.images[name])
+            return read_toc(str(iso))
 
     def _extract(self, name: str, *args: str) -> tuple[int, dict[str, bytes]]:
         """Run pysacd-extract on an image; returns the exit status and {relative path: bytes}."""

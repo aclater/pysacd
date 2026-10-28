@@ -30,7 +30,7 @@ static int on_frame(void *opaque, uint32_t tc, const uint8_t *data, int size, in
 {
     ctx_t *c = opaque;
     (void)tc;
-    if (dst && c->dec)
+    if (dst)
         dst_decode_frame(c->dec, data, size, c->out);
     return ++c->frames >= 64;       /* bound the work per input */
 }
@@ -43,6 +43,11 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     static frame_acc_t acc;         /* 64 KiB: keep it off the stack */
     uint8_t sector[LSN_SIZE];
     ctx_t c = {dst_decoder_new(ch), malloc((size_t)ch * FRAME_BYTES_PER_CH), 0};
+    if (!c.dec || !c.out) {
+        free(c.out);
+        dst_decoder_free(c.dec);
+        return 0;
+    }
     memset(&acc, 0, sizeof(acc));
     for (size_t off = 1; off < size; off += LSN_SIZE) {
         size_t n = size - off < LSN_SIZE ? size - off : LSN_SIZE;

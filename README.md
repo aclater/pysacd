@@ -248,7 +248,9 @@ Every pull request runs:
 - **CodeQL** (Python, C, workflows) and **semgrep**.
 - **A check for private names**, in files and commit identities.
 - **An AI review** from a second model, using PR-Agent. It needs the
-  `GEMINI_API_KEY` repository secret.
+  `GEMINI_API_KEY` repository secret. **This sends each PR's title,
+  description and diff to Google's Gemini API**, a third party, even though
+  the repository is private. Without the secret the workflow sends nothing.
 
 Dependabot keeps the SHA-pinned actions and the Python dev dependencies
 current, with a two-week cooldown. Contributor rules are in

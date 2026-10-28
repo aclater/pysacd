@@ -78,7 +78,9 @@ paths from environment variables and skip without them.
   directly. PRs say `Closes #N`.
 - **Docs always ship with the change** (README, docs/, this file, usage text).
 - **AI review.** The `ai-review` workflow posts a review from a second model
-  on each PR and after each push. Answer every finding (fix it, or reply with
+  on each PR and after each push. It sends the PR's title, description and
+  diff to Google's Gemini API, so never put secrets or private details in a
+  PR. Answer every finding (fix it, or reply with
   why not) before merging. If it hasn't arrived 15 minutes after the last
   push, say so in the PR and merge on green.
 - Commits explain why, one logical change each, and end with the

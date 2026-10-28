@@ -1,6 +1,8 @@
 # AI pull-request review by a model from a different vendor than the one
 # that writes most of the code.  Runs the open-source PR-Agent on a
-# Google AI Studio key (repo secret GEMINI_API_KEY).  Review rules live in
+# Google AI Studio key (repo secret GEMINI_API_KEY).  Each run sends the PR's
+# title, description and diff to Google's Gemini API, a third party, although
+# the repository is private; without the secret nothing is sent.  Review rules live in
 # .pr_agent.toml.  Advisory: it comments, it doesn't gate; CLAUDE.md requires
 # its comments to be answered before merging.
 

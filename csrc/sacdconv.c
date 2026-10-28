@@ -22,6 +22,7 @@
 
 #define _GNU_SOURCE
 #include <errno.h>
+#include <stddef.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdarg.h>
@@ -757,7 +758,11 @@ static int out_open(engine_t *e, sc_output_t *o, out_state_t *st)
             st->pad->length = o->flac_padding;
             FLAC__stream_encoder_set_metadata(enc, &st->pad, 1);
         }
-        FLAC__StreamEncoderInitStatus s = FLAC__stream_encoder_init_file(enc, o->path, NULL, NULL);
+        FILE *f = sc_fopen_update(o->path);
+        if (!f)
+            return out_fail(o, "%s: %s", o->path, strerror(errno));
+        /* the encoder owns f from here and closes it in FLAC__stream_encoder_finish() */
+        FLAC__StreamEncoderInitStatus s = FLAC__stream_encoder_init_FILE(enc, f, NULL, NULL);
         if (s != FLAC__STREAM_ENCODER_INIT_STATUS_OK)
             return out_fail(o, "%s: FLAC init: %s", o->path, FLAC__StreamEncoderInitStatusString[s]);
         return 0;
@@ -1039,6 +1044,54 @@ static int writer_run(engine_t *e)
 }
 
 /* ------------------------------------------------------------ API */
+
+/*
+ * ABI handshake (#14). pysacd/_native.py mirrors sc_area_t and sc_output_t by hand, and
+ * _load() refuses a library whose version, struct sizes or field offsets differ from its
+ * ctypes mirrors. Bump SACDCONV_ABI whenever a struct or an exported signature changes.
+ */
+#define SACDCONV_ABI 1
+
+#define OFF(T, f) (uint32_t)offsetof(T, f)
+static const uint32_t area_layout[] = {
+    sizeof(sc_area_t),
+    OFF(sc_area_t, iso_path), OFF(sc_area_t, sector_size), OFF(sc_area_t, data_offset),
+    OFF(sc_area_t, scan_lsn_start), OFF(sc_area_t, scan_lsn_end), OFF(sc_area_t, channels),
+    OFF(sc_area_t, pcm_rate), OFF(sc_area_t, gain_db), OFF(sc_area_t, threads),
+    OFF(sc_area_t, iso_out_path), OFF(sc_area_t, iso_sectors), OFF(sc_area_t, cancel),
+    OFF(sc_area_t, frames_done), OFF(sc_area_t, frames_total), OFF(sc_area_t, sectors_done),
+    OFF(sc_area_t, sectors_total), OFF(sc_area_t, error), OFF(sc_area_t, read_fn),
+    OFF(sc_area_t, read_ctx), OFF(sc_area_t, log_fn), OFF(sc_area_t, log_ctx), OFF(sc_area_t, log_level),
+};
+static const uint32_t output_layout[] = {
+    sizeof(sc_output_t),
+    OFF(sc_output_t, format), OFF(sc_output_t, path), OFF(sc_output_t, tc_start), OFF(sc_output_t, tc_end),
+    OFF(sc_output_t, head_frame), OFF(sc_output_t, head_bytes), OFF(sc_output_t, tail_bytes),
+    OFF(sc_output_t, header), OFF(sc_output_t, header_len), OFF(sc_output_t, footer),
+    OFF(sc_output_t, footer_len), OFF(sc_output_t, dst_offsets), OFF(sc_output_t, dst_lengths),
+    OFF(sc_output_t, dst_cap), OFF(sc_output_t, flac_level), OFF(sc_output_t, flac_padding),
+    OFF(sc_output_t, frames_written), OFF(sc_output_t, frames_missing), OFF(sc_output_t, dst_errors),
+    OFF(sc_output_t, dst_count), OFF(sc_output_t, samples), OFF(sc_output_t, data_bytes),
+    OFF(sc_output_t, error),
+};
+#undef OFF
+
+int sacdconv_abi(void)
+{
+    return SACDCONV_ABI;
+}
+
+/* which 0: sc_area_t, 1: sc_output_t. Writes up to cap entries (size, then each field's
+ * offset in declaration order) and returns how many there are. */
+int sacdconv_layout(int which, uint32_t *out, int cap)
+{
+    const uint32_t *t = which ? output_layout : area_layout;
+    int n = which ? (int)(sizeof output_layout / sizeof *output_layout)
+                  : (int)(sizeof area_layout / sizeof *area_layout);
+    for (int i = 0; i < n && i < cap; i++)
+        out[i] = t[i];
+    return n;
+}
 
 /* Build details for diagnostic logs */
 const char *sacdconv_build_info(void)

@@ -169,7 +169,7 @@ def _token_request(params: dict, contact: str | None) -> dict:
                                  headers={"User-Agent": musicbrainz._user_agent(contact)})
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
-            tok = json.load(r)
+            tok = json.loads(musicbrainz._read_capped(r, 1 << 20, "OAuth token response"))   # #14
     except urllib.error.HTTPError as e:
         raise musicbrainz.MBError(f"OAuth token request failed: HTTP {e.code}") from None
     if not isinstance(tok, dict) or not isinstance(tok.get("access_token"), str):

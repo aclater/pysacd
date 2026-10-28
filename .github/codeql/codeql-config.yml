@@ -6,3 +6,7 @@ query-filters:
   # which shared music libraries rely on.
   - exclude:
       id: cpp/world-writable-file-creation
+  # The same policy in Python (pysacd.safeio: cue, XML, covers, PS3 fetches; #14). Secrets are
+  # different: the MusicBrainz token and log files are created 0600.
+  - exclude:
+      id: py/overly-permissive-file

@@ -35,6 +35,26 @@ def _user_agent(contact: str | None) -> str:
     return f"pysacd/{__version__} ( {contact or 'https://musicbrainz.org/doc/MusicBrainz_API'} )"
 
 
+MAX_JSON = 8 << 20          # largest MusicBrainz response read (a big release is ~1 MB)
+MAX_COVER = 25 << 20        # largest cover image read ("full" size covers can be ~10 MB)
+_IMAGE_MAGIC = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
+
+
+def _read_capped(r, limit: int, url: str) -> bytes:
+    """The response body, read in chunks; MBError beyond `limit` bytes (#14)."""
+    out = bytearray()
+    while chunk := r.read(min(1 << 16, limit + 1 - len(out))):
+        out += chunk
+        if len(out) > limit:
+            raise MBError(f"{url}: response larger than {limit} bytes")
+    return bytes(out)
+
+
+def image_type(data: bytes) -> str | None:
+    """'image/jpeg' or 'image/png' from the magic bytes, or None (whatever the server said)."""
+    return next((mime for magic, mime in _IMAGE_MAGIC if data.startswith(magic)), None)
+
+
 def set_server(base: str) -> None:
     """Use another MusicBrainz server, e.g. https://test.musicbrainz.org for trying submissions."""
     global API
@@ -55,13 +75,14 @@ def _throttle(url: str) -> None:
         _last_request = time.monotonic()
 
 
-def _get(url: str, contact: str | None, accept: str = "application/json", retries: int = 5) -> tuple[bytes, str]:
+def _get(url: str, contact: str | None, accept: str = "application/json", retries: int = 5,
+         limit: int = MAX_JSON) -> tuple[bytes, str]:
     req = urllib.request.Request(url, headers={"User-Agent": _user_agent(contact), "Accept": accept})
     for attempt in range(retries):
         _throttle(url)
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
-                return r.read(), r.headers.get_content_type()
+                return _read_capped(r, limit, url), r.headers.get_content_type()
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 raise MBError(f"not found: {url}") from None
@@ -229,8 +250,11 @@ def fetch_cover(release: dict, contact: str | None, size: str = "1200") -> tuple
         urls.append(f"{CAA}/release-group/{rg}/{suffix}")
     for url in urls:
         try:
-            data, ctype = _get(url, contact, accept="image/*")
-            return data, ctype
+            data, _ = _get(url, contact, accept="image/*", limit=MAX_COVER)
         except MBError:
             continue
+        # Embed only what is really a JPEG or PNG, whatever the Content-Type says (#14)
+        mime = image_type(data)
+        if mime:
+            return data, mime
     return None

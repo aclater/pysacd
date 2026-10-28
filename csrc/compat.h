@@ -29,6 +29,9 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <fcntl.h>
+#include <io.h>
+#include <sys/stat.h>
 
 typedef HANDLE sc_file_t;
 #define SC_NO_FILE INVALID_HANDLE_VALUE
@@ -81,11 +84,22 @@ static inline void sc_close(sc_file_t f)
     CloseHandle(f);
 }
 
-static inline FILE *sc_fopen_write(const char *path)
+/* A new output file (#14): fails if anything exists at `path`, a symlink included (Windows
+ * has no O_NOFOLLOW, but _O_EXCL refuses any existing name). `update` also opens it for
+ * reading, as libFLAC wants. */
+static inline FILE *sc_fopen_new(const char *path, int update)
 {
     wchar_t *w = sc_widen(path);
-    FILE *fp = w ? _wfopen(w, L"wb") : NULL;
+    if (!w)
+        return NULL;
+    int fd = _wopen(w, (update ? _O_RDWR : _O_WRONLY) | _O_CREAT | _O_EXCL | _O_BINARY | _O_NOINHERIT,
+                    _S_IREAD | _S_IWRITE);
     free(w);
+    if (fd < 0)
+        return NULL;
+    FILE *fp = _fdopen(fd, update ? "w+b" : "wb");
+    if (!fp)
+        _close(fd);
     return fp;
 }
 
@@ -136,9 +150,23 @@ static inline void sc_close(sc_file_t f)
     close(f);
 }
 
-static inline FILE *sc_fopen_write(const char *path)
+/* A new output file (#14, as pysacd.safeio): never an existing file or a symlink. Mode 0666
+ * filtered by the umask, like any user data file (shared libraries rely on umask 002), and
+ * never executable. `update` also opens it for reading, as
+ * libFLAC wants. */
+static inline FILE *sc_fopen_new(const char *path, int update)
 {
-    return fopen(path, "wb");
+    int fd = open(path, (update ? O_RDWR : O_WRONLY) | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0666);
+    if (fd < 0)
+        return NULL;
+    FILE *fp = fdopen(fd, update ? "w+b" : "wb");
+    if (!fp) {
+        int err = errno;
+        close(fd);
+        unlink(path);
+        errno = err;
+    }
+    return fp;
 }
 
 static inline void *sc_aligned_alloc(size_t align, size_t size)
@@ -158,4 +186,14 @@ static inline int sc_ncpus(void)
 }
 
 #endif
+static inline FILE *sc_fopen_write(const char *path)
+{
+    return sc_fopen_new(path, 0);
+}
+
+static inline FILE *sc_fopen_update(const char *path)
+{
+    return sc_fopen_new(path, 1);
+}
+
 #endif

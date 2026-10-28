@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import __version__, _native, remote, safetext, sbcompat
+from . import __version__, _native, remote, safeio, safetext, sbcompat
 from . import log as pslog
 from .rootcheck import warn_root
 from .toc import START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage
@@ -397,7 +397,7 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
         path = Path(sbcompat.make_filename(str(out_dir), name, ext))
         if o.templates:
             path = _template_path(disc, area, first, ext, o, match)
-        tmp = path.with_name(f".{path.name}.partial")
+        tmp = safeio.temp_name(path)
 
         if kind == "dff":
             jobs.append(_dff_job(disc, area, first, path, start, end, dff_dst, o))
@@ -427,7 +427,7 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
 
 
 def _dff_job(disc, area, track, path: Path, start, end, dst: bool, o: Opts) -> Job:
-    tmp = path.with_name(f".{path.name}.partial")
+    tmp = safeio.temp_name(path)
     hsize = sbcompat.dsdiff_header_size(area, dst)
     if dst:
         # sizes and the frame index are only known afterwards; finished in finish_dff()
@@ -748,7 +748,7 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
         out_dir.mkdir(parents=True, exist_ok=True)
         xml = Path(sbcompat.unique_filename(str(out_dir), album_filename, "xml"))
         say(f"\n\n Exporting metadata in XML file: [{xml}] ... ")
-        xml.write_bytes(sbcompat.metadata_xml(disc, raw_catalog=sbcompat.raw_catalog_numbers(img)))
+        safeio.write_file(xml, sbcompat.metadata_xml(disc, raw_catalog=sbcompat.raw_catalog_numbers(img)))
         say("\n\n We are done exporting metadata in XML file. ")
 
     iso_path = None
@@ -785,7 +785,7 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
             cue = Path(sbcompat.unique_filename(str(area_dir), album_filename, "cue"))
             say(f"\n\n Exporting CUE sheet: [{cue}] ... ")
             dff_name = sbcompat.make_filename(None, album_filename, "dff")
-            cue.write_bytes(sbcompat.cue_sheet(disc, area, dff_name))
+            safeio.write_file(cue, sbcompat.cue_sheet(disc, area, dff_name))
             say("\n\n We are done exporting CUE sheet. ")
         if jobs or iso_path:
             rc |= _execute(img, disc, area, jobs, o, iso_path)

@@ -380,7 +380,7 @@ class RemoteCLI(unittest.TestCase):
             def files(root):
                 return sorted(os.path.relpath(os.path.join(r, f), root) for r, _, fs in os.walk(root) for f in fs)
             self.assertEqual(files(net), files(loc))
-            self.assertFalse([f for f in files(net) if ".pysacd-remote-" in f])   # temp removed
+            self.assertFalse([f for f in files(net) if f.endswith(".partial")])   # temp removed
             for rel in files(loc):
                 with open(os.path.join(net, rel), "rb") as a, open(os.path.join(loc, rel), "rb") as b:
                     self.assertEqual(a.read(), b.read(), rel)

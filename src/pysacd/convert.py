@@ -10,7 +10,7 @@ import tomllib
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from . import _native, musicbrainz, safetext, tagging
+from . import _native, musicbrainz, safeio, safetext, tagging
 from .toc import FRAME_RATE, Area, Disc, SACDImage, Track
 
 CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pysacd" / "config.toml"
@@ -335,7 +335,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     for d in dirs:
         d.mkdir(parents=True, exist_ok=True)
         if cover and opts.cover_file and not (d / opts.cover_file).exists():
-            (d / opts.cover_file).write_bytes(cover[0])
+            safeio.write_file(d / opts.cover_file, cover[0])
 
     embed = cover if opts.cover else None
     fmt = opts.format
@@ -346,7 +346,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
             _log(f"  {t.number:2d} exists, skipped: {path.name}")
             skipped += 1
             continue
-        tmp = path.with_name(f".{path.name}.partial")
+        tmp = safeio.temp_name(path)
         spec = _native.OutputSpec(fmt, tmp, t.start.total_frames,
                                   t.start.total_frames + t.duration.total_frames,
                                   flac_level=opts.flac_level)

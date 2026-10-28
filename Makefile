@@ -53,7 +53,7 @@ override CFLAGS += -DHAVE_FLAC_MT
 endif
 endif
 
-SRC := $(addprefix csrc/,sacdconv.c demux.c dsp.c dstdec.c sandbox.c)
+SRC := $(addprefix csrc/,sacdconv.c demux.c dsp.c dstdec.c)
 # BUILD and LIB can be overridden: the wheel build (setup.py) uses a private directory.
 BUILD ?= build
 OBJ := $(patsubst csrc/%.c,$(BUILD)/%.o,$(SRC))

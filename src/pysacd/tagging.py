@@ -6,6 +6,7 @@ for DSF/WAV using Picard's conventions.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -33,10 +34,14 @@ _ID3_TXXX = {
     "RELEASETYPE": "MusicBrainz Album Type",
 }
 
+log = logging.getLogger("pysacd.tagging")
+
 
 def _put(tags: Tags, key: str, *values) -> None:
     # Untrusted text (disc or MusicBrainz): no control, bidi or zero-width characters in tags.
-    vals = [safetext.clean_text(str(v)) for v in values if v is not None and str(v).strip()]
+    # Only strings and numbers: a list or dict from MusicBrainz must not become "['x']" (#47)
+    vals = [safetext.clean_text(str(v)) for v in values
+            if isinstance(v, (str, int, float)) and not isinstance(v, bool) and str(v).strip()]
     vals = [v for v in vals if v]
     if vals:
         tags[key] = vals
@@ -77,7 +82,22 @@ def base_tags(disc: Disc, area: Area, track: Track) -> Tags:
 
 
 def apply_musicbrainz(t: Tags, match: Match, track: Track) -> None:
-    """Overlay MusicBrainz data; SACD-only fields (composer, ISRC...) are kept."""
+    """Overlay MusicBrainz data; SACD-only fields (composer, ISRC...) are kept.
+
+    The release has been validated (musicbrainz.clean_release); if the overlay still fails,
+    the track keeps its disc text (#47)."""
+    new = dict(t)
+    try:
+        _overlay(new, match, track)
+    except (TypeError, KeyError, ValueError, AttributeError, IndexError) as e:
+        log.warning("MusicBrainz data for track %d is malformed (%s: %s); using the disc's text",
+                    track.number, type(e).__name__, e)
+        return
+    t.clear()
+    t.update(new)
+
+
+def _overlay(t: Tags, match: Match, track: Track) -> None:
     rel, med = match.release, match.medium
     mt = med["tracks"][track.number - 1]
     rec = mt.get("recording", {})

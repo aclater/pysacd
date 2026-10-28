@@ -66,6 +66,17 @@ Python format specs work (`{tracknumber:02d}`). Empty `[]` or `()` left by blank
 fields are removed, and `/` inside values is replaced. `--portable-names` also
 replaces characters that are invalid on Windows/SMB (always on, on Windows).
 
+Names are NFC-normalised. Each folder or file name is cut to 240 bytes on a whole character
+(a letter with its accents, an emoji sequence, a flag), never inside the extension. Two tracks
+whose names differ only in case or Unicode form ("Intro" and "intro") would be one file on
+macOS, SMB or NTFS, so the second gets " (2)". This applies to `pysacd-extract --templates`
+too.
+
+MusicBrainz data is checked field by field. A missing or wrongly typed value (a null title, a
+list where a name belongs, a track number like "A1") is ignored, and the disc's own text is
+used for it. Disc text in Shift-JIS, Big5, GB 2312 or KSC 5601 is decoded before anything
+else looks at it, and an invalid byte sequence becomes "�".
+
 How it works:
 
 - **Audio:** one call into `_sacdconv.so` (through ctypes, which releases the

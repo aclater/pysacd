@@ -278,10 +278,12 @@ def _skip_zeros(buf: bytes, off: int) -> int:
 
 
 def _decode(raw: bytes, codec: str) -> str:
+    # Decode first, then check characters, never bytes: in Shift-JIS or Big5 a trail byte can
+    # be 0x5C, which isn't a backslash there (#47). Invalid sequences become U+FFFD, never lone
+    # surrogates, which can't be written or put in JSON.
     # Some discs carry control chars in text (sacd-ripper replaces them with spaces).
     # Leading/trailing spaces are kept: sacd_extract writes them into tags and files.
-    raw = bytes(max(b, 32) for b in raw)
-    return raw.decode(codec, errors="replace")
+    return "".join(max(c, " ") for c in raw.decode(codec, errors="replace"))
 
 
 def _text_at(buf: bytes, off: int, codec: str) -> str | None:

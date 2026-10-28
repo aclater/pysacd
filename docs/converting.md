@@ -61,6 +61,8 @@ run summary says how many were skipped.
 
 `pysacd convert` refuses to run as root unless `--allow-root` is given, because disc
 images are untrusted input (see [security](security.md#running-as-root)).
+`--isolate` runs the engine in a sandboxed child process (Linux, opt-in; see
+[security](security.md#isolated-engine)).
 
 Python format specs work (`{tracknumber:02d}`). Empty `[]` or `()` left by blank
 fields are removed, and `/` inside values is replaced. `--portable-names` also

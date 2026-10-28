@@ -51,6 +51,8 @@ short ones:
 - `--templates`: your own folder and file naming;
 - `--threads`;
 - `--disc N/M`: place a disc mastered as 1/1 into a set;
+- `--isolate`: run the engine in a sandboxed child process (Linux; see
+  [security](security.md#isolated-engine));
 - `--log-file`, `--log-level`: see [logging](logging.md).
 
 Run `pysacd-extract --help` for the full list.

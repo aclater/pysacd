@@ -203,6 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     _bool(c, "overwrite", "overwrite existing files (default: skip)")
     c.add_argument("--allow-root", action="store_true",
                    help="run even as root (not recommended: disc images are untrusted; see docs/security.md)")
+    _bool(c, "isolate", "run the engine in a sandboxed child process (Linux; default off)")
     c.add_argument("-n", "--dry-run", action="store_true", default=None, help="show match and paths only")
     c.set_defaults(func=_convert)
 

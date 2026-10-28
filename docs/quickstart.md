@@ -19,16 +19,32 @@ pysacd --version                      # shows how the engine was built
 Wheels are portable builds: the PCM filters pick AVX-512, AVX2 or the baseline
 when the library loads.
 
-**From source** (needs gcc and make; `flac-devel` for FLAC output):
+**From source** on Linux or macOS (needs a C compiler and make; libFLAC for FLAC output):
 
 ```sh
+# Fedora/RHEL: sudo dnf install gcc make flac-devel
+# Debian/Ubuntu: sudo apt install gcc make libflac-dev pkg-config
+# macOS (Homebrew): brew install flac pkg-config   (clang comes with the Xcode tools)
 git clone https://github.com/aclater/pysacd && cd pysacd
 pip install -e '.[convert]'                  # builds a portable engine
-make                                         # optional: rebuild it for this CPU (-march=native)
+make                                         # optional: rebuild it for this CPU
 ```
 
-`PYSACD_NATIVE=1 pip install .` builds for this CPU from the start. Linux only
-for now; Windows and macOS are tracked in #8.
+`PYSACD_NATIVE=1 pip install .` builds for this CPU from the start.
+
+**On Windows**, build the engine with MSYS2's UCRT64 toolchain. It links
+statically, so the DLL needs nothing beside it, and works with the normal
+python.org Python:
+
+```sh
+# in an MSYS2 UCRT64 shell
+pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-flac
+make                                          # builds src/pysacd/_sacdconv.dll
+# then, from any shell with your Python
+pip install -e '.[convert]' --no-build-isolation
+```
+
+On Windows, `pysacd convert` always uses Windows-safe file names.
 
 ## Read a disc's TOC
 

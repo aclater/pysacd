@@ -1,12 +1,11 @@
 # Build and test the engine on macOS and Windows (#8), which ci.yml doesn't cover.
-# macOS minutes cost ten times Linux ones (Windows twice) on a private repository, so
-# this runs only when the engine, its build or its loader change, plus weekly.
+# Runs when code or tests change, and weekly. (Free on the public repository.)
 
 name: portability
 
 on:
   pull_request:
-    paths: ["csrc/**", "Makefile", "setup.py", "src/pysacd/_native.py", "tests/native/**",
+    paths: ["csrc/**", "Makefile", "setup.py", "src/**", "tests/**", "fuzz/**",
             ".github/workflows/portability.yml"]
   schedule:
     - cron: "41 4 * * 1"

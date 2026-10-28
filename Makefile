@@ -25,7 +25,7 @@ override CFLAGS += -DHAVE_FLAC_MT
 endif
 endif
 
-SRC := $(addprefix csrc/,sacdconv.c demux.c dsp.c dstdec.c)
+SRC := $(addprefix csrc/,sacdconv.c demux.c dsp.c dstdec.c sandbox.c)
 OBJ := $(patsubst csrc/%.c,build/%.o,$(SRC))
 LIB := src/pysacd/_sacdconv.so
 

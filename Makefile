@@ -52,7 +52,20 @@ build/dstenc.so: tests/native/dstenc.c
 	@mkdir -p $(dir $@)
 	$(CC) -O2 $(ARCH) -fPIC -shared -std=gnu17 -Wall -o $@ $< -lm
 
+# libFuzzer harnesses for the code that parses untrusted disc data (#36): clang only.
+#   make fuzz && build/fuzz_dst_frame -max_total_time=300 build/fuzz-corpus/dst_frame build/fuzz-seeds/dst_frame
+FUZZ_CC    ?= clang
+FUZZ_FLAGS := -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined \
+              -fno-sanitize-recover=undefined -std=gnu17
+FUZZ_SRC   := csrc/demux.c csrc/dstdec.c
+
+fuzz: build/fuzz_dst_frame build/fuzz_demux
+
+build/fuzz_%: fuzz/fuzz_%.c $(FUZZ_SRC) $(wildcard csrc/*.h)
+	@mkdir -p $(dir $@)
+	$(FUZZ_CC) $(FUZZ_FLAGS) -o $@ $< $(FUZZ_SRC) -lm
+
 clean:
 	rm -rf build $(LIB)
 
-.PHONY: all clean test-tools
+.PHONY: all clean test-tools fuzz

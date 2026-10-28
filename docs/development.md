@@ -31,6 +31,20 @@ is byte-identical.
 the TOC reader and the `ps3sim` handler. It runs 300 cases per target by default;
 `PYSACD_FUZZ=5000` runs more. A failure names the seed that reproduces it.
 
+The C engine's parsers (the sector demuxer and the DST decoder) have libFuzzer
+harnesses in `fuzz/`. They need clang:
+
+```sh
+make fuzz test-tools
+PYTHONPATH=src:tests python3 fuzz/make_seeds.py build/fuzz-seeds
+build/fuzz_dst_frame -jobs=8 -workers=8 -max_total_time=600 build/fuzz-corpus/dst_frame build/fuzz-seeds/dst_frame
+build/fuzz_demux     -jobs=8 -workers=8 -max_total_time=600 build/fuzz-corpus/demux     build/fuzz-seeds/demux
+```
+
+A crashing input goes, minimised, into `fuzz/regressions/<harness>/` along with
+its fix. `tests/test_fuzz_engine.py` replays those inputs and the synthetic seeds
+with any C compiler, under the sanitizers in CI.
+
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
 ## CI
@@ -41,6 +55,9 @@ Every pull request runs:
 - **The test suite** on Python 3.11 to 3.14, with the engine built with
   `-Werror` (FLAC included).
 - **The tests under AddressSanitizer and UndefinedBehaviorSanitizer.**
+- **libFuzzer** on the demuxer and the DST decoder, 2 minutes each, when
+  `csrc/` or `fuzz/` changes. A weekly run lasts 30 minutes and keeps its
+  corpus cached.
 - **The comparison tests** against a `sacd_extract` built from a pinned
   upstream commit inside the runner. Its code never enters the repository.
 - **CodeQL** (Python, C, workflows) and **semgrep**.

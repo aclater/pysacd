@@ -45,9 +45,6 @@ _COMPAT_CATEGORIES = INVISIBLE_CATEGORIES - {"Cs"}
 # Command substitution, pipes, command separators and redirection
 NAME_UNSAFE = "`$|;<>"
 _NAME_UNSAFE_RE = re.compile("[" + re.escape(NAME_UNSAFE) + "]")
-# The only invisible characters plain ASCII can hold: a fast path for the common case
-_ASCII_BAD = re.compile("[\x00-\x1f\x7f]")
-_ASCII_BAD_KEEP_TAB_NL = re.compile("[\x00-\x08\x0b-\x1f\x7f]")
 
 
 _BREAKS = frozenset({"Cc", "Zl", "Zp"})     # these separate words: they become a space
@@ -67,9 +64,8 @@ def is_invisible(c: str) -> bool:
 
 def _map_invisible(s: str, repl, keep_tab_newline: bool, categories=INVISIBLE_CATEGORIES) -> str:
     """s with every character c in categories replaced by repl(c)."""
-    if s.isascii():
-        pattern = _ASCII_BAD_KEEP_TAB_NL if keep_tab_newline else _ASCII_BAD
-        return pattern.sub(lambda m: repl(m.group()), s)
+    if s.isascii() and s.isprintable():     # the common case: nothing to do
+        return s
     keep = "\t\n" if keep_tab_newline else ""
     cat = unicodedata.category
     return "".join(repl(c) if c not in keep and cat(c) in categories else c for c in s)

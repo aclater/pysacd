@@ -503,6 +503,31 @@ class SyntheticISO(unittest.TestCase):
     def test_5ch(self):
         self.check([5])
 
+    def test_undecodable_frame_fill(self):
+        # A frame failing the end-of-frame check is replaced by 0x55 bytes, as
+        # sacd_extract does; its neighbours are unaffected.
+        ch, bad = 2, 3
+        frames = [f for _, _, f in encoded(ch)]
+        frames[bad] += b"\xff\xff\xff"
+        iso = self.dir / "bad.iso"
+        sacdgen.build_iso(iso, [sacdgen.AreaSpec(ch, frames, [len(frames)])])
+        from pysacd import SACDImage
+        with SACDImage(iso) as img:
+            area = img.read_toc().stereo
+            t = area.tracks[0]
+            spec = _native.OutputSpec("dsf", self.dir / "bad.dsf", t.start.total_frames,
+                                      t.start.total_frames + t.duration.total_frames)
+            _native.run_area(img, iso, area, [spec])
+        self.assertEqual(spec.dst_errors, 1)
+        got = dsf_audio(spec.path)
+        fb = FL * ch
+        src = b"".join(d for _, d, _ in encoded(ch))
+        self.assertEqual(got[bad * fb:(bad + 1) * fb], b"\x55" * fb)
+        self.assertEqual(got[:bad * fb], src[:bad * fb])
+        self.assertEqual(got[(bad + 1) * fb:], src[(bad + 1) * fb:])
+        if SACD_EXTRACT:
+            self.assertEqual(self.oracle_tracks(iso, ch), [got])
+
 
 if __name__ == "__main__":
     unittest.main()

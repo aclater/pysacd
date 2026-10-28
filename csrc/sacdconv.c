@@ -50,6 +50,7 @@
 #define READ_SECTORS   1024            /* 2 MiB reads */
 #define DSF_BLOCK      4096
 #define OUT_BUFFER     (1 << 20)
+#define DST_ERROR_FILL 0x55            /* undecodable DST frame: what sacd_extract writes */
 
 enum { OUT_DSF = 0, OUT_FLAC = 1, OUT_WAV = 2, OUT_DFF_DSD = 3, OUT_DFF_DST = 4 };
 
@@ -449,7 +450,7 @@ static void process_batch(engine_t *e, batch_t *b, dst_decoder_t **dec, dsd2pcm_
                 }
                 if (dst_decode_frame(*dec, b->raw + b->off[i], b->len[i], out) != 0) {
                     b->bad[i] = 1;
-                    memset(out, DSD_SILENCE, fb);
+                    memset(out, DST_ERROR_FILL, fb);
                 }
             } else {
                 memcpy(out, b->raw + b->off[i], fb);

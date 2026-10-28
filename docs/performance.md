@@ -52,9 +52,11 @@ The only extra work is DSD→PCM conversion and FLAC encoding, which takes about
 | DST, stereo | 8.0 s (239) | 10.0 s (277) |
 
 - **On a DST disc**, FLAC adds about 14% CPU on top of the decode.
-- **Portable builds** spend about 30% more CPU on the PCM filter, because
-  they aren't auto-vectorised for the host. Runtime SIMD dispatch is tracked
-  in #21.
+- **Portable builds** (`make PORTABLE=1`, and future wheels) pick the PCM
+  filter's code at load time for the CPU: AVX-512, AVX2+FMA or the SSE2
+  baseline. On the 16-core machine, converting 6 channels takes 0.29 s per
+  2,000 frames, against 0.25 s for a native build and 0.41 s for a portable
+  build without dispatch (mean of 5 runs).
 
 ## Reading a TOC: in-process against a subprocess
 

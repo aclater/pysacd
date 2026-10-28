@@ -16,6 +16,8 @@ NATIVE  := -march=native
 PIC     :=
 PKGFLAGS := --static
 FLAC_DEFS := -DFLAC__NO_DLL
+# C99 printf (%zu) instead of msvcrt's
+OS_DEFS  := -D__USE_MINGW_ANSI_STDIO=1
 else ifeq ($(UNAME_S),Darwin)
 # macOS: clang, a .dylib, and -mcpu=native on Apple silicon (#8)
 CC      ?= cc
@@ -37,15 +39,16 @@ endif
 CFLAGS  ?= -O3 -ffast-math -fno-finite-math-only $(ARCH)
 # override: required flags survive `make CFLAGS=...` on the command line
 PIC     ?= -fPIC
-override CFLAGS += $(PIC) -std=gnu17 -Wall -pthread
+override CFLAGS += $(PIC) $(OS_DEFS) -std=gnu17 -Wall -pthread
 LDLIBS  := -lm -pthread
 
-FLAC_CFLAGS := $(shell pkg-config $(PKGFLAGS) --cflags flac 2>/dev/null)
-FLAC_LIBS   := $(shell pkg-config $(PKGFLAGS) --libs flac 2>/dev/null)
+PKG_CONFIG  ?= pkg-config
+FLAC_CFLAGS := $(shell $(PKG_CONFIG) $(PKGFLAGS) --cflags flac 2>/dev/null)
+FLAC_LIBS   := $(shell $(PKG_CONFIG) $(PKGFLAGS) --libs flac 2>/dev/null)
 ifneq ($(FLAC_LIBS),)
 override CFLAGS += -DHAVE_FLAC $(FLAC_DEFS) $(FLAC_CFLAGS)
 LDLIBS  += $(FLAC_LIBS)
-ifeq ($(shell pkg-config --atleast-version=1.5.0 flac && echo y),y)
+ifeq ($(shell $(PKG_CONFIG) --atleast-version=1.5.0 flac && echo y),y)
 override CFLAGS += -DHAVE_FLAC_MT
 endif
 endif

@@ -141,7 +141,7 @@ typedef struct {
 } engine_t;
 
 static void sc_log(sc_area_t *a, int level, const char *fmt, ...)
-    __attribute__((format(printf, 3, 4)));
+    __attribute__((format(SC_PRINTF, 3, 4)));
 
 static void set_error(engine_t *e, const char *fmt, ...)
 {
@@ -844,7 +844,12 @@ static int out_close(engine_t *e, sc_output_t *o, out_state_t *st)
 {
     int ch = e->channels, rc = 0;
     st->closed = 1;
-    if (o->format == OUT_FLAC ? !st->enc : !st->fp) {
+#ifdef HAVE_FLAC
+    const int not_opened = o->format == OUT_FLAC ? !st->enc : !st->fp;
+#else
+    const int not_opened = !st->fp;     /* a FLAC output never opens without libFLAC */
+#endif
+    if (not_opened) {
         /* out_open failed (e.g. the directory isn't writable) and recorded why: nothing to finish */
 #ifdef HAVE_FLAC
         if (st->pad)

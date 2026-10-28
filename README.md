@@ -205,9 +205,24 @@ Extensions (long options only):
 | `--threads N` | number of worker threads |
 | `--id3tag N` | the cfg's `id3tag` setting, as a flag |
 | `--no-cfg` | ignore `./sacd_extract.cfg` |
+| `--disc N/M` | treat a set mastered as 1/1 (e.g. *Live-Evil*) as disc N of M; names and tags follow `sacd_extract`'s own set layout (`Title/Disc N`) |
 
 Differences from `sacd_extract`:
 
+- **Two discs that would share a folder (deliberate exception).**
+  `sacd_extract` silently mixes such discs into one folder, and overwrites
+  one disc's tracks with the other's when the file names match. This
+  happens with sets mastered with every disc claiming to be disc 1 of 1, such
+  as *Live-Evil*. `pysacd-extract` doesn't do that:
+  - **Detection:** a folder holds another disc if it contains audio files
+    this disc doesn't produce, or same-named files whose album, title,
+    track number or ISRC differ.
+  - **Action:** this disc goes to `<album> [<catalogue number>]` instead,
+    and a warning on stderr explains why and suggests `--disc N/M`.
+  - **Unaffected:** re-running the same disc, and correctly mastered sets,
+    behave exactly as in `sacd_extract`.
+  - **Limitation:** `sacd_extract`'s tags carry no catalogue number, so two
+    discs whose tags match in every one of those fields can't be told apart.
 - **Input:** ISO images only. Drives and PS3 network servers aren't
   supported.
 - **Raw-sector images** (2064 or 2054 bytes per sector) are read, where

@@ -42,6 +42,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
 - **[Security](security.md)**: hostile discs, servers and text.
   - [Hostile text](security.md#hostile-text)
   - [Threat model](security.md#threat-model)
+  - [Hostile images](security.md#hostile-images)
   - [Running as root](security.md#running-as-root)
   - [Files pysacd writes](security.md#files-pysacd-writes)
   - [Network responses](security.md#network-responses)

@@ -602,8 +602,15 @@ def _main_local(o: Opts) -> int:
 
     try:
         img = SACDImage(o.input)
+    except (OSError, SACDError) as e:
+        log.exception("cannot read the input (%s)", kind)
+        print(f"{o.input}: {e}", file=sys.stderr)
+        _hint_log()
+        return 255
+    try:
         disc = img.read_toc()
     except (OSError, SACDError) as e:
+        img.close()     # a malformed TOC mustn't leave the image open (Windows can't delete it then)
         log.exception("cannot read the input (%s)", kind)
         print(f"{o.input}: {e}", file=sys.stderr)
         _hint_log()

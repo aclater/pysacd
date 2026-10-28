@@ -275,7 +275,8 @@ static int emit_batch(reader_t *r, int ncore, int npost)
     size_t pos = 0;
     for (int i = 0; i < nf; i++) {
         frame_t *f = &r->stage[i];
-        memcpy(b->raw + pos, f->data, f->len);
+        if (f->len)     /* missing frames have no data, and b->raw may still be NULL */
+            memcpy(b->raw + pos, f->data, f->len);
         b->off[i] = (uint32_t)pos;
         b->len[i] = f->len;
         b->dst[i] = f->dst;

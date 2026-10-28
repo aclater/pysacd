@@ -34,6 +34,11 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
   `sacd_extract` would silently mix or overwrite (#4).
   Any change to `sbcompat.py`, `extract.py` or the writers needs a
   comparison test.
+- **Diagnosable failures.** Code that talks to devices, servers or disc
+  images logs what it did through the `pysacd.*` loggers: requests, reads,
+  positions, timings and errors with their context, at debug level where the
+  volume is high. A field report must be diagnosable from the log alone.
+  Addresses and paths go only into debug lines (see README "Logging").
 - **Hostile input.** Disc images and network data may be malformed. Bound
   every length and allocation; a bad frame or sector must not crash or
   corrupt other output.

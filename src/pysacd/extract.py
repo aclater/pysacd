@@ -11,13 +11,16 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import logging
 import os
+import stat
 import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import __version__, _native, remote, safetext, sbcompat
+from . import log as pslog
 from .toc import START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage
 
 FRAME_BYTES = 4704
@@ -72,6 +75,9 @@ class Opts:
     templates: bool = False            # name files with pysacd's config templates
     config: str | None = None
     use_cfg: bool = True
+    logging: bool = False              # logging=1 in sacd_extract.cfg
+    log_file: str | None = None
+    log_level: str | None = None
     disc: tuple[int, int] | None = None    # --disc N/M
 
 
@@ -124,6 +130,9 @@ def parse_args(argv: list[str]) -> Opts:
     x.add_argument("--templates", action="store_true", help="name output with pysacd config templates")
     x.add_argument("--config", help="pysacd config file for --templates")
     x.add_argument("--no-cfg", dest="no_cfg", action="store_true", help="ignore ./sacd_extract.cfg")
+    x.add_argument("--log-file", help="write a diagnostic log here (default level: debug)")
+    x.add_argument("--log-level", choices=["debug", "info", "warning", "error"],
+                   help="log detail; without --log-file the log goes to stderr")
     x.add_argument("--disc", metavar="N/M",
                    help="treat the disc as disc N of an M-disc set (for sets mastered as 1/1): "
                         "names and tags follow sacd_extract's own set layout (\"Title/Disc N\")")
@@ -142,7 +151,7 @@ def parse_args(argv: list[str]) -> Opts:
              pcm=a.pcm, pcm_rate=a.pcm_rate, gain_db=a.gain_db, flac_level=a.flac_level,
              threads=a.threads, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
              mb_contact=a.mb_contact, cover=a.cover, templates=a.templates, config=a.config,
-             use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc))
+             use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc), log_file=a.log_file, log_level=a.log_level)
     if a.tracks:
         # like sacd_extract, the last -t wins; 0 and junk are ignored
         for tok in a.tracks[-1].replace(" ", ",").split(","):
@@ -192,6 +201,8 @@ def read_cfg(o: Opts) -> bool:
         if has("concatenate=1", "concatenate=yes"):
             o.concatenate = True
             o.trimming = False
+        if has("logging=1", "logging=yes"):
+            o.logging = True
         if has("id3tag=0", "id3tag=no"):
             o.id3_mode = 0
         for m in range(1, 6):
@@ -202,14 +213,28 @@ def read_cfg(o: Opts) -> bool:
     return True
 
 
-def _print_settings(o: Opts) -> None:
+def _print_settings(o: Opts, from_cfg: bool = True) -> None:
+    """The settings summary as sacd_extract prints it after reading the cfg file
+    (from_cfg), or for -v without one."""
     yn = lambda b: "yes" if b else "no"
     say(f"\tArtist will be added in folder name (artist={int(o.artist_flag)}) {yn(o.artist_flag)}")
     say(f"\tPerformer will be added in filename of track (performer={int(o.performer_flag)}) {yn(o.performer_flag)}")
     say(f"\tPadding-less (nopad={int(o.dsf_nopad)}) {yn(o.dsf_nopad)}")
     say(f"\tPauses included (pauses={int(not o.trimming)}) {yn(not o.trimming)}")
     say(f"\tConcatenate (concatenate={int(o.concatenate)}) {yn(o.concatenate)}")
-    say(f"\tID3tag (id3tag = {o.id3_mode})")
+    m = o.id3_mode
+    if not from_cfg:
+        say(f"\tID3tag (id3tag = {m})")
+        return
+    if m == 0:
+        say(f"\tID3tag no inserted (id3tag = {m}) ")
+    elif m in (1, 2, 3):
+        say(f"\tID3tagV2.3 (id3tag = {m}) {'minimal' if m == 2 else 'yes'}")
+    elif m in (4, 5):
+        say(f"\tID3tagV2.4 (id3tag = {m}) {'minimal' if m == 5 else 'yes'}")
+    else:
+        say(f"\tID3tag (id3tag = {m})")
+    say(f"\tLogging (logging = {int(o.logging)}) {yn(o.logging)}")
 
 
 # ------------------------------------------------------------ -P
@@ -451,15 +476,42 @@ def _progress(p: _native.Progress) -> None:
         say(f"\rCompleted: {pct}% (sectors processed: {p.sectors_done} / total sectors: {p.sectors_total})", end="")
 
 
+log = logging.getLogger("pysacd.extract")
+
+
+def _setup_logging(o: Opts, argv: list[str]) -> None:
+    """--log-file/--log-level, else PYSACD_LOG, else logging=1 from the cfg file
+    (sacd_extract's choice of file: $LOG_FILE or logfile-sacd_extract.txt)."""
+    level, path = o.log_level, o.log_file
+    if level is None and path is None:
+        level, path = pslog.from_env()
+    if level is None and path is None and o.logging:
+        level, path = "debug", os.environ.get("LOG_FILE") or "logfile-sacd_extract.txt"
+    pslog.setup(level, path, ["pysacd-extract", *argv])
+
+
+def _hint_log() -> None:
+    if not any(isinstance(h, logging.FileHandler) for h in logging.getLogger(pslog.LOGGER).handlers):
+        print("Run again with --log-file pysacd.log (it records every request and read) "
+              "and include the log when reporting the problem.", file=sys.stderr)
+
+
 def main(argv: list[str] | None = None) -> int:
-    o = parse_args(sys.argv[1:] if argv is None else argv)
+    args = sys.argv[1:] if argv is None else argv
+    o = parse_args(args)
     say(f"\nsacd_extract compatible client: pysacd {__version__}")
     say(f"\nCurrent (working) directory (for the app and 'sacd_extract.cfg' file): {os.getcwd()}")
     has_cfg = o.use_cfg and read_cfg(o)
+    try:
+        _setup_logging(o, args)
+    except (OSError, ValueError) as e:
+        print(f"logging: {e}", file=sys.stderr)
+        return 255
+    log.debug("options: %s", safetext.for_terminal(o))
     if o.version:
         if not has_cfg:
             say("Configuration settings:")
-            _print_settings(o)
+            _print_settings(o, from_cfg=False)
         say("\nProgram terminates!")
         return 0
     if not o.two_channel and not o.multi_channel:
@@ -474,10 +526,13 @@ def main(argv: list[str] | None = None) -> int:
     tmp_iso = None
     addr = remote.parse_address(o.input)
     if addr:
+        log.info("input: a PS3 SACD Ripper server")
         try:
             o.input, tmp_iso = _fetch_remote(addr, o)
         except (OSError, SACDError) as e:
+            log.exception("reading from the server failed")
             print(f"{o.input}: {e}", file=sys.stderr)
+            _hint_log()
             return 255
         except KeyboardInterrupt:
             say("\n\n Program interrupted...")
@@ -524,24 +579,45 @@ def _fetch_remote(addr: tuple[str, int], o: Opts) -> tuple[str, str | None]:
 
 def _main_local(o: Opts) -> int:
     assert o.input is not None      # set by main()
-    if not os.path.isfile(o.input):
-        print(f"{o.input}: only SACD ISO image files and SACD Ripper servers (host:port) are supported",
-              file=sys.stderr)
+    try:
+        mode = os.stat(o.input).st_mode
+    except OSError as e:
+        print(f"{o.input}: {e.strerror}", file=sys.stderr)
+        return 255
+    kind = "file" if stat.S_ISREG(mode) else "block device" if stat.S_ISBLK(mode) else None
+    if kind is None:
+        print(f"{o.input}: only SACD ISO images, block devices and SACD Ripper servers (host:port) are "
+              "supported", file=sys.stderr)
         return 255
 
     try:
         img = SACDImage(o.input)
         disc = img.read_toc()
     except (OSError, SACDError) as e:
+        log.exception("cannot read the input (%s)", kind)
         print(f"{o.input}: {e}", file=sys.stderr)
+        _hint_log()
         return 255
+    log.info("input: %s, %d sectors of %d bytes (data at offset %d)", kind, img.total_sectors, img.sector_size,
+             img.data_offset)
+    log.debug("input path: %s", safetext.for_terminal(o.input))
+    for w in disc.warnings + [w for a in disc.areas for w in a.warnings]:
+        log.warning("TOC: %s", safetext.for_terminal(w))
+    log.info("disc: %d area(s): %s", len(disc.areas),
+             ", ".join(f"{a.speaker_config} {a.frame_format_name}, {len(a.tracks)} tracks, "
+                       f"LSN {a.track_start}-{a.track_end}" for a in disc.areas))
     try:
-        return _run(img, disc, o)
+        rc = _run(img, disc, o)
+        log.info("finished with exit status %d", rc)
+        return rc
     except KeyboardInterrupt:
+        log.warning("interrupted")
         say("\n\n Program interrupted...")
         return 255
-    except (OSError, _native.NativeError) as e:
+    except (OSError, SACDError, _native.NativeError) as e:
+        log.exception("failed")
         print(f"\nERROR: {e}", file=sys.stderr)
+        _hint_log()
         return 255
     finally:
         img.close()
@@ -707,6 +783,11 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
         j.final.parent.mkdir(parents=True, exist_ok=True)
     try:
         assert o.input is not None
+        log.info("%s area: %d output(s)%s", area.kind if area else "no", len(jobs),
+                 " plus an ISO copy" if iso_path else "")
+        for j in jobs:
+            log.debug("  %s -> %s (track %s, frames %d-%d)", j.kind, safetext.for_terminal(j.final), j.track,
+                      j.spec.tc_start, j.spec.tc_end)
         _native.run_area(img, o.input, area, specs, o.pcm_rate, o.gain_db, o.threads,
                          iso_out=iso_path, progress=_progress)
     except BaseException:
@@ -722,6 +803,8 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
             assert j.tags is not None
             tagging.write_tags(str(s.path), j.kind, j.tags, j.cover, 4 if o.id3_mode >= 4 else 3)
         os.replace(s.path, j.final)
+        log.info("wrote track %s: %d frames, %d missing, %d DST errors", j.track, s.frames_written,
+                 s.frames_missing, s.dst_errors)
         if s.frames_missing or s.dst_errors:
             rc = 1
             say(f"\n Warning: {j.final.name}: {s.frames_missing} missing frames, {s.dst_errors} DST decode errors")

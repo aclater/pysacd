@@ -41,10 +41,10 @@ int demux_sector(const uint8_t *s, frame_acc_t *f, int channels, frame_cb cb, vo
         p += dst ? 4 : 3;
     }
 
-    int fi = 0;
+    int fi = 0, corrupt = 0;
     for (int i = 0; i < npackets; i++) {
         if (p + pk[i].len > end)
-            return 0;   /* corrupt sector: drop the rest of it */
+            return DEMUX_CORRUPT;   /* packets overrun the sector: drop the rest */
         if (pk[i].type == 2) {
             if (pk[i].start) {
                 if (f->started && frame_complete(f, channels)) {
@@ -53,6 +53,8 @@ int demux_sector(const uint8_t *s, frame_acc_t *f, int channels, frame_cb cb, vo
                         return r;
                 }
                 f->started = 0;
+                if (fi >= nframes)
+                    corrupt = 1;    /* frame start without frame info */
                 if (fi < nframes) {
                     f->started = 1;
                     f->size = 0;
@@ -69,11 +71,12 @@ int demux_sector(const uint8_t *s, frame_acc_t *f, int channels, frame_cb cb, vo
                     if (f->dst)
                         f->sector_count--;
                 } else {
-                    f->started = 0;
+                    f->started = 0;     /* frame larger than any valid frame */
+                    corrupt = 1;
                 }
             }
         }
         p += pk[i].len;
     }
-    return 0;
+    return corrupt ? DEMUX_CORRUPT : 0;
 }

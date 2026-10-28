@@ -1,0 +1,97 @@
+# Build wheels and the sdist (#9). Pull requests that touch packaging or the
+# engine build them as a check; a v* tag also attaches them to a GitHub release.
+# Publishing to PyPI makes the code public, so it runs only when the repository
+# variable PYPI_PUBLISH is "true" (and PyPI trusted publishing is configured).
+
+name: wheels
+
+on:
+  pull_request:
+    paths: ["setup.py", "pyproject.toml", "Makefile", "csrc/**", ".github/workflows/wheels.yml"]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    name: wheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build
+        uses: pypa/cibuildwheel@b3395e271a35f73dad77f21802abe9b986dfe299  # v4.3.1
+        env:
+          # The engine is loaded through ctypes, so one py3-none wheel per platform
+          # serves every Python: build it once.
+          CIBW_BUILD: "cp313-manylinux_*"
+          CIBW_ARCHS_LINUX: native
+          # libFLAC for FLAC output; auditwheel then bundles it into the wheel.
+          CIBW_BEFORE_ALL_LINUX: >-
+            dnf install -y dnf-plugins-core &&
+            (dnf config-manager --set-enabled powertools || dnf config-manager --set-enabled crb) &&
+            dnf install -y flac-devel
+          CIBW_TEST_COMMAND: >-
+            pysacd --version &&
+            python -c "from pysacd import _native as n; assert n.has_flac(), n.build_info()"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: wheel-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Build the sdist
+        run: pipx run build --sdist
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "pysacd $TAG"
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  pypi:
+    if: startsWith(github.ref, 'refs/tags/v') && vars.PYPI_PUBLISH == 'true'
+    needs: [wheels, sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2

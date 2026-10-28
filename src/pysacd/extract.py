@@ -512,6 +512,10 @@ def main(argv: list[str] | None = None) -> int:
         return 255
     log.debug("options: %s", safetext.for_terminal(o))
     if o.version:
+        try:
+            say(f"\nEngine: {_native.build_info()}")
+        except (OSError, _native.NativeError) as e:
+            say(f"\nEngine: not available ({e})")
         if not has_cfg:
             say("Configuration settings:")
             _print_settings(o, from_cfg=False)

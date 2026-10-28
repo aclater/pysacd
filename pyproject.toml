@@ -9,6 +9,7 @@ description = "SACD (Scarletbook) ISO reader and DSF/FLAC converter"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "GPL-2.0-or-later"
+license-files = ["COPYING", "licenses/*"]
 dependencies = []
 
 [project.optional-dependencies]

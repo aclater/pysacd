@@ -640,7 +640,7 @@ static int write_wav_header(FILE *fp, int channels, int rate, uint64_t data_byte
     put_le(h + 20, 0xFFFE, 2);
     put_le(h + 22, channels, 2);
     put_le(h + 24, rate, 4);
-    put_le(h + 28, (uint32_t)rate * channels * 3, 4);
+    put_le(h + 28, (uint64_t)rate * channels * 3, 4);
     put_le(h + 32, channels * 3, 2);
     put_le(h + 34, 24, 2);
     put_le(h + 36, 22, 2);

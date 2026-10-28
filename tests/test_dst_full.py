@@ -17,9 +17,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import numpy as np
-
 import dstenc
+import numpy as np
 import sacdgen
 from dstenc import FL, NB, BitWriter, Coding, Frame, Segmentation
 
@@ -32,13 +31,13 @@ try:
     _lib.dst_decode_frame.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p]
     _lib.dst_decode_frame.restype = ctypes.c_int
     HAVE_NATIVE = True
-except Exception:
+except Exception:  # noqa: BLE001 - any failure to load means "not built"; tests skip
     HAVE_NATIVE = False
 
 try:
     dstenc.load()
     HAVE_ENCODER = True
-except Exception:
+except Exception:  # noqa: BLE001 - any failure to load means "unavailable"; tests skip
     HAVE_ENCODER = False
 
 SACD_EXTRACT = os.environ.get("SACD_EXTRACT")
@@ -140,12 +139,12 @@ def features(ch: int) -> dict[str, Frame]:
     return f
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def source(ch: int) -> bytes:
     return dstenc.synth_dsd(ch, len(features(ch)), seed=ch)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def encoded(ch: int) -> tuple[tuple[str, bytes, bytes], ...]:
     """(feature, original DSD, DST frame) per feature, consecutive frames of the source."""
     src = source(ch)
@@ -469,7 +468,7 @@ class SyntheticISO(unittest.TestCase):
     def oracle_tracks(self, iso: Path, ch: int) -> list[bytes]:
         out = self.dir / f"se{ch}"
         out.mkdir()
-        r = subprocess.run([SACD_EXTRACT, "-2" if ch == 2 else "-m", "-s", f"-i{iso}"], cwd=out,
+        r = subprocess.run([SACD_EXTRACT, "-2" if ch == 2 else "-m", "-s", f"-i{iso}"], check=False, cwd=out,
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(r.returncode, 0, r.stdout[-2000:])
         files = sorted(glob.glob(str(out / "**" / "*.dsf"), recursive=True))

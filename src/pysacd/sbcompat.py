@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import os
 import struct
+from collections.abc import Sequence
 from datetime import datetime
 
 from . import __version__
-from .toc import GENRES, CATEGORIES, START_OF_MASTER_TOC, Area, Disc, SACDImage
+from .toc import CATEGORIES, GENRES, START_OF_MASTER_TOC, Area, Disc, SACDImage
 
 FRAME_RATE = 75
 SAMPLES_PER_FRAME = 588
@@ -236,6 +237,7 @@ def music_filename(disc: Disc, area: Area, track_idx: int, override_title: str =
     """get_music_filename(); override_title is the "[NN-MM]" concatenation tag."""
     tt = area.tracks[track_idx].text
     perf = performer_flag
+    c: bytes | None
     if "performer" in tt:
         c = _b(tt["performer"])
     else:
@@ -250,7 +252,7 @@ def music_filename(disc: Disc, area: Area, track_idx: int, override_title: str =
         title = b"unknown track title"
     at = _first(disc, "disc_title", "disc_title_phonetic", "album_title", "album_title_phonetic")
     album = _cut_semicolon(at, MAX_ALBUM_TITLE_LEN) if at is not None else b"unknown title"
-    year = "%04d" % disc.date[0]
+    year = f"{disc.date[0]:04d}"
     n = track_idx + 1
     A, L, T = _s(artist), _s(album), _s(title)
     if override_title:
@@ -476,6 +478,7 @@ def _footer_pass(buf: _Buf, disc: Disc, area: Area, track_idx: int | None, dst: 
     buf.pos = 0
     size = 0
     edit_master = track_idx is None
+    idx0 = track_idx if track_idx is not None else 0   # the track, when not an edit master
     if dst and frame_index:
         buf.put(b"DSTI" + _chunk_size(12 * len(frame_index)))
         for off, length in frame_index:
@@ -498,12 +501,12 @@ def _footer_pass(buf: _Buf, disc: Disc, area: Area, track_idx: int | None, dst: 
             if i == len(tracks) - 1 or tracks[i + 1].start.total_frames > abs_stop:
                 _marker(buf, abs_stop, 1, _flags4(t.flags))
     else:
-        d = area.tracks[track_idx].duration
+        dur = area.tracks[idx0].duration
         buf.put(b"MARK" + _chunk_size(22) + struct.pack(
-            ">HBBIiHHHI", d.minutes // 60, d.minutes % 60, d.seconds,
-            d.frames * SAMPLES_PER_FRAME * 64, 0, 4, 0, 0, 0))
+            ">HBBIiHHHI", dur.minutes // 60, dur.minutes % 60, dur.seconds,
+            dur.frames * SAMPLES_PER_FRAME * 64, 0, 4, 0, 0, 0))
 
-    tt = {} if edit_master else area.tracks[track_idx].text
+    tt = {} if edit_master else area.tracks[idx0].text
     c = _b(tt["performer"]) if "performer" in tt else _first(
         disc, "disc_artist", "disc_artist_phonetic", "album_artist", "album_artist_phonetic",
         "disc_title", "disc_title_phonetic", "album_title", "album_title_phonetic")
@@ -537,7 +540,7 @@ def _footer_pass(buf: _Buf, disc: Disc, area: Area, track_idx: int | None, dst: 
     buf.put(_chunk_size(end - start - 12))
     size += _ceil_odd(end - start)
 
-    for idx in (range(len(area.tracks)) if edit_master else (track_idx,)):
+    for idx in (range(len(area.tracks)) if edit_master else (idx0,)):
         tag = _render_id3(disc, area, idx, id3_mode)
         buf.pos = size
         buf.put(b"ID3 " + _chunk_size(len(tag)) + tag)
@@ -546,7 +549,7 @@ def _footer_pass(buf: _Buf, disc: Disc, area: Area, track_idx: int | None, dst: 
 
 
 def dsdiff_footer(disc: Disc, area: Area, track_idx: int | None, *, dst: bool,
-                  frame_index: list[tuple[int, int]] = (), id3_mode: int = 4,
+                  frame_index: Sequence[tuple[int, int]] = (), id3_mode: int = 4,
                   now: datetime | None = None, machine: str = PYSACD_VERSION_INFO) -> bytes:
     """Chunks after the sound data: DSTI (DST), DIIN, COMT and ID3.
 
@@ -612,7 +615,8 @@ def cue_sheet(disc: Disc, area: Area, dff_filename: str,
 def raw_catalog_numbers(image: SACDImage) -> tuple[str, str]:
     """(album, disc) catalog numbers exactly as stored (16 bytes up to NUL, padding kept)."""
     m = image.read_sectors(START_OF_MASTER_TOC, 1)
-    return tuple(m[o:o + 16].split(b"\0", 1)[0].decode("latin-1") for o in (24, 88))
+    album, disc = (m[o:o + 16].split(b"\0", 1)[0].decode("latin-1") for o in (24, 88))
+    return album, disc
 
 
 def _attr_escape(s: str) -> str:
@@ -666,8 +670,8 @@ def metadata_xml(disc: Disc, version: str = PYSACD_VERSION_INFO,
     else:
         locale = f"unspecified, asume code_character_set:[{cs}], {CHARSET_NAMES[cs & 7]}"
     y, m, d = disc.date
-    a = dict(disc_version="%2d.%02d" % disc.version, catalog_number=disc_cat,
-             creation_date="%4d-%02d-%02d" % (y, m, d), locale=locale)
+    a: dict[str, object] = {"disc_version": f"{disc.version[0]:2d}.{disc.version[1]:02d}", "catalog_number": disc_cat,
+         "creation_date": f"{y:4d}-{m:02d}-{d:02d}", "locale": locale}
     g = disc.disc_genres[0]
     if g.category:
         a.update(category=CATEGORIES[g.category] if g.category < len(CATEGORIES) else "",
@@ -681,7 +685,7 @@ def metadata_xml(disc: Disc, version: str = PYSACD_VERSION_INFO,
     first_version = disc.areas[0].version  # sacd-ripper uses area[0]'s version for every area
     for idx, area in enumerate(disc.areas):
         spk = {"Stereo": "2 Channel", "5ch": "5 Channel", "6ch": "6 Channel"}.get(area_dir_name(area), "Unknown")
-        a = {"id": idx, "version": "%2d.%02d" % first_version, "speaker_configuration": spk}
+        a = {"id": idx, "version": f"{first_version[0]:2d}.{first_version[1]:02d}", "speaker_configuration": spk}
         for k, v in (("area_description", area.description),
                      ("area_description_Phonetic", area.description_phonetic),
                      ("area_copyright", area.copyright),
@@ -709,7 +713,7 @@ def metadata_xml(disc: Disc, version: str = PYSACD_VERSION_INFO,
             gi = t.genre.genre if t.genre is not None else 0
             meta("GENRE", GENRES[gi] if gi < len(GENRES) else "")
             meta("ISRC", t.isrc or "")
-            meta("DATE", t.isrc[5:7] if t.isrc and len(t.isrc) >= 7 else "%4d" % y)
+            meta("DATE", t.isrc[5:7] if t.isrc and len(t.isrc) >= 7 else f"{y:4d}")
             s, du = t.start, t.duration
             meta("Track_Start_Time_Code", f"{s.minutes:02d}:{s.seconds:02d}:{s.frames:02d}", comment=True)
             meta("Duration", f"{du.minutes:02d}:{du.seconds:02d}:{du.frames:02d}", comment=True)

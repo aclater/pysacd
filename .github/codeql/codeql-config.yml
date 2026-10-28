@@ -1,0 +1,8 @@
+# CodeQL configuration (see .github/workflows/codeql.yml).
+query-filters:
+  # Output files (DSF, DSDIFF, WAV, FLAC, ISO) are created like any other
+  # user data file: mode 0666 filtered by the user's umask, as cp and
+  # sacd_extract do.  Forcing a fixed mode would override a umask of 002,
+  # which shared music libraries rely on.
+  - exclude:
+      id: cpp/world-writable-file-creation

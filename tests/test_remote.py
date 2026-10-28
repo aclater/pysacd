@@ -220,6 +220,48 @@ class Fetch(_SimBase):
             fetch(*s.address, out, [(TOTAL - 10, TOTAL + 10_000)], backoff=0)
             self.assertEqual(os.path.getsize(out), TOTAL * S)
 
+    def test_reconnect_to_a_different_disc_is_rejected(self):
+        # The connection drops after the priming read and one fetch read; the server that
+        # answers the reconnect reports another disc size, which must not be spliced in.
+        with self.sim(drop_after=2) as s, tempfile.TemporaryDirectory() as d:
+            def swap(done, todo):
+                s.disc_size = TOTAL - 1
+            with self.assertRaises(RemoteError), self.assertLogs("pysacd.remote", "ERROR") as logs:
+                fetch(*s.address, os.path.join(d, "c.iso"), progress=swap, backoff=0)
+            self.assertIn("changed", logs.output[-1])
+
+    def test_trickling_server_times_out(self):
+        # Each byte arrives well within the socket timeout; only the per-response deadline stops it.
+        import socket
+        import threading
+        import time
+        stop = threading.Event()
+        srv = socket.create_server(("127.0.0.1", 0))
+
+        def trickle():
+            conn, _ = srv.accept()
+            with conn:
+                conn.recv(64)
+                conn.sendall(b"\x1a\x80\x80\x10")       # field 3, 256 KiB of data to follow
+                while not stop.is_set():
+                    try:
+                        conn.sendall(b"x")
+                    except OSError:
+                        return
+                    time.sleep(0.02)
+        t = threading.Thread(target=trickle, daemon=True)
+        t.start()
+        try:
+            c = PS3Client(*srv.getsockname(), timeout=0.5)
+            t0 = time.monotonic()
+            with self.assertRaises(RemoteError):
+                c.size()
+            self.assertLess(time.monotonic() - t0, 3)
+            c.sock.close()
+        finally:
+            stop.set()
+            srv.close()
+
     def test_needed_ranges_skip_unwanted_area_audio(self):
         with self.sim() as s:
             disc, total = read_remote_toc(*s.address)

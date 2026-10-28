@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import struct
 from dataclasses import dataclass, field
-from typing import BinaryIO
+from typing import BinaryIO, Self
 
 SECTOR_SIZE = 2048
 START_OF_MASTER_TOC = 510
@@ -263,7 +263,7 @@ def _cstring(buf: bytes, off: int) -> bytes:
 def _decode(raw: bytes, codec: str) -> str:
     # Some discs carry control chars in text (sacd-ripper replaces them with spaces).
     # Leading/trailing spaces are kept: sacd_extract writes them into tags and files.
-    raw = bytes(b if b >= 0x20 else 0x20 for b in raw)
+    raw = bytes(max(b, 32) for b in raw)
     return raw.decode(codec, errors="replace")
 
 
@@ -315,7 +315,8 @@ class SACDImage:
 
     def __init__(self, source: str | os.PathLike | BinaryIO):
         if isinstance(source, (str, os.PathLike)):
-            self._fh: BinaryIO = open(source, "rb")
+            # Owned for the object's lifetime; closed by close() / __exit__
+            self._fh: BinaryIO = open(source, "rb")  # noqa: SIM115
             self._owns = True
         else:
             self._fh = source
@@ -355,7 +356,7 @@ class SACDImage:
         if self._owns:
             self._fh.close()
 
-    def __enter__(self) -> "SACDImage":
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -397,7 +398,7 @@ class SACDImage:
                     warnings.append(f"{label} area TOC-1 and TOC-2 differ; using TOC-1")
             except SACDError as e:
                 warnings.append(f"{label} area TOC-2 unreadable: {e}")
-        if data is None:
+        if data is None or start is None:
             return None
         try:
             return _parse_area_toc(data, start, size)
@@ -517,7 +518,7 @@ def _parse_area_toc(data: bytes, toc_start: int, toc_size: int) -> Area:
         else:
             break
 
-    if lsn_starts is None or times is None:
+    if lsn_starts is None or lsn_lengths is None or times is None:
         raise SACDError(f"{kind}: track list (SACDTRL1/2) missing")
 
     for i in range(track_count):

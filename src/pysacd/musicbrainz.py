@@ -137,7 +137,8 @@ def physical_discs(media: list[dict]) -> list[int]:
     "Hybrid SACD (CD layer)", "Hybrid SACD (SACD layer, 2 channels)",
     "Hybrid SACD (SACD layer, multichannel)" for one hybrid disc.
     """
-    out, n, base, seen = [], 0, None, set()
+    out, n, base = [], 0, None
+    seen: set[str] = set()
     for m in media:
         f = m.get("format") or ""
         b = f.split(" (")[0]

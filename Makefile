@@ -11,16 +11,17 @@ else
 ARCH    := -march=native
 endif
 CFLAGS  ?= -O3 -ffast-math -fno-finite-math-only $(ARCH)
-CFLAGS  += -fPIC -std=gnu17 -Wall -pthread
+# override: required flags survive `make CFLAGS=...` on the command line
+override CFLAGS += -fPIC -std=gnu17 -Wall -pthread
 LDLIBS  := -lm -pthread
 
 FLAC_CFLAGS := $(shell pkg-config --cflags flac 2>/dev/null)
 FLAC_LIBS   := $(shell pkg-config --libs flac 2>/dev/null)
 ifneq ($(FLAC_LIBS),)
-CFLAGS  += -DHAVE_FLAC $(FLAC_CFLAGS)
+override CFLAGS += -DHAVE_FLAC $(FLAC_CFLAGS)
 LDLIBS  += $(FLAC_LIBS)
 ifeq ($(shell pkg-config --atleast-version=1.5.0 flac && echo y),y)
-CFLAGS  += -DHAVE_FLAC_MT
+override CFLAGS += -DHAVE_FLAC_MT
 endif
 endif
 

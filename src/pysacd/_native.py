@@ -5,9 +5,9 @@ from __future__ import annotations
 import ctypes
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from .toc import Area, SACDImage
 
@@ -171,6 +171,7 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     a.iso_path = os.fsencode(iso_path)
     a.sector_size, a.data_offset = image.sector_size, image.data_offset
     if specs:
+        assert area is not None, "outputs need an area"
         a.scan_lsn_start, a.scan_lsn_end = _scan_range(area, specs)
         a.channels = area.channel_count
     else:

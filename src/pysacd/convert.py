@@ -159,6 +159,15 @@ def _same_disc_or_set(a: tagging.Tags, b: tagging.Tags) -> bool | None:
     return None
 
 
+def _shown(text: object) -> str:
+    """Disc- or network-derived text for the terminal: control characters
+    (escape sequences, newlines, bidi overrides) are shown escaped, never
+    interpreted. Replaced by pysacd.safetext once #17 lands."""
+    import unicodedata
+    return "".join(c if c.isprintable() and unicodedata.category(c) not in ("Cf", "Cc") else c.encode(
+        "unicode_escape").decode("ascii") for c in str(text))
+
+
 def _disc_label(tags: tagging.Tags) -> str:
     return _first(tags, "CATALOGNUMBER") or _first(tags, "BARCODE")
 
@@ -196,21 +205,21 @@ def _avoid_other_discs(plan: list[tuple[Track, tagging.Tags, Path]], portable: b
         verdicts = [_same_disc_or_set(o, tags) for o in others if o]
         if False not in verdicts:
             if None in verdicts:
-                _log(f"warning: {d} holds tracks without catalogue, barcode or MusicBrainz tags; "
+                _log(f"warning: {_shown(d)} holds tracks without catalogue, barcode or MusicBrainz tags; "
                      "can't tell whether they are this disc")
             continue
         label = _disc_label(tags)
         if not label:
-            raise SystemExit(f"{d} already holds a different disc, and this disc has no catalogue number or "
+            raise SystemExit(f"{_shown(d)} already holds a different disc, and this disc has no catalogue number or "
                              "barcode to tell them apart; use --dir-template or --disc")
         target = d.with_name(_clean_component(f"{d.name} [{label}]", portable))
         clash = [o for o in others if o and _same_disc_or_set(o, tags) is False]
-        _log(f"warning: {d} already holds a different disc "
-             f"({', '.join(sorted({_disc_label(o) or '?' for o in clash}))}); "
-             f"writing this disc ({label}) to {target}")
+        _log(f"warning: {_shown(d)} already holds a different disc "
+             f"({_shown(', '.join(sorted({_disc_label(o) or '?' for o in clash})))}); "
+             f"writing this disc ({_shown(label)}) to {_shown(target)}")
         hint = _set_hint(sorted({_disc_label(o) for o in clash if _disc_label(o)} | {label}), clash, tags)
         if hint:
-            _log(f"hint: {hint}")
+            _log(f"hint: {_shown(hint)}")
         moved[d] = target
     return [(t, tg, moved[p.parent] / p.name if p.parent in moved else p) for t, tg, p in plan]
 

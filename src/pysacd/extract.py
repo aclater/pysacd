@@ -560,15 +560,16 @@ def _avoid_other_discs(disc: Disc, want: list[Area], o: Opts, out_dir: Path) -> 
         return out_dir
     label = (disc.disc_catalog_number or disc.album_catalog_number).strip()
     if not label:
-        raise SACDError(f"{out_dir} already holds tracks of another disc ({clash[0]}, ...) and this disc has "
+        raise SACDError(f"{out_dir!r} already holds tracks of another disc ({clash[0]!r}, ...) and this disc has "
                         "no catalogue number to tell them apart; use -o/-y or --disc")
     base = Path(o.output_dir) if o.output_dir else Path()
     album, _, rest = sbcompat.album_path(disc, o.artist_flag).partition("/")
     target = base / f"{album} [{sbcompat.sanitize_filename(label)}]"
     if rest:
         target /= rest
-    print(f"WARNING: {out_dir} already holds tracks of another disc ({', '.join(clash[:3])}"
-          f"{', ...' if len(clash) > 3 else ''}); writing this disc ({label}) to {target} instead "
+    from .convert import _shown
+    print(f"WARNING: {_shown(out_dir)} already holds tracks of another disc ({_shown(', '.join(clash[:3]))}"
+          f"{', ...' if len(clash) > 3 else ''}); writing this disc ({_shown(label)}) to {_shown(target)} instead "
           "of mixing them (sacd_extract would mix or overwrite them).", file=sys.stderr)
     if disc.album_set_size <= 1:
         print("hint: if both are discs of one set mastered as 1/1, re-run each with --disc N/M "

@@ -69,6 +69,24 @@ class ExtractInputs(unittest.TestCase):
         self.assertIn("PS3 SACD Ripper server", log)
         self.assertIn("DISC_READ", log)
 
+    def test_unwritable_output_fails_cleanly(self):
+        # An output that can't be created (read-only directory, full disk) used to crash the
+        # engine: out_close finished it through a NULL FILE*.
+        if os.geteuid() == 0:
+            self.skipTest("root ignores directory permissions")
+        for args in (["-s"], ["-s", "-z"], ["-p"], ["-e"]):
+            with self.subTest(args=args):
+                d = self.workdir("ro-" + "".join(args).replace("-", ""))
+                album = d / "pysacd DST test"
+                album.mkdir()
+                album.chmod(0o555)
+                try:
+                    r = run_extract([*args, "-i", str(self.iso)], d)
+                finally:
+                    album.chmod(0o755)
+                self.assertEqual(r.returncode, 255, r.stdout + r.stderr)
+                self.assertIn("ERROR", r.stdout + r.stderr)
+
     def test_network_iso_copy(self):
         out = self.workdir("netiso")
         with PS3Simulator(self.iso, "127.0.0.1", 0) as sim:

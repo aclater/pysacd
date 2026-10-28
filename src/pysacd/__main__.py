@@ -85,14 +85,47 @@ def _convert(args) -> int:
     for k, v in vars(args).items():
         if v is not None and hasattr(opts, k):
             setattr(opts, k, v)
+    from . import remote
+
     rc = 0
     for iso in args.images:
+        tmp = None
         try:
-            rc |= convert(iso, opts)
+            addr = remote.parse_address(iso)
+            if addr:
+                # Fetch the TOCs and the selected areas from the PS3 into a temporary sparse ISO
+                print(f"{iso}: reading from SACD Ripper server", file=sys.stderr)
+                def wanted(a, which=opts.areas, dry=opts.dry_run):
+                    return not dry and ((a.is_stereo and which in ("stereo", "both")) or
+                                        (a.is_multichannel and which in ("multichannel", "both")))
+                tmp, _ = remote.fetch_temp(
+                    *addr, opts.output_dir or ".", wanted,
+                    progress=remote.RateMeter(lambda m: (sys.stderr.write(m), sys.stderr.flush())))
+            rc |= convert(tmp or iso, opts)
         except (OSError, SACDError) as e:
             print(f"{iso}: {e}", file=sys.stderr)
             rc = 1
+        finally:
+            if tmp:
+                Path(tmp).unlink(missing_ok=True)
     return rc
+
+
+def _ps3sim(args) -> int:
+    from .remote import PS3Simulator
+
+    sim = PS3Simulator(args.image, args.host, args.port, rate=args.rate * 1e6, latency=args.latency / 1000,
+                       drop_after=args.drop_after, fail_lsn=args.fail_lsn, no_disc=args.no_disc,
+                       log=lambda m: print(m, file=sys.stderr, flush=True))
+    host, port = sim.address[0], sim.address[1]
+    print(f"serving {args.image} as a SACD Ripper server on {host!s}:{port} (Ctrl-C to stop)", file=sys.stderr)
+    try:
+        sim.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sim.stop()
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -116,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
                "  e.g. --dir-template '{albumartist}/{year} - {album} [{edition}]'\n"
                "       --file-template '{tracknumber:02d} {title}'\n"
                "  empty [] / () left by blank fields are removed")
-    c.add_argument("images", nargs="+")
+    c.add_argument("images", nargs="+", help="ISO images, or HOST:PORT of a PS3 running SACD Ripper")
     c.add_argument("--config", help=f"config file (default {Path('~/.config/pysacd/config.toml')})")
     c.add_argument("-f", "--format", choices=["dsf", "flac", "wav"], help="output format (default dsf)")
     c.add_argument("-o", "--output-dir", help="root output directory (default .)")
@@ -145,6 +178,20 @@ def main(argv: list[str] | None = None) -> int:
     _bool(c, "overwrite", "overwrite existing files (default: skip)")
     c.add_argument("-n", "--dry-run", action="store_true", default=None, help="show match and paths only")
     c.set_defaults(func=_convert)
+
+    s = sub.add_parser(
+        "ps3sim", help="serve an ISO like a PS3 running SACD Ripper (for testing network clients)",
+        description="Serve an already-decrypted SACD ISO over the SACD Ripper network protocol, "
+                    "so `sacd_extract -i HOST:PORT` or pysacd can be tested without a PS3.")
+    s.add_argument("image")
+    s.add_argument("--host", default="0.0.0.0", help="listen address (default 0.0.0.0)")
+    s.add_argument("--port", type=int, default=2002, help="listen port (default 2002, as on the PS3)")
+    s.add_argument("--rate", type=float, default=0, help="throttle to this many MB/s (0 = unlimited)")
+    s.add_argument("--latency", type=float, default=0, help="delay each request by this many ms")
+    s.add_argument("--drop-after", type=int, default=0, help="close the connection after N reads")
+    s.add_argument("--fail-lsn", type=int, help="make reads covering this LSN fail (result -1)")
+    s.add_argument("--no-disc", action="store_true", help="fail DISC_OPEN, as with an empty drive")
+    s.set_defaults(func=_ps3sim)
 
     args = ap.parse_args(argv)
     return args.func(args)

@@ -48,6 +48,8 @@ short ones:
 
 - `--flac`, `--wav`: PCM output, gapless, 24-bit;
 - `--musicbrainz`: tags and cover art;
+- `--submit-isrcs` (with `--musicbrainz`): offer the disc's ISRCs to the
+  matched release, asking first ([details](converting.md#submitting-isrcs-to-musicbrainz));
 - `--templates`: your own folder and file naming;
 - `--threads`;
 - `--disc N/M`: place a disc mastered as 1/1 into a set;

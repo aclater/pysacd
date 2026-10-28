@@ -72,6 +72,7 @@ class Opts:
     musicbrainz: bool = False
     mb_release: str | None = None
     mb_contact: str | None = None
+    submit_isrcs: bool = False
     cover: bool = False
     templates: bool = False            # name files with pysacd's config templates
     config: str | None = None
@@ -127,6 +128,8 @@ def parse_args(argv: list[str]) -> Opts:
     x.add_argument("--musicbrainz", action="store_true", help="tag from MusicBrainz (DSF/FLAC/WAV)")
     x.add_argument("--mb-release", help="MusicBrainz release id to use")
     x.add_argument("--mb-contact", help="contact for the MusicBrainz User-Agent")
+    x.add_argument("--submit-isrcs", action="store_true",
+                   help="with --musicbrainz: offer the disc's ISRCs to the matched release (asks first)")
     x.add_argument("--cover", action="store_true", help="embed Cover Art Archive front cover (with --musicbrainz)")
     x.add_argument("--templates", action="store_true", help="name output with pysacd config templates")
     x.add_argument("--config", help="pysacd config file for --templates")
@@ -151,7 +154,7 @@ def parse_args(argv: list[str]) -> Opts:
              output_dir=_dirarg(a.output_dir), output_dir_conc=_dirarg(a.output_dir_conc),
              pcm=a.pcm, pcm_rate=a.pcm_rate, gain_db=a.gain_db, flac_level=a.flac_level,
              threads=a.threads, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
-             mb_contact=a.mb_contact, cover=a.cover, templates=a.templates, config=a.config,
+             mb_contact=a.mb_contact, submit_isrcs=a.submit_isrcs, cover=a.cover, templates=a.templates, config=a.config,
              use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc), log_file=a.log_file, log_level=a.log_level)
     if a.tracks:
         # like sacd_extract, the last -t wins; 0 and junk are ignored
@@ -758,6 +761,12 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
         except musicbrainz.MBError as e:
             say(f"\n Warning: MusicBrainz lookup failed: {e}")
         say(f"\n MusicBrainz: {'https://musicbrainz.org/release/' + match.release_id if match else 'no confident match'}")
+        if match and o.submit_isrcs:
+            from . import isrcsubmit
+            try:
+                isrcsubmit.offer(match, ref, o.mb_contact, out=lambda m: say("\n " + m))
+            except musicbrainz.MBError as e:
+                say(f"\n Warning: ISRC submission: {e}")
 
 
     rc = 0

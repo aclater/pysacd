@@ -38,6 +38,10 @@ from .toc import SECTOR_SIZE, SACDError, SACDImage
 DEFAULT_PORT = 2002
 MAX_BLOCK = 512                 # MAX_PROCESSING_BLOCK_SIZE in sacd-ripper's scarletbook.h
 
+# Network data is untrusted: bound every length before allocating.
+MAX_FIELD = MAX_BLOCK * SECTOR_SIZE + 1024      # largest legitimate field: one 512-sector read
+MAX_FIELDS = 16                                 # the protocol's messages have 3 fields
+
 REQ_OPEN, REQ_CLOSE, REQ_READ, REQ_SIZE = 1, 2, 3, 4
 RESP_OPENED, RESP_CLOSED, RESP_READ, RESP_SIZE = 1, 2, 3, 4
 
@@ -108,7 +112,7 @@ class _Reader:
 
 def decode_message(r: _Reader) -> dict[int, int | bytes]:
     fields: dict[int, int | bytes] = {}
-    while True:
+    for _ in range(MAX_FIELDS + 1):
         key = r.varint()
         if key == 0:
             return fields
@@ -116,13 +120,17 @@ def decode_message(r: _Reader) -> dict[int, int | bytes]:
         if wt == 0:
             fields[num] = r.varint()
         elif wt == 2:
-            fields[num] = r.take(r.varint())
+            n = r.varint()
+            if n > MAX_FIELD:
+                raise RemoteError(f"field {num} is {n} bytes (limit {MAX_FIELD})")
+            fields[num] = r.take(n)
         elif wt == 1:
             fields[num] = int.from_bytes(r.take(8), "little")
         elif wt == 5:
             fields[num] = int.from_bytes(r.take(4), "little")
         else:
             raise RemoteError(f"unsupported wire type {wt}")
+    raise RemoteError(f"more than {MAX_FIELDS} fields in one message")
 
 
 # --- client ------------------------------------------------------------------------------------

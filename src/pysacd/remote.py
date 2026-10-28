@@ -32,6 +32,7 @@ import socketserver
 import threading
 import time
 from collections.abc import Sequence
+from typing import BinaryIO, cast
 
 from .toc import SECTOR_SIZE, SACDError, SACDImage
 
@@ -184,6 +185,14 @@ class PS3Client:
             raise RemoteError(f"{self.address}: no disc size (result {r[2]})")
         return r[2]
 
+    def read_some(self, lsn: int, count: int) -> bytes:
+        """One DISC_READ: up to `count` sectors from `lsn` (at least one), as the server returns them."""
+        r = self._call(REQ_READ, lsn, count, want=RESP_READ)
+        got, data = r[2], r.get(3, b"")
+        if not 0 < got <= count or len(data) != got * SECTOR_SIZE:
+            raise RemoteError(f"{self.address}: read failed at LSN {lsn} (result {got}, {len(data)} bytes)")
+        return data
+
     def read(self, lsn: int, count: int) -> bytes:
         """Read exactly `count` sectors from `lsn`, looping on the server's short reads."""
         out = bytearray()
@@ -226,6 +235,10 @@ class RemoteDisc(io.RawIOBase):
         except Exception:
             self.client.close()
             raise
+        # A fresh server session starts with block size 0, and on a single-area disc nothing
+        # sets it for reads after the audio area (they return 0 sectors). Reading one sector
+        # before the first area primes it, as sacd_extract's own TOC reads do.
+        self.client.read_some(0, 1)
         self._pos = 0
         self._readahead = readahead
         self._cache_lsn = -1
@@ -269,6 +282,117 @@ class RemoteDisc(io.RawIOBase):
         super().close()
 
 
+# --- fetching a disc to a local file -------------------------------------------------------
+
+def needed_ranges(disc, total_sectors: int, areas: list | None) -> list[tuple[int, int]]:
+    """LSN ranges [start, end) to fetch so that `areas` (None = whole disc) can be converted locally.
+
+    Everything except the audio of areas that aren't wanted: lead-in, master and area TOCs
+    (TOC-1 and TOC-2), and the wanted areas' audio. The rest stays a hole in a sparse file.
+    """
+    if areas is None:
+        return [(0, total_sectors)]
+    skip = sorted((a.track_start, a.track_end + 1) for a in disc.areas if a not in areas)
+    out, pos = [], 0
+    for s, e in skip:
+        if s > pos:
+            out.append((pos, s))
+        pos = max(pos, e)
+    if pos < total_sectors:
+        out.append((pos, total_sectors))
+    return out
+
+
+def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int, int]] | None = None,
+          retries: int = 3, progress=None, chunk: int = MAX_BLOCK * 4, backoff: float = 1.0) -> int:
+    """Copy sectors from a SACD Ripper server into a local plain (2048-byte) ISO file.
+
+    `ranges` defaults to the whole disc; sectors outside them are left as holes (zeros).
+    A dropped connection is reopened and the copy resumes where it stopped, up to `retries`
+    times in a row, waiting backoff * 2**(n-1) seconds (at most 10) before the n-th retry.
+    `progress(done, total)` is called after each reply (in sectors).
+    Returns the disc size in sectors.
+    """
+    disc = RemoteDisc(host, port)
+    total = disc.sectors
+    ranges = ranges or [(0, total)]
+    todo = sum(e - s for s, e in ranges)
+    done = failures = 0
+    try:
+        with open(path, "wb") as out:
+            out.truncate(total * SECTOR_SIZE)
+            for start, end in ranges:
+                lsn = start
+                while lsn < end:
+                    n = min(chunk, end - lsn)
+                    try:
+                        data = disc.client.read_some(lsn, n)     # write each reply as it arrives
+                        n = len(data) // SECTOR_SIZE
+                    except (RemoteError, OSError):
+                        failures += 1
+                        if failures > retries:
+                            raise
+                        disc.close()
+                        time.sleep(min(backoff * 2 ** (failures - 1), 10))
+                        disc = RemoteDisc(host, port)
+                        continue
+                    failures = 0
+                    out.seek(lsn * SECTOR_SIZE)
+                    out.write(data)
+                    lsn += n
+                    done += n
+                    if progress:
+                        progress(done, todo)
+    finally:
+        disc.close()
+    return total
+
+
+def read_remote_toc(host: str, port: int):
+    """(Disc, total sectors) of the disc on a SACD Ripper server."""
+    rd = RemoteDisc(host, port)
+    try:
+        return SACDImage(cast(BinaryIO, rd)).read_toc(), rd.sectors
+    finally:
+        rd.close()
+
+
+def fetch_temp(host: str, port: int, workdir: str | os.PathLike, want_area, progress=None):
+    """Fetch what's needed to convert the areas selected by `want_area(area)` into a temporary
+    sparse ISO in `workdir`. Returns (path, Disc); the caller deletes the file."""
+    import tempfile
+
+    disc, total = read_remote_toc(host, port)
+    areas = [a for a in disc.areas if want_area(a)]
+    os.makedirs(workdir, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".pysacd-remote-", suffix=".iso", dir=workdir)
+    os.close(fd)
+    try:
+        fetch(host, port, tmp, needed_ranges(disc, total, areas), progress=progress)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+    return tmp, disc
+
+
+class RateMeter:
+    """Formats 'n%  x MB/s' progress lines for fetch()."""
+
+    def __init__(self, write, every: float = 1.0):
+        self.write, self.every, self.t0, self.last = write, every, time.time(), 0.0
+
+    def __call__(self, done: int, total: int) -> None:
+        now = time.time()
+        if now - self.last < self.every and done < total:
+            return
+        self.last = now
+        rate = done * SECTOR_SIZE / max(now - self.t0, 1e-6) / 1e6
+        self.write(f"\r  network copy: {100 * done / max(total, 1):5.1f}%  {done * SECTOR_SIZE / 1e6:8.0f} MB  "
+                   f"{rate:6.1f} MB/s")
+        if done >= total:
+            self.write("\n")
+
+
 # --- simulator -----------------------------------------------------------------------------
 
 class PS3Simulator:
@@ -280,7 +404,7 @@ class PS3Simulator:
     terminator, and the connection closing after DISC_CLOSE.
 
     Test knobs: `rate` (bytes/s, emulates the PS3 drive), `latency` (seconds per request),
-    `drop_after` (close the connection after N reads), `fail_lsn` (reads covering this LSN
+    `drop_after` (close each connection after N reads), `fail_lsn` (reads covering this LSN
     return result -1), `no_disc` (DISC_OPEN fails), `over_return` (send N sectors more than
     requested, to test that clients reject a misbehaving server).
     """
@@ -332,6 +456,7 @@ class PS3Simulator:
         img = None
         enc = [0, 0, 0, 0]              # encrypted_start_1, end_1, start_2, end_2
         block_size = 0                  # carried across requests, as in server.c
+        session_reads = 0
         self.log(f"client {sock.getpeername()[0]} connected")
         try:
             while True:
@@ -367,6 +492,7 @@ class PS3Simulator:
                         else:
                             result = 0
                         self.reads += 1
+                        session_reads += 1
                         if self.rate and data:
                             time.sleep(len(data) / self.rate)
                 elif rtype == REQ_OPEN:
@@ -401,8 +527,8 @@ class PS3Simulator:
                 sock.sendall(encode_message(fields))
                 if rtype == REQ_CLOSE:
                     break
-                if self.drop_after and self.reads >= self.drop_after:
-                    self.log(f"dropping connection after {self.reads} reads")
+                if self.drop_after and session_reads >= self.drop_after:
+                    self.log(f"dropping connection after {session_reads} reads")
                     break
         finally:
             if img is not None:

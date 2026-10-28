@@ -91,6 +91,10 @@ def setup(level: str | None = None, path: str | os.PathLike | None = None, argv:
         if not isinstance(h, logging.NullHandler):
             root.removeHandler(h)
             h.close()
+    if _crash_file is not None:      # the previous log's crash-dump handle
+        faulthandler.disable()
+        _crash_file.close()
+        _crash_file = None
     file_level = LEVELS.get((level or "debug").lower())
     if file_level is None:
         raise ValueError(f"unknown log level {level!r} (use {', '.join(LEVELS)})")

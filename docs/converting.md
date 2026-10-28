@@ -64,7 +64,7 @@ images are untrusted input (see [security](security.md#running-as-root)).
 
 Python format specs work (`{tracknumber:02d}`). Empty `[]` or `()` left by blank
 fields are removed, and `/` inside values is replaced. `--portable-names` also
-replaces characters that are invalid on Windows/SMB.
+replaces characters that are invalid on Windows/SMB (always on, on Windows).
 
 How it works:
 

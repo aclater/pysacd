@@ -189,9 +189,10 @@ Extensions (long options only):
 
 Differences from `sacd_extract`:
 
-- **Input:** ISO images only. Drives and PS3 network servers aren't
-  supported by the CLI yet. The PS3 protocol is implemented in
-  `pysacd.remote` (see [PS3 network protocol](#ps3-network-protocol)).
+- **Input:** ISO images, and PS3 SACD Ripper servers (`-i 192.168.1.10:2002`).
+  Optical drives aren't supported. A dropped PS3 connection is reopened and the
+  copy resumes; sacd_extract gives up. See
+  [PS3 network protocol](#ps3-network-protocol).
 - **Raw-sector images** (2064 or 2054 bytes per sector) are read, where
   `sacd_extract` refuses them. `-I` writes them out as plain 2048-byte ISOs.
 - **The DSDIFF "creating machine" comment, and the version lines in `.cue` and
@@ -233,7 +234,28 @@ The sector layout is detected by looking for `SACDMTOC` at LSN 510:
 
 `sacd_extract -i HOST:2002` reads discs from a PS3 running SACD Ripper. The PS3
 decrypts the disc, so only plain sectors cross the network.
-`pysacd.remote` implements both ends of that protocol:
+`pysacd.remote` implements both ends of that protocol, and both CLIs accept a
+PS3 address wherever they take an ISO:
+
+```
+pysacd-extract -I -i 192.168.1.10:2002          # copy the disc to an ISO
+pysacd-extract -s -I -i 192.168.1.10:2002       # ISO + DSF; the disc crosses the network once
+pysacd-extract -2 -s -i 192.168.1.10:2002       # DSF; only the TOCs and the stereo area are fetched
+pysacd convert 192.168.1.10:2002                # tagged DSF, as for an ISO
+```
+
+How it works:
+
+- **With `-I`,** the whole disc is streamed into the output ISO first, and any
+  other outputs are produced from that file.
+- **Without `-I`,** pysacd fetches only the TOCs and the areas it needs into a
+  temporary sparse ISO next to the output, converts it as usual, then deletes it.
+  The audio of areas you didn't ask for is skipped.
+- **Dropped connections:** the connection is reopened (up to 3 times in a row,
+  with backoff) and the copy resumes where it stopped.
+
+The library:
+
 
 - `RemoteDisc(host, port)`: a disc on a PS3 as a seekable file object, usable
   with `SACDImage` and `read_toc()`.

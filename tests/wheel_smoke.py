@@ -50,8 +50,10 @@ def main() -> int:
         run(pysacd, "toc", str(iso), cwd=d)
         (d / "x").mkdir()
         run(extract, "--no-cfg", "-2", "-s", "-i", str(iso), cwd=d / "x")
-        run(pysacd, "convert", "--no-musicbrainz", "--config", os.devnull, "-f", "flac", "-o", str(d / "c"), str(iso),
-            cwd=d)
+        # cibuildwheel runs the Linux tests as root in a container, where convert refuses to run (#30)
+        root = ["--allow-root"] if getattr(os, "geteuid", lambda: 1)() == 0 else []
+        run(pysacd, "convert", *root, "--no-musicbrainz", "--config", os.devnull, "-f", "flac", "-o", str(d / "c"),
+            str(iso), cwd=d)
         dsf = sorted((d / "x").rglob("*.dsf"))
         flac = sorted((d / "c").rglob("*.flac"))
         print("dsf:", [p.name for p in dsf], "flac:", [p.name for p in flac])

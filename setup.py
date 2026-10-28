@@ -34,7 +34,9 @@ class BuildEngine(build_py):
         # A private build directory: never touch the developer's build/ or src/pysacd/ library
         with tempfile.TemporaryDirectory() as tmp:
             try:
-                subprocess.run(["make", "-C", str(ROOT), f"BUILD={tmp}", f"LIB={dest / LIB}",
+                # forward slashes: MSYS make on Windows mangles backslashes
+                subprocess.run(["make", "-C", ROOT.as_posix(), f"BUILD={Path(tmp).as_posix()}",
+                                f"LIB={(dest / LIB).as_posix()}",
                                 *([] if native else ["PORTABLE=1"])], check=True)
             except FileNotFoundError:
                 sys.exit("pysacd: building from source needs `make` and a C compiler (gcc or clang; MinGW-w64 "

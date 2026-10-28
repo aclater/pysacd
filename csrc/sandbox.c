@@ -93,6 +93,10 @@ int sacdconv_landlock(const char *const *ro, int nro, const char *const *rw, int
         return (errno == ENOSYS || errno == EOPNOTSUPP) ? 0 : -errno;
     uint64_t handled = ll_handled(abi);
     struct landlock_ruleset_attr attr = {.handled_access_fs = handled};
+#ifdef LANDLOCK_SCOPE_SIGNAL
+    if (abi >= 6)       /* no signals to, and no abstract Unix sockets of, processes outside the sandbox */
+        attr.scoped = LANDLOCK_SCOPE_SIGNAL | LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET;
+#endif
     int rs = (int)syscall(SYS_landlock_create_ruleset, &attr, sizeof attr, 0);
     if (rs < 0)
         return -errno;
@@ -165,7 +169,8 @@ int sacdconv_seccomp(void)
         SB_DENY(__NR_request_key), SB_DENY(__NR_bpf), SB_DENY(__NR_perf_event_open),
         SB_DENY(__NR_init_module), SB_DENY(__NR_finit_module), SB_DENY(__NR_delete_module),
         SB_DENY(__NR_kexec_load), SB_DENY(__NR_open_by_handle_at), SB_DENY(__NR_userfaultfd),
-        SB_DENY(__NR_io_uring_setup), SB_DENY(__NR_personality),
+        SB_DENY(__NR_io_uring_setup), SB_DENY(__NR_personality), SB_DENY(__NR_memfd_create),
+        SB_DENY(__NR_pidfd_open), SB_DENY(__NR_pidfd_send_signal), SB_DENY(__NR_pidfd_getfd),
 #ifdef __NR_fork
         SB_DENY(__NR_fork), SB_DENY(__NR_vfork),
 #endif

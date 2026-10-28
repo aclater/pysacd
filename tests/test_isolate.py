@@ -99,6 +99,46 @@ class Isolated(unittest.TestCase):
         for t in area.tracks:
             self.assertEqual((out / f"b{t.number}.dsf").read_bytes(), (out / f"a{t.number}.dsf").read_bytes())
 
+    def long_iso(self) -> Path:
+        # Enough frames that the DST index needs many chunks (and would overflow a small MAX_LINE).
+        path = self.dir / "long.iso"
+        if not path.exists():
+            frames = [f for _, _, f in dst.encoded(2)]
+            frames = (frames * (6000 // len(frames) + 1))[:6000]
+            sacdgen.build_iso(path, [sacdgen.AreaSpec(2, frames, [3000, 3000])])
+        return path
+
+    def test_long_dst_index(self):
+        iso = self.long_iso()
+        img = SACDImage(iso)
+        area = img.read_toc().areas[0]
+        out = self.workdir("longidx")
+        end = area.tracks[-1].start.total_frames + area.tracks[-1].duration.total_frames
+        a = _native.OutputSpec("dff-dst", out / "a.dff", 0, end)
+        b = _native.OutputSpec("dff-dst", out / "b.dff", 0, end)
+        _native.run_area(img, iso, area, [a])
+        old = isolate.MAX_LINE
+        isolate.MAX_LINE = 32 << 10         # one line for 6000 entries would be ~130 KiB
+        try:
+            _native.run_area(img, iso, area, [b], isolate=True)
+        finally:
+            isolate.MAX_LINE = old
+            img.close()
+        self.assertEqual(len(b.dst_index), 6000)
+        self.assertEqual(b.dst_index, a.dst_index)
+        self.assertEqual((out / "b.dff").read_bytes(), (out / "a.dff").read_bytes())
+
+    def test_long_area_passthrough_cli(self):
+        iso = self.long_iso()
+        for args in (["-p"], ["-e"]):
+            with self.subTest(args=args):
+                a, b = self.workdir(f"long-in{args[0]}"), self.workdir(f"long-iso{args[0]}")
+                r = run_extract([*args, "-i", str(iso)], a)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                r = run_extract([*args, "--isolate", "-i", str(iso)], b)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(tree(b), tree(a))
+
     # --- cancel -----------------------------------------------------------------------------
 
     def test_cancel_kills_the_child(self):
@@ -191,19 +231,51 @@ class Messages(unittest.TestCase):
 
     def test_malformed(self):
         spec = _native.OutputSpec("dsf", "x", 0, 10)
-        ok = {"frames_written": 1, "frames_missing": 0, "dst_errors": 0, "samples": 0, "data_bytes": 0,
-              "dst_index": []}
+        ok = {"frames_written": 1, "frames_missing": 0, "dst_errors": 0, "samples": 0, "data_bytes": 0}
         for line in (b"not json", b"[1]", b'{"t": "bogus"}', b'{"t": "read", "lsn": 0, "count": 1}',
                      b'{"t": "log", "level": 99, "msg": "x"}',
                      json.dumps({"t": "done", "error": "", "outputs": []}).encode(),
                      json.dumps({"t": "done", "error": "", "outputs": [dict(ok, frames_written=-1)]}).encode(),
                      json.dumps({"t": "done", "error": "", "outputs": [dict(ok, frames_written=True)]}).encode(),
                      json.dumps({"t": "done", "error": 5, "outputs": [ok]}).encode(),
-                     json.dumps({"t": "done", "error": "", "outputs": [dict(ok, dst_index=[[0, 1]] * 11)]}).encode()):
+                     json.dumps({"t": "index", "o": 0, "v": [[0, 1]] * 11}).encode(),     # more than 10 frames
+                     json.dumps({"t": "index", "o": 1, "v": [[0, 1]]}).encode(),          # no such output
+                     json.dumps({"t": "index", "o": 0, "v": [[0, -1]]}).encode()):
             with self.subTest(line=line[:60]), self.assertRaises(_native.NativeError):
                 self.parse(line, [spec])
         self.assertEqual(self.parse(json.dumps({"t": "done", "error": "", "outputs": [ok]}).encode(), [spec]), "")
         self.assertEqual(spec.frames_written, 1)
+
+    def test_index_chunks_accumulate_up_to_the_frame_count(self):
+        spec = _native.OutputSpec("dff-dst", "x", 0, 10)
+        chunk = json.dumps({"t": "index", "o": 0, "v": [[100, 7]] * 5}).encode()
+        self.parse(chunk, [spec])
+        self.parse(chunk, [spec])
+        self.assertEqual(spec.dst_index, [(100, 7)] * 10)
+        with self.assertRaises(_native.NativeError):
+            self.parse(chunk, [spec])
+
+    def test_read_requests_stay_on_the_disc(self):
+        from pysacd._native import Progress
+        asked = []
+
+        def source(lsn, count):
+            asked.append((lsn, count))
+            return bytes(count * 2048)
+
+        class Sink:
+            def write(self, b):
+                pass
+
+            def flush(self):
+                pass
+
+        for lsn, count in ((95, 10), (100, 1), (1 << 32, 1)):
+            with self.subTest(lsn=lsn), self.assertRaises(_native.NativeError):
+                isolate._message(json.dumps({"t": "read", "lsn": lsn, "count": count}).encode(), Sink(),
+                                 None, source, [], Progress, 100)
+        isolate._message(b'{"t": "read", "lsn": 90, "count": 10}', Sink(), None, source, [], Progress, 100)
+        self.assertEqual(asked, [(90, 10)])
 
     def test_default_path_does_not_import_isolate(self):
         # isolate=False must cost nothing: the module isn't even imported.

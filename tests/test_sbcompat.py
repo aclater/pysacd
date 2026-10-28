@@ -89,7 +89,7 @@ class Helpers(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             open(os.path.join(d, "n.iso"), "w").close()
             open(os.path.join(d, "n (1).iso"), "w").close()
-            self.assertEqual(sb.unique_filename(d, "n", "iso"), os.path.join(d, "n (2).iso"))
+            self.assertEqual(sb.unique_filename(d, "n", "iso"), f"{d}/n (2).iso")    # "/", as sacd_extract
 
     def test_byte_truncation(self):
         # The C truncates on bytes: a 2-byte character split at the limit survives

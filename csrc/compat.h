@@ -150,12 +150,13 @@ static inline void sc_close(sc_file_t f)
     close(f);
 }
 
-/* A new output file (#14, as pysacd.safeio): never an existing file or a symlink, and mode
- * 0644, so never executable whatever the umask. `update` also opens it for reading, as
+/* A new output file (#14, as pysacd.safeio): never an existing file or a symlink. Mode 0666
+ * filtered by the umask, like any user data file (shared libraries rely on umask 002), and
+ * never executable. `update` also opens it for reading, as
  * libFLAC wants. */
 static inline FILE *sc_fopen_new(const char *path, int update)
 {
-    int fd = open(path, (update ? O_RDWR : O_WRONLY) | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
+    int fd = open(path, (update ? O_RDWR : O_WRONLY) | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0666);
     if (fd < 0)
         return NULL;
     FILE *fp = fdopen(fd, update ? "w+b" : "wb");

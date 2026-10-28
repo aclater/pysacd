@@ -2,7 +2,8 @@
 
 A disc with hostile titles goes through every output mode of pysacd-extract and pysacd convert:
 - every path created must resolve under the output directory;
-- every file must be a regular file with mode 0644, even under umask 0 (no execute bits);
+- every file must be a regular file with mode 0666 & ~umask, never executable (checked under
+  umask 0, where nothing hides an execute bit);
 - no temporary file may be left behind.
 
 A second pass pre-creates each output name as a symlink to a file outside the output directory.
@@ -95,7 +96,7 @@ class Confinement(unittest.TestCase):
                 continue
             self.assertTrue(stat.S_ISREG(st.st_mode), f"not a regular file: {rel}")
             if os.name != "nt":         # Windows has no POSIX mode bits
-                self.assertEqual(stat.S_IMODE(st.st_mode), 0o644, f"{rel}: mode {oct(st.st_mode)}")
+                self.assertEqual(stat.S_IMODE(st.st_mode), 0o666, f"{rel}: mode {oct(st.st_mode)}")   # umask 0
         return made
 
     def test_every_writer(self):

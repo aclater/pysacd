@@ -124,6 +124,9 @@ jobs:
           export LD_PRELOAD="$(gcc -print-file-name=libtsan.so.2)"   # the runtime, not the linker script
           # Reports go to a file: pytest captures stderr, and halt_on_error exits before it can print it.
           export TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:log_path=$RUNNER_TEMP/tsan
+          # numpy's OpenBLAS threads race in their own uninstrumented code (seen in CI); one
+          # thread keeps TSan on pysacd's engine
+          export OPENBLAS_NUM_THREADS=1
           # Without the runtime the engine doesn't load and its tests would silently skip.
           PYTHONPATH=src python -c "from pysacd import _native; _native._load()"
           PYTHONPATH=src python -m pytest -v tests || { cat "$RUNNER_TEMP"/tsan* 2>/dev/null; exit 1; }

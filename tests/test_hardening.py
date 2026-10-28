@@ -86,7 +86,7 @@ class SafeIO(unittest.TestCase):
         self.assertFalse(final.is_symlink())
         self.assertEqual(final.read_bytes(), b"data")
         if os.name != "nt":             # Windows has no POSIX mode bits
-            self.assertEqual(stat.S_IMODE(final.stat().st_mode), 0o644)
+            self.assertEqual(stat.S_IMODE(final.stat().st_mode), 0o666)     # umask 0: nothing executable
         self.assertEqual([p.name for p in self.dir.iterdir() if p.name.endswith(".partial")], [])
 
 

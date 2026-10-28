@@ -82,8 +82,10 @@ For more isolation than an ordinary user account, see [Extra isolation](#extra-i
 ## Files pysacd writes
 
 Every output (audio, `-I` ISO copies, cue, XML, covers and PS3 fetches) is created new with
-`O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC` and mode 0644. That's `create_output()` in the engine
-and `pysacd.safeio` in Python. Each file is written under an unpredictable temporary name
+`O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC`. That's `sc_fopen_write()` in the engine's
+`csrc/compat.h`, and `pysacd.safeio` in Python. The mode is 0666 filtered by your umask, as `cp`
+and `sacd_extract` give, so a shared library with umask 002 stays group-writable. Outputs never
+have execute bits. Each file is written under an unpredictable temporary name
 (`.pysacd-<random>.partial`) in the target directory, then moved into place with
 `os.replace()`. pysacd therefore never writes through a symlink that is planted at an output
 name or a guessable temporary name, and never creates an executable file, whatever the

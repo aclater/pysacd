@@ -42,6 +42,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Threat model](security.md#threat-model)
   - [Running as root](security.md#running-as-root)
   - [Extra isolation](security.md#extra-isolation)
+  - [MusicBrainz credentials](security.md#musicbrainz-credentials)
   - [PS3 network protocol](security.md#ps3-network-protocol)
   - [Fuzzing](security.md#fuzzing)
 - **[Clean room and licences](clean-room.md)**: where the code came from, licences, acknowledgements.

@@ -31,6 +31,7 @@ class AreaSpec:
     tracks: list[int]                   # frames per track; sums to len(frames)
     dst: bool = True
     titles: list[str] = field(default_factory=list)
+    charset: int = 2            # locale character set code (see CHARSET_CODECS)
 
 
 def _tc(frames: int) -> bytes:
@@ -97,6 +98,11 @@ class DiscInfo:
     disc_catalog: str = "PYSACD-0001"
     set_size: int = 1
     sequence: int = 1
+    charset: int = 2            # locale character set code (see CHARSET_CODECS)
+
+
+# Scarletbook character set codes, and a codec that encodes test text in each
+CHARSET_CODECS = {2: "latin-1", 3: "shift_jis", 4: "euc_kr", 5: "gb2312", 6: "big5"}
 
 
 def _master_toc(area_tocs: list[tuple[int, int]], info: DiscInfo) -> bytes:
@@ -114,12 +120,13 @@ def _master_toc(area_tocs: list[tuple[int, int]], info: DiscInfo) -> bytes:
     m[104:108] = bytes([1, 0, 0, 25])
     struct.pack_into(">HBB", m, 120, 2026, 10, 28)
     m[128] = 1                                               # text channels
-    m[136:140] = b"en\x02\x00"                               # ISO 8859-1
+    m[136:140] = b"en" + bytes([info.charset, 0])            # 2 = ISO 8859-1
     for i in range(1, 9):
         t = i * S
         m[t:t + 8] = b"SACDText"
     t = S
-    strings = [info.title.encode("latin-1"), info.artist.encode("latin-1")]
+    codec = CHARSET_CODECS[info.charset]
+    strings = [info.title.encode(codec), info.artist.encode(codec)]
     pos = 64
     for i, s in enumerate(strings):
         m[t + pos:t + pos + len(s)] = s
@@ -147,13 +154,13 @@ def _area_toc(spec: AreaSpec, track_lsns: list[tuple[int, int]], audio: tuple[in
     a[69] = ntracks
     struct.pack_into(">II", a, 72, *audio)
     a[80] = 1
-    a[88:92] = b"en\x02\x00"
+    a[88:92] = b"en" + bytes([spec.charset, 0])
 
     tt = S                                                   # SACDTTxt
     a[tt:tt + 8] = b"SACDTTxt"
     pos = 8 + 2 * 255 + 2
     for i in range(ntracks):
-        title = (spec.titles[i] if i < len(spec.titles) else f"Track {i + 1}").encode("latin-1")
+        title = (spec.titles[i] if i < len(spec.titles) else f"Track {i + 1}").encode(CHARSET_CODECS[spec.charset])
         struct.pack_into(">H", a, tt + 8 + i * 2, pos)
         item = bytes([1, 0, 0, 0, 0x01, 0x20]) + title + b"\0"
         a[tt + pos:tt + pos + len(item)] = item

@@ -40,7 +40,10 @@ jobs:
 
       - name: Build the engine (warnings are errors)
         # PORTABLE: no -march=native, so the runner's CPU doesn't matter.
+        # libFLAC is optional: check that the engine also builds without it.
         run: |
+          make PORTABLE=1 CFLAGS="-O2 -Werror" FLAC_LIBS= FLAC_CFLAGS=
+          make clean
           make PORTABLE=1 CFLAGS="-O2 -Werror"
           make test-tools
 

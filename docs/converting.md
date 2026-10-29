@@ -59,6 +59,11 @@ separated by `{disc_prefix}`.
 Tracks that already exist are skipped unless `--overwrite` is given, and the
 run summary says how many were skipped.
 
+Tracks are cut at their timecodes, without the pauses between them. `--pauses` (config
+`pauses = true`) includes them, with the same track ranges as `pysacd-extract -b`: each
+pause goes with the track before it, and track 1 starts at the area start. Use it to match a
+library extracted with pauses, so the DSD of each track is identical.
+
 `pysacd convert` refuses to run as root unless `--allow-root` is given, because disc
 images are untrusted input (see [security](security.md#running-as-root)).
 

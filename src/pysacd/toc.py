@@ -643,3 +643,15 @@ def read_toc(source: str | os.PathLike | BinaryIO) -> Disc:
     """Open an SACD ISO (path or binary file object) and return its parsed TOC."""
     with SACDImage(source) as img:
         return img.read_toc()
+
+
+def track_range(area: Area, i: int, trimming: bool) -> tuple[int, int]:
+    """Frame range of track i: [start, start+duration) without pauses; with
+    pauses, from the track's start up to the next track (track 1 from the
+    area start, the last track to the area end)."""
+    t = area.tracks[i]
+    if trimming:
+        return t.start.total_frames, t.start.total_frames + t.duration.total_frames
+    start = t.start.total_frames if i else 0
+    end = area.tracks[i + 1].start.total_frames if i + 1 < len(area.tracks) else area.total_playtime.total_frames
+    return start, max(end, t.start.total_frames + t.duration.total_frames)

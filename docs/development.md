@@ -139,6 +139,8 @@ To release:
      `true` (trusted publishing, environment `testpypi`);
    - then publishes to PyPI, if `PYPI_PUBLISH` is `true` (environment `pypi`),
      and only if TestPyPI succeeded or was skipped.
-3. Trusted publishing is configured once per index on its website: a "pending
-   publisher" with owner `aclater`, repository `pysacd`, workflow `workflow.yml`
-   and the environment name above. No API token is stored anywhere.
+3. Trusted publishing is configured once per index on its website: owner
+   `aclater`, repository `pysacd`, workflow `workflow.yml`, environment `pypi`
+   (the PyPI publisher is constrained to it). On GitHub, the `pypi` environment
+   only accepts `v*` tags, so nothing but a release tag can publish. No API token
+   is stored anywhere.

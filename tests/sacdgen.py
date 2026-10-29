@@ -32,6 +32,7 @@ class AreaSpec:
     dst: bool = True
     titles: list[str] = field(default_factory=list)
     charset: int = 2            # locale character set code (see CHARSET_CODECS)
+    pauses: list[int] = field(default_factory=list)  # per track: leading frames of pause (timecodes only)
 
 
 def _tc(frames: int) -> bytes:
@@ -184,8 +185,10 @@ def _area_toc(spec: AreaSpec, track_lsns: list[tuple[int, int]], audio: tuple[in
     a[l2:l2 + 8] = b"SACDTRL2"
     t = 0
     for i, n in enumerate(spec.tracks):
-        a[l2 + 8 + i * 4:l2 + 11 + i * 4] = _tc(t)
-        a[l2 + 8 + 255 * 4 + i * 4:l2 + 11 + 255 * 4 + i * 4] = _tc(n)
+        pause = spec.pauses[i] if i < len(spec.pauses) else 0
+        assert 0 <= pause < n
+        a[l2 + 8 + i * 4:l2 + 11 + i * 4] = _tc(t + pause)
+        a[l2 + 8 + 255 * 4 + i * 4:l2 + 11 + 255 * 4 + i * 4] = _tc(n - pause)
         t += n
     return bytes(a)
 

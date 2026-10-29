@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from . import _native, musicbrainz, safeio, safetext, tagging
-from .toc import FRAME_RATE, Area, Disc, SACDImage, Track
+from .toc import FRAME_RATE, Area, Disc, SACDImage, Track, track_range
 
 CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pysacd" / "config.toml"
 EXTENSIONS = {"dsf": "dsf", "flac": "flac", "wav": "wav"}
@@ -32,6 +32,7 @@ class Options:
     pcm_rate: int = 88200                     # flac/wav: 88200 | 176400
     gain_db: float = 0.0
     flac_level: int = 5
+    pauses: bool = False                      # include the pauses between tracks, as pysacd-extract -b
     jobs: int = 0                             # worker threads, 0 = CPU count
     musicbrainz: bool = True
     mb_release: str | None = None
@@ -411,9 +412,8 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
             skipped += 1
             continue
         tmp = safeio.temp_name(path)
-        spec = _native.OutputSpec(fmt, tmp, t.start.total_frames,
-                                  t.start.total_frames + t.duration.total_frames,
-                                  flac_level=opts.flac_level)
+        first, end = track_range(area, area.tracks.index(t), trimming=not opts.pauses)
+        spec = _native.OutputSpec(fmt, tmp, first, end, flac_level=opts.flac_level)
         if fmt == "dsf":
             spec.footer = tagging.id3_bytes(tags, embed, opts.id3_version)
         elif fmt == "flac":

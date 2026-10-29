@@ -22,7 +22,7 @@ from pathlib import Path
 from . import __version__, _native, remote, safeio, safetext, sbcompat
 from . import log as pslog
 from .rootcheck import warn_root
-from .toc import START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage
+from .toc import START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage, track_range
 
 FRAME_BYTES = 4704
 DSF_BLOCK = 4096
@@ -319,18 +319,6 @@ def _print_text(t: dict, prefix: str) -> None:
 
 
 # ------------------------------------------------------------ planning
-
-def track_range(area: Area, i: int, trimming: bool) -> tuple[int, int]:
-    """Frame range of track i: [start, start+duration) without pauses; with
-    pauses, from the track's start up to the next track (track 1 from the
-    area start, the last track to the area end)."""
-    t = area.tracks[i]
-    if trimming:
-        return t.start.total_frames, t.start.total_frames + t.duration.total_frames
-    start = t.start.total_frames if i else 0
-    end = area.tracks[i + 1].start.total_frames if i + 1 < len(area.tracks) else area.total_playtime.total_frames
-    return start, max(end, t.start.total_frames + t.duration.total_frames)
-
 
 @dataclass
 class Job:

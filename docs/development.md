@@ -119,7 +119,7 @@ directory, so your `build/` and `src/pysacd/_sacdconv.so` are left alone. The
 engine is a ctypes library rather than a CPython extension, so one
 `py3-none-<platform>` wheel serves every Python version.
 
-`.github/workflows/wheels.yml` builds wheels for manylinux (x86-64, aarch64),
+`.github/workflows/workflow.yml` builds wheels for manylinux (x86-64, aarch64),
 musllinux (x86-64), macOS (arm64, x86-64) and Windows (x86-64), plus the sdist,
 whenever packaging or `csrc/` changes. auditwheel and delocate bundle libFLAC and
 libogg; the Windows DLL is linked statically. Their licences ship in the wheel
@@ -140,5 +140,5 @@ To release:
    - then publishes to PyPI, if `PYPI_PUBLISH` is `true` (environment `pypi`),
      and only if TestPyPI succeeded or was skipped.
 3. Trusted publishing is configured once per index on its website: a "pending
-   publisher" with owner `aclater`, repository `pysacd`, workflow `wheels.yml`
+   publisher" with owner `aclater`, repository `pysacd`, workflow `workflow.yml`
    and the environment name above. No API token is stored anywhere.

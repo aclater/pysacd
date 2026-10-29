@@ -4,12 +4,12 @@
 # when its repository variable (TESTPYPI_PUBLISH, PYPI_PUBLISH) is "true" and
 # trusted publishing is configured for its environment (testpypi, pypi).
 
-name: wheels
+name: wheels (release)
 
 on:
   pull_request:
     paths: ["setup.py", "pyproject.toml", "MANIFEST.in", "Makefile", "csrc/**", "tests/wheel_smoke.py",
-            ".github/workflows/wheels.yml"]
+            ".github/workflows/workflow.yml"]
   push:
     tags: ["v*"]
   workflow_dispatch:

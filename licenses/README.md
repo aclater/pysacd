@@ -1,6 +1,6 @@
 # Third-party licences
 
-Wheels built by `.github/workflows/wheels.yml` bundle these libraries next to
+Wheels built by `.github/workflows/workflow.yml` bundle these libraries next to
 the engine (`pysacd.libs/`), so FLAC output works without installing anything:
 
 | Library | Licence | File |

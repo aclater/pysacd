@@ -25,6 +25,12 @@ $ pysacd-extract -P -i album.iso             # disc information, as sacd_extract
 $ pysacd-extract -I -s -i 192.0.2.10:2002    # copy a PS3 disc and extract it, one pass over the network
 ```
 
+Front ends that run `sacd_extract`, such as
+[sacd-extract-gui](https://github.com/amstelchen/sacd-extract-gui) and
+[SACDExtractGUI](https://github.com/setmind/SACDExtractGUI), work unchanged:
+point their executable setting at `pysacd-extract`. Programs written in Python
+don't need a separate process at all; see [the Python library](library.md).
+
 ## Compatibility policy
 
 Differences from `sacd_extract` are treated as bugs. The exceptions below are

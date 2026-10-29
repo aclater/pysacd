@@ -77,7 +77,7 @@ class Codec(unittest.TestCase):
         self.assertEqual(parse_address("192.0.2.10:2002"), ("192.0.2.10", 2002))
         self.assertEqual(parse_address("[::1]:2002"), ("::1", 2002))
         self.assertIsNone(parse_address("disc.iso"))
-        self.assertIsNone(parse_address("/mnt/a:b/disc.iso"))
+        self.assertIsNone(parse_address("/srv/a:b/disc.iso"))
 
 
 class _SimBase(unittest.TestCase):

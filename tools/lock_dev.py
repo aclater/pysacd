@@ -38,6 +38,7 @@ PINS = [
     ("mypy-extensions", "1.1.0", "", "dev"),
     ("pathspec", "1.1.1", "", "dev"),
     ("typing-extensions", "4.16.0", "", "dev"),
+    ("coverage", "7.16.2", "", "dev"),       # CI's coverage leg (ci.yml)
     ("setuptools", "84.0.0", "", "dev"),     # build backend: CI installs pysacd with --no-build-isolation
 ]
 MIN_AGE = datetime.timedelta(days=14)

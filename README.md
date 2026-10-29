@@ -1,5 +1,7 @@
 # pysacd
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/aclater/pysacd/badge)](https://scorecard.dev/viewer/?uri=github.com/aclater/pysacd)
+
 **SACD in your Python process, and a clean-room, drop-in replacement for
 `sacd_extract`: the same options, the same file names, the same bytes.**
 

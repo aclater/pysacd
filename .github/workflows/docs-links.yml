@@ -1,0 +1,36 @@
+# Check the links in README.md and docs/ with lychee: relative links to files,
+# and external ones. Weekly (links rot without a code change) and on pull
+# requests that touch the docs.
+
+name: docs-links
+
+on:
+  pull_request:
+    paths: ["README.md", "docs/**", ".github/workflows/docs-links.yml"]
+  schedule:
+    - cron: "11 7 * * 1"  # weekly
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lychee:
+    name: docs links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Excluded: pages behind a MusicBrainz login, and badge images (generated
+      # on request, and the Scorecard badge doesn't exist before its first run).
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8  # v2.9.0
+        with:
+          args: >-
+            --no-progress --max-concurrency 4 --max-retries 3
+            --exclude '^https://musicbrainz\.org/account/'
+            --exclude '^https://api\.scorecard\.dev/'
+            --exclude '^https://img\.shields\.io/'
+            README.md 'docs/**/*.md'
+          fail: true

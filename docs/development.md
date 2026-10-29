@@ -79,10 +79,30 @@ Every pull request runs:
   upstream commit inside the runner. Its code never enters the repository.
 - **CodeQL** (Python, C, workflows) and **semgrep**.
 - **A check for private names**, in files and commit identities.
+- **zizmor**, the GitHub Actions security linter, when `.github/workflows/` changes
+  (offline audits; run it locally with
+  `pipx run zizmor==1.30.1 --no-online-audits .github/workflows`).
+- **Dependency review**: a pull request that adds a dependency with a known high or
+  critical vulnerability fails.
+- **Coverage**: the Python 3.13 leg runs the suite under coverage.py (settings in
+  `pyproject.toml`) and shows the report in the job summary, with the HTML and XML
+  reports as the `coverage` artifact. Nothing is uploaded to an external service.
+- **A link check** (lychee) of README.md and `docs/` when they change.
 - **An AI review** from a second model, using PR-Agent. It needs the
   `GEMINI_API_KEY` repository secret. **This sends each PR's title,
   description and diff to Google's Gemini API**, a third party, even though
   the repository is private. Without the secret the workflow sends nothing.
+
+Scheduled runs, besides the weekly fuzzing and portability runs:
+
+- **OpenSSF Scorecard**, weekly and on every push to master. The results are published
+  (the README badge) and appear under code scanning.
+- **A live MusicBrainz lookup**, weekly (or by hand from the Actions tab): the test suite
+  mocks MusicBrainz, so `tests/test_musicbrainz_live.py` makes one real request through
+  pysacd's client, to notice when the API stops fitting the parser. It skips unless
+  `PYSACD_LIVE_MB=1`; run it locally with
+  `PYSACD_LIVE_MB=1 PYTHONPATH=src pytest tests/test_musicbrainz_live.py`.
+- **The link check**, weekly, since links rot without a code change.
 
 CI installs its Python dependencies with every package pinned and hash-checked
 (`pip install --require-hashes`):

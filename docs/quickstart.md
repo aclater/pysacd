@@ -8,14 +8,17 @@
 
 ## Install
 
-**From a wheel** (Linux x86-64/aarch64 with glibc or musl, macOS arm64/x86-64,
-Windows x86-64): `pip install pysacd` once it's on PyPI, or download the `.whl`
-from a [GitHub release](https://github.com/aclater/pysacd/releases) and
+**From PyPI** (wheels for Linux x86-64/aarch64 with glibc or musl, macOS
+arm64/x86-64 and Windows x86-64):
 
 ```sh
-pip install pysacd-*.whl              # engine, libFLAC and mutagen included
+pip install pysacd                    # engine, libFLAC and mutagen included
 pysacd --version                      # shows how the engine was built
 ```
+
+The same files, with build provenance attestations, are on each
+[GitHub release](https://github.com/aclater/pysacd/releases)
+(`gh attestation verify <file> --repo aclater/pysacd`).
 
 Wheels are portable builds: the PCM filters pick AVX-512, AVX2 or the baseline
 when the library loads.

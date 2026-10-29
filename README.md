@@ -25,6 +25,10 @@ verified file by file against the real thing:
 ln -s "$(command -v pysacd-extract)" ~/bin/sacd_extract    # that's the whole migration
 ```
 
+```sh
+pip install pysacd     # wheels for Linux, macOS and Windows; engine and libFLAC included
+```
+
 ## Why pysacd
 
 - **No fork, no scraping.**
@@ -53,8 +57,6 @@ ln -s "$(command -v pysacd-extract)" ~/bin/sacd_extract    # that's the whole mi
 
 ## Why you shouldn't use pysacd (yet)
 
-- **Not on PyPI (yet):** wheels for Linux, macOS and Windows come from GitHub
-  releases until the first PyPI release ([quick start](docs/quickstart.md)).
 - **Never tested against a real PS3.** The network client is verified against
   a protocol simulator and `sacd_extract`, but not against hardware (#10).
 - **It isn't faster on DST discs.**

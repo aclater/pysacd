@@ -515,7 +515,9 @@ static void process_batch(engine_t *e, batch_t *b, dst_decoder_t **dec, dsd2pcm_
     size_t fb = e->frame_bytes;
 
     if (b->need_dsd) {
-        for (int i = 0; i < nf; i++) {
+        /* the context frames are there for the PCM filters: DSD outputs only read the core */
+        int from = b->need_pcm ? 0 : b->pre, to = b->need_pcm ? nf : b->pre + b->n;
+        for (int i = from; i < to; i++) {
             uint8_t *out = b->dsd + i * fb;
             if (b->missing[i]) {
                 memset(out, DSD_SILENCE, fb);

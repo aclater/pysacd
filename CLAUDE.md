@@ -101,7 +101,9 @@ paths from environment variables and skip without them.
   there.
 - Work on a branch and open a PR against `master`; never push to `master`
   directly. PRs say `Closes #N`.
-- **Docs always ship with the change** (README, docs/, this file, usage text).
+- **Docs always ship with the change** (README, docs/, this file, usage text),
+  and anything a user would notice gets a `CHANGELOG.md` entry. A release dates
+  its changelog section, and that section becomes the GitHub release notes.
 - **AI review.** The `ai-review` workflow posts a review from a second model
   on each PR and after each push. It sends the PR's title, description and
   diff to Google's Gemini API, so never put secrets or private details in a

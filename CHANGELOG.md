@@ -7,6 +7,12 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
+## Unreleased
+
+- DST decoding is about 1.8× faster per frame: the prediction filter's older taps are
+  computed once per output byte from vector tables, and the arithmetic decoder reads its
+  code bits from a 64-bit window. Output is byte-identical (#78).
+
 ## 0.2.1 (2026-10-29)
 
 - `pysacd convert --pauses` (config `pauses`, `Options.pauses`) includes the pauses

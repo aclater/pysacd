@@ -1,12 +1,19 @@
 # pysacd
 
-[![CI](https://github.com/aclater/pysacd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/pysacd)](https://pypi.org/project/pysacd/)
 [![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Faclater%2Fpysacd%2Fmaster%2Fpyproject.toml)](pyproject.toml)
+[![Wheel](https://img.shields.io/pypi/wheel/pysacd)](https://pypi.org/project/pysacd/#files)
+[![Implementation](https://img.shields.io/pypi/implementation/pysacd)](https://pypi.org/project/pysacd/)
 [![Downloads](https://static.pepy.tech/badge/pysacd/month)](https://pepy.tech/projects/pysacd)
 [![License](https://img.shields.io/pypi/l/pysacd)](COPYING)
+
+[![CI](https://github.com/aclater/pysacd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/aclater/pysacd/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/codeql.yml)
+[![Fuzzing](https://github.com/aclater/pysacd/actions/workflows/fuzz.yml/badge.svg)](https://github.com/aclater/pysacd/actions/workflows/fuzz.yml)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/aclater/pysacd/badge)](https://scorecard.dev/viewer/?uri=github.com/aclater/pysacd)
+[![SLSA Build L2](https://slsa.dev/images/gh-badge-level2.svg)](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
 
 **SACD in your Python process, and a clean-room, drop-in replacement for
 `sacd_extract`: the same options, the same file names, the same bytes.**

@@ -84,6 +84,8 @@ The [documentation index](docs/README.md) lists every document and its sections.
 | [Clean room and licences](docs/clean-room.md) | where the code came from, acknowledgements |
 | [DST bitstream](docs/dst-bitstream.md) | the clean-room specification |
 | [Development](docs/development.md) | building, tests, CI; contributor rules in [CLAUDE.md](CLAUDE.md) |
+| [Contributing](CONTRIBUTING.md) | reporting bugs, the pull-request process, project rules |
+| [Changelog](CHANGELOG.md) | what changed in each release |
 
 ## License
 

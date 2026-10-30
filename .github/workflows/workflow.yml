@@ -95,14 +95,24 @@ jobs:
         with:
           persist-credentials: false
 
+      # build, the backend and pysacd's dependencies all come from the hash-locked
+      # requirements-dev.txt (#14), so nothing unhashed is downloaded (#70).
+      - name: Install the build tools
+        run: |
+          python -m venv /tmp/sdist-check
+          /tmp/sdist-check/bin/pip install -q --require-hashes -r requirements-dev.txt
+
       - name: Build the sdist
-        run: pipx run build --sdist
+        run: /tmp/sdist-check/bin/python -m build --sdist --no-isolation
 
       - name: The sdist builds a working package
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libflac-dev
-          python -m venv /tmp/sdist-check
-          /tmp/sdist-check/bin/pip install -q dist/*.tar.gz
+          # a wheel built from the sdist alone, then installed without fetching anything;
+          # pip check fails if it declares a dependency the lock doesn't provide
+          /tmp/sdist-check/bin/python -m pip wheel -q --no-deps --no-build-isolation -w /tmp/sdist-wheel dist/*.tar.gz
+          /tmp/sdist-check/bin/pip install -q --no-deps /tmp/sdist-wheel/*.whl
+          /tmp/sdist-check/bin/pip check
           PATH=/tmp/sdist-check/bin:$PATH /tmp/sdist-check/bin/python tests/wheel_smoke.py
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
@@ -125,9 +135,26 @@ jobs:
           merge-multiple: true
 
       - name: Build provenance attestations
+        id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
           subject-path: dist/*
+
+      # The attestation also goes on the release as <artifact>.intoto.jsonl, one per
+      # artifact (the same bundle covers them all), so it can be checked offline and
+      # OpenSSF Scorecard sees signed releases (#70). Each copy is verified first.
+      - name: Provenance bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          mkdir provenance
+          for f in dist/*; do
+            b="provenance/$(basename "$f").intoto.jsonl"
+            cp "$BUNDLE" "$b"
+            gh attestation verify "$f" --bundle "$b" --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/workflow.yml"
+          done
 
       - name: Attach to the GitHub release
         env:
@@ -136,7 +163,7 @@ jobs:
         run: |
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes "pysacd $TAG"
-          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$TAG" dist/* provenance/* --repo "$GITHUB_REPOSITORY" --clobber
 
   testpypi:
     if: startsWith(github.ref, 'refs/tags/v') && vars.TESTPYPI_PUBLISH == 'true'

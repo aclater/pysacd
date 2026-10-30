@@ -16,9 +16,11 @@ pip install pysacd                    # engine, libFLAC and mutagen included
 pysacd --version                      # shows how the engine was built
 ```
 
-The same files, with build provenance attestations, are on each
-[GitHub release](https://github.com/aclater/pysacd/releases)
-(`gh attestation verify <file> --repo aclater/pysacd`).
+The same files are on each
+[GitHub release](https://github.com/aclater/pysacd/releases), each with its build
+provenance attestation beside it as `<file>.intoto.jsonl`. Check a download with
+`gh attestation verify <file> --repo aclater/pysacd`, or offline against the attached
+bundle with `--bundle <file>.intoto.jsonl` added.
 
 Wheels are portable builds: the PCM filters pick AVX-512, AVX2 or the baseline
 when the library loads.

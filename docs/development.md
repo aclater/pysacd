@@ -107,13 +107,16 @@ Scheduled runs, besides the weekly fuzzing and portability runs:
 CI installs its Python dependencies with every package pinned and hash-checked
 (`pip install --require-hashes`):
 
-- `requirements-dev.txt` holds everything: test dependencies, linters and the build backend;
+- `requirements-dev.txt` holds everything: test dependencies, linters, `build` and the build backend;
 - `requirements-test.txt` holds only what the tests need, for the Windows and fuzz jobs.
 
-CI installs pysacd itself with `--no-build-isolation`, so nothing unhashed is downloaded. To
+CI installs pysacd itself with `--no-build-isolation`, so nothing unhashed is downloaded; the
+release workflow's sdist is built the same way, with `build` from `requirements-dev.txt`. To
 update a pin, edit `PINS` in `tools/lock_dev.py` and run `python3 -I tools/lock_dev.py`. It
-rewrites both files from PyPI's hashes and refuses releases younger than two weeks. For local work, `pip install -e '.[dev]'`
-still works. Dependabot keeps the SHA-pinned actions current, with a two-week cooldown.
+rewrites both files from PyPI's hashes and refuses releases younger than two weeks, except
+versions already in the lock (Dependabot bumps the lock files directly, after its cooldown).
+For local work, `pip install -e '.[dev]'` still works. Dependabot keeps the SHA-pinned actions
+and the locked packages current, with a two-week cooldown.
 
 Contributor rules (clean room, byte-identity, benchmarks, privacy) are in [CLAUDE.md](../CLAUDE.md).
 
@@ -152,9 +155,12 @@ To release:
 
 1. Bump `version` in `pyproject.toml` and `src/pysacd/__init__.py`, and merge.
 2. Tag `vX.Y.Z` on master and push the tag. The workflow then:
-   - creates build provenance attestations for every wheel and the sdist
-     (`gh attestation verify <file> --repo aclater/pysacd`);
-   - attaches them to a GitHub release;
+   - creates build provenance attestations for every wheel and the sdist;
+   - attaches the files to a GitHub release, each with its attestation bundle as
+     `<file>.intoto.jsonl` (verified in the job first). Check a download with
+     `gh attestation verify <file> --repo aclater/pysacd`, adding
+     `--bundle <file>.intoto.jsonl` to check against the attached bundle. OpenSSF
+     Scorecard counts only these assets as provenance;
    - publishes to TestPyPI, if the repository variable `TESTPYPI_PUBLISH` is
      `true` (trusted publishing, environment `testpypi`);
    - then publishes to PyPI, if `PYPI_PUBLISH` is `true` (environment `pypi`),

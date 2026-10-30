@@ -8,7 +8,9 @@ replaced or
 tampered release on PyPI fails the install instead of running in CI. The pins below are the
 whole dependency closure for Python 3.11-3.14 on Linux, macOS and Windows (check it with
 `pip install --dry-run --ignore-installed --report`). Each pinned release must be at least
-two weeks old (CLAUDE.md). To update: edit PINS, run `python3 -I tools/lock_dev.py`, commit.
+two weeks old (CLAUDE.md), unless requirements-dev.txt already holds it (Dependabot bumps the
+lock files directly, after its own cooldown). To update: edit PINS, run
+`python3 -I tools/lock_dev.py`, commit.
 """
 
 from __future__ import annotations
@@ -39,7 +41,9 @@ PINS = [
     ("pathspec", "1.1.1", "", "dev"),
     ("typing-extensions", "4.16.0", "", "dev"),
     ("coverage", "7.16.2", "", "dev"),       # CI's coverage leg (ci.yml)
-    ("setuptools", "84.0.0", "", "dev"),     # build backend: CI installs pysacd with --no-build-isolation
+    ("setuptools", "84.1.0", "", "dev"),     # build backend: CI installs pysacd with --no-build-isolation
+    ("build", "1.6.1", "", "dev"),           # the release workflow's sdist, built with --no-isolation
+    ("pyproject-hooks", "1.3.3", "", "dev"),
 ]
 MIN_AGE = datetime.timedelta(days=14)
 ROOT = Path(__file__).resolve().parent.parent
@@ -50,13 +54,15 @@ def main() -> int:
     now = datetime.datetime.now(datetime.UTC)
     blocks: dict[str, list[str]] = {g: [] for g in ("test", "dev")}
     young = []
+    lock = ROOT / "requirements-dev.txt"
+    locked = set(lock.read_text().split()) if lock.exists() else set()
     for name, version, marker, group in PINS:
         with urllib.request.urlopen(f"https://pypi.org/pypi/{name}/{version}/json", timeout=30) as r:
             files = json.load(r)["urls"]
         if not files:
             sys.exit(f"{name} {version}: no files on PyPI")
         uploaded = min(datetime.datetime.fromisoformat(f["upload_time_iso_8601"]) for f in files)
-        if now - uploaded < MIN_AGE:
+        if now - uploaded < MIN_AGE and f"{name}=={version}" not in locked:
             young.append(f"{name} {version} ({(now - uploaded).days} days old)")
         spec = f"{name}=={version}" + (f" ; {marker}" if marker else "")
         hashes = sorted({f["digests"]["sha256"] for f in files})

@@ -16,4 +16,4 @@ __all__ = [
     "Area", "Disc", "Genre", "Locale", "SACDError", "SACDImage",
     "Timecode", "Track", "read_toc",
 ]
-__version__ = "0.2.1"
+__version__ = "0.2.2"

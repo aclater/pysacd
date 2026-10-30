@@ -1,5 +1,11 @@
 # pysacd
 
+[![CI](https://github.com/aclater/pysacd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/pysacd)](https://pypi.org/project/pysacd/)
+[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Faclater%2Fpysacd%2Fmaster%2Fpyproject.toml)](pyproject.toml)
+[![Downloads](https://static.pepy.tech/badge/pysacd/month)](https://pepy.tech/projects/pysacd)
+[![License](https://img.shields.io/pypi/l/pysacd)](COPYING)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/aclater/pysacd/badge)](https://scorecard.dev/viewer/?uri=github.com/aclater/pysacd)
 
 **SACD in your Python process, and a clean-room, drop-in replacement for

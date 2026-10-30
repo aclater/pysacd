@@ -70,7 +70,7 @@ Why it exists, in the author's words: [author's note](docs/author.md).
   - protection against hostile disc text;
   - logs you can diagnose a failure from.
 - **Faster than `sacd_extract`:** plain-DSD discs extract 2.5–3.6× faster, and DST
-  discs about 2.2× (a faster DST decoder). See [performance](docs/performance.md).
+  discs 2.4–2.6× (a faster DST decoder). See [performance](docs/performance.md).
 
 ## Why you shouldn't use pysacd (yet)
 

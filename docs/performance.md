@@ -29,7 +29,7 @@ Wall-clock seconds, with CPU seconds in brackets:
 - **Plain DSD** is where the single-pass engine shows: 2.5× and 3.6× faster.
 - **DST** decoding costs about 500 CPU-seconds per disc in either tool, and
   both spread it over every core. pysacd was level to 9% faster when this table was
-  measured; since the faster decoder (#78) it is about 2.2× faster than `sacd_extract` on
+  measured; since the faster decoder (#78) it is 2.4–2.6× faster than `sacd_extract` on
   DST discs (see [DST decoder speed](#dst-decoder-speed)).
 
 ## Thread scaling
@@ -85,6 +85,18 @@ DSF file identical across the three tools):
 |---|---|---|---|
 | DST stereo (50 min) | 43.4 (467) | 33.9 (370) | **19.5** (210): 2.2× `sacd_extract` |
 | DST stereo + 5.1 | 181.8 (1989) | 137.2 (1525) | **78.8** (837): 2.3× `sacd_extract` |
+
+DSF and DSDIFF outputs also no longer decode the context frames that each batch of 32
+carries for the PCM filters (2 before, 1 after), which saved 3 decodes in 35:
+
+| Wall s (CPU s), 10-core machine as above | `sacd_extract` | pysacd, faster decoder | + core frames only |
+|---|---|---|---|
+| DST stereo | 43.4 (467) | 19.5 (210) | **18.0** (193): 2.4× `sacd_extract` |
+| DST stereo + 5.1 | 181.8 (1989) | 78.8 (837) | **69.5** (758): 2.6× `sacd_extract` |
+
+On one core of the 16-core machine (every process pinned to one CPU, `--threads 1`; DST
+stereo to DSF, mean of 3 alternating runs, identical files): `sacd_extract` 154.7 s, pysacd
+before #78 102.2 s, after both changes **51.6 s** (3.0× `sacd_extract`).
 
 Tried and dropped (single thread, 16-core machine unless stated):
 

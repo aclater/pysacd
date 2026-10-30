@@ -12,6 +12,8 @@ behaviour, and a patch version only adds or fixes. Each release on
 - DST decoding is about 1.8× faster per frame: the prediction filter's older taps are
   computed once per output byte from vector tables, and the arithmetic decoder reads its
   code bits from a 64-bit window. Output is byte-identical (#78).
+- DSF and DSDIFF extraction no longer decodes the context frames kept for the PCM
+  filters, which saves about 9% of the DST decoding (#78).
 
 ## 0.2.1 (2026-10-29)
 

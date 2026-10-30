@@ -176,7 +176,7 @@ typedef struct {
 typedef uint16_t u16x8 __attribute__((vector_size(16)));
 
 typedef struct {
-    u16x8 old[16][256];     /* lane j: the taps l >= 8 that fall on byte k for bit j */
+    u16x8 old[256][16];     /* [v][k], lane j: the taps l >= 8 that fall on byte k = v for bit j */
     int16_t t0[256];        /* the taps l < 8, by the last 8 bits (newest in bit 0) */
 } Filter;
 
@@ -368,10 +368,10 @@ static int build_filter(Filter *filters, const Table *fsets)
                 }
                 base -= cv[b];
             }
-            f->old[k][0] = base;
+            f->old[0][k] = base;
             for (int v = 1; v < 256; v++) {
                 u16x8 d = cv[__builtin_ctz(v)];
-                f->old[k][v] = f->old[k][v & (v - 1)] + d + d;
+                f->old[v][k] = f->old[v & (v - 1)][k] + d + d;
             }
         }
     }
@@ -411,13 +411,13 @@ static inline u16x8 predict_old(const Filter *f, const uint8_t *dsd, unsigned by
     const uint8_t *h = dsd + (size_t)byte * C + ch;
     u16x8 acc;
     if (__builtin_expect(byte >= 16, 1)) {
-        acc = f->old[0][h[-C]];
+        acc = f->old[h[-C]][0];
         for (int k = 1; k < 16; k++)
-            acc += f->old[k][h[-(k + 1) * C]];
+            acc += f->old[h[-(k + 1) * C]][k];
     } else {
-        acc = f->old[0][byte >= 1 ? h[-C] : 0xAA];
+        acc = f->old[byte >= 1 ? h[-C] : 0xAA][0];
         for (int k = 1; k < 16; k++)
-            acc += f->old[k][(int)byte - 1 - k >= 0 ? h[-(k + 1) * C] : 0xAA];
+            acc += f->old[(int)byte - 1 - k >= 0 ? h[-(k + 1) * C] : 0xAA][k];
     }
     return acc;
 }

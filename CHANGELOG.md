@@ -7,13 +7,24 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
-## Unreleased
+## 0.2.2 (2026-10-30)
+
+DST discs now extract 2.4–2.6× faster than `sacd_extract` (all threads, 10-core machine) and
+3.0× faster on a single core, with byte-identical output. See
+[performance](docs/performance.md).
 
 - DST decoding is about 1.8× faster per frame: the prediction filter's older taps are
   computed once per output byte from vector tables, and the arithmetic decoder reads its
   code bits from a 64-bit window. Output is byte-identical (#78).
 - DSF and DSDIFF extraction no longer decodes the context frames kept for the PCM
   filters, which saves about 9% of the DST decoding (#78).
+- Releases attach signed build provenance for every wheel and the sdist as
+  `<file>.intoto.jsonl` assets, verifiable with `gh attestation verify` (#70, #72).
+- PyPI metadata: classifiers for Python versions, platforms and topic (#76, #77).
+- Docs: `SECURITY.md` expanded (#71, #73); `CHANGELOG.md` and `CONTRIBUTING.md` (#74,
+  #75); the author's note (#68, #69); README badges (#76, #77).
+
+No security fixes.
 
 ## 0.2.1 (2026-10-29)
 

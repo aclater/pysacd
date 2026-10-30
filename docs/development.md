@@ -86,7 +86,10 @@ Every pull request runs:
   critical vulnerability fails.
 - **Coverage**: the Python 3.13 leg runs the suite under coverage.py (settings in
   `pyproject.toml`) and shows the report in the job summary, with the HTML and XML
-  reports as the `coverage` artifact. Nothing is uploaded to an external service.
+  reports as the `coverage` artifact. The XML report also goes to
+  [Codecov](https://codecov.io/gh/aclater/pysacd) for the README badge, authenticated
+  with the job's GitHub OIDC token (no stored secret); pull requests from forks skip
+  the upload, and a failed upload fails CI only on `master`.
 - **A link check** (lychee) of README.md and `docs/` when they change.
 - **An AI review** from a second model, using PR-Agent. It needs the
   `GEMINI_API_KEY` repository secret. **This sends each PR's title,

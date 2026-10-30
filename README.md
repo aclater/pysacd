@@ -8,6 +8,7 @@
 [![License](https://img.shields.io/pypi/l/pysacd)](COPYING)
 
 [![CI](https://github.com/aclater/pysacd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/ci.yml)
+[![Coverage](https://codecov.io/gh/aclater/pysacd/branch/master/graph/badge.svg)](https://codecov.io/gh/aclater/pysacd)
 [![CodeQL](https://github.com/aclater/pysacd/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/codeql.yml)
 [![Fuzzing](https://github.com/aclater/pysacd/actions/workflows/fuzz.yml/badge.svg)](https://github.com/aclater/pysacd/actions/workflows/fuzz.yml)
 [![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)

@@ -82,7 +82,7 @@ CI also runs:
 - `tests/test_dst_full.py` and `tests/test_sbcompat.py` against a
   `sacd_extract` built from a pinned upstream commit;
 - CodeQL and semgrep. These fail on findings.
-- zizmor on workflow changes, dependency review, coverage (the 3.13 leg), and a
+- zizmor on workflow changes, dependency review, coverage (the 3.13 leg, uploaded to Codecov by OIDC), and a
   docs link check; weekly, OpenSSF Scorecard and one live MusicBrainz lookup
   (see docs/development.md, "CI"). Workflow changes must keep zizmor clean:
   `persist-credentials: false` on every checkout, no `${{ }}` expansions of step

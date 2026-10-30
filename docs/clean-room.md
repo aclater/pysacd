@@ -30,6 +30,11 @@ The handoff document is in the repository, so anyone can audit what crossed
 the wall. Section 7 of it lists every behaviour that differs from FFmpeg.
 Section 8 records the errata found later by black-box testing.
 
+The decoding loop was later restructured for speed (#78): the prediction filter's older taps
+are computed once per output byte, and the arithmetic decoder reads its code bits from a
+64-bit window. That work used only the specification, pysacd's own decoder and general
+optimisation techniques, and was checked against the previous decoder bit for bit.
+
 ## sacd_extract only as a black box
 
 `sacd_extract` is used as a compiled oracle to compare output against,

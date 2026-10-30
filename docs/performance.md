@@ -28,7 +28,9 @@ Wall-clock seconds, with CPU seconds in brackets:
 
 - **Plain DSD** is where the single-pass engine shows: 2.5× and 3.6× faster.
 - **DST** decoding costs about 500 CPU-seconds per disc in either tool, and
-  both spread it over every core. pysacd is level to 9% faster.
+  both spread it over every core. pysacd was level to 9% faster when this table was
+  measured; since the faster decoder (#78) it is about 2.2× faster than `sacd_extract` on
+  DST discs (see [DST decoder speed](#dst-decoder-speed)).
 
 ## Thread scaling
 
@@ -54,6 +56,49 @@ output byte-identical:
 | one thread, 6 channels | 1.26 ms/frame | **1.15 ms/frame** |
 
 The tables above predate this change.
+
+### Per-byte prediction and a code-bit window (#78)
+
+Most of the time went into the prediction filter: 16 table lookups per bit and channel,
+plus a 128-bit shift register to update. The taps on all but the 8 newest bits only see
+bytes that are already decoded, so they are now computed once per output byte, for its 8
+bits at once, from vector tables (16 lookups and vector adds per byte instead of 128).
+The arithmetic decoder keeps its code value in a 64-bit window of code bits, so
+renormalising is one shift. Output is byte-identical: the test suite, a differential test
+of the old and new decoders on 60,000 mutated real frames (including the corrupt-stream
+paths), and the SHA-256 of every DSF file from real DST discs.
+
+One thread, decoding only (the frames of 4 stretches of a real disc, in memory; mean of 3
+alternating runs under the benchmark lock):
+
+| ms/frame | 16-core Ryzen AI Max+ 395<br>before | <br>after | 10-core Core i5-1235U, P-core<br>before | <br>after | E-core<br>before | <br>after |
+|---|---|---|---|---|---|---|
+| stereo | 0.410 | **0.225** (1.82×) | 1.19 | **0.74** (1.60×) | 1.36 | **0.78** (1.75×) |
+| 6 channels | 1.152 | **0.670** (1.72×) | 3.02 | **2.09** (1.44×) | 4.27 | **2.29** (1.86×) |
+| 5 channels (another disc) | 0.964 | **0.533** (1.81×) | | | | |
+
+End to end, DST disc to DSF on every thread of the 10-core machine (`-s`, 12 threads; image
+copied into the container, output in `/dev/shm`; mean of 3 runs, tools alternated; every
+DSF file identical across the three tools):
+
+| Wall s (CPU s) | `sacd_extract` | pysacd before | pysacd after |
+|---|---|---|---|
+| DST stereo (50 min) | 43.4 (467) | 33.9 (370) | **19.5** (210): 2.2× `sacd_extract` |
+| DST stereo + 5.1 | 181.8 (1989) | 137.2 (1525) | **78.8** (837): 2.3× `sacd_extract` |
+
+Tried and dropped (single thread, 16-core machine unless stated):
+
+- SIMD dot products of the history with the coefficients instead of tables: 0.366 ms/frame
+  stereo, against 0.273 for the first table version.
+- 4-bit tables (8 KB per filter instead of 64 KB, to stay in L1): slower everywhere,
+  including the i5's E-cores (0.83 against 0.78 ms/frame stereo).
+- Working out the next bit's probability for both values of the current bit: fewer
+  dependent steps, but more instructions; 0.258 against 0.225.
+- Computing both renormalisation shifts while the comparison is pending (conditional
+  moves through inline assembly, since GCC turns the C form into a branch): −1% on
+  6 channels, +6% on stereo.
+- A multiplication table for the interval split: 0.256 against 0.237.
+- Computing the far taps a byte ahead: no change.
 
 ## FLAC instead of DSF
 

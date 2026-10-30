@@ -69,15 +69,13 @@ Why it exists, in the author's words: [author's note](docs/author.md).
   - raw-sector (2064/2054-byte) images;
   - protection against hostile disc text;
   - logs you can diagnose a failure from.
-- **Plain-DSD discs extract 2.5–3.6× faster.** On DST discs it's essentially
-  a tie, because both tools saturate every core. See
-  [performance](docs/performance.md).
+- **Faster than `sacd_extract`:** plain-DSD discs extract 2.5–3.6× faster, and DST
+  discs about 2.2× (a faster DST decoder). See [performance](docs/performance.md).
 
 ## Why you shouldn't use pysacd (yet)
 
 - **Never tested against a real PS3.** The network client is verified against
   a protocol simulator and `sacd_extract`, but not against hardware (#10).
-- **It isn't faster on DST discs.**
 - **Optical drives:** like `sacd_extract`, it can't read a PC drive's SACD
   layer. You need an ISO or a PS3.
 

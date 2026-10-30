@@ -9,6 +9,9 @@
  * Segmentation, per-segment mapping, one-entry probability tables, the
  * table-count limit and the reference validity checks (including the
  * end-of-frame check) were written for pysacd from docs/dst-bitstream.md.
+ * The decoding loop was restructured for pysacd for speed (#78): the
+ * prediction of the older taps once per byte from vector tables, and the
+ * arithmetic decoder's code value in a 64-bit window of code bits.
  *
  * This file is part of FFmpeg.
  *
@@ -29,6 +32,7 @@
  * SPDX-License-Identifier: LGPL-2.1-or-later
  */
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -156,15 +160,36 @@ typedef struct {
     unsigned map[DST_MAX_CHANNELS][MAX_SEGMENTS];
 } Segments;
 
+/*
+ * Prediction (3.4). The filter's output for bit n is
+ *     predict(n) = sum over l < 128 of coeff[l] * (2 * x[n - 1 - l] - 1),
+ * kept modulo 2^16 (it is an int16_t). It is split in two:
+ *   - the 8 newest bits (l < 8), through a 256-entry table indexed by the last
+ *     8 bits, bit by bit;
+ *   - the older ones (l >= 8). For the 8 bits n = i..i+7 of output byte i/8
+ *     they are all in the 16 bytes before it, so they are computed once per
+ *     byte for all 8 bits at once: one table per earlier byte k, indexed by its
+ *     value, gives the 8 partial sums as a vector of 8 int16 lanes, and 16
+ *     lookups and vector adds give all 8. Unsigned lanes: the sums wrap
+ *     modulo 2^16, as the int16_t prediction does.
+ */
+typedef uint16_t u16x8 __attribute__((vector_size(16)));
+
+typedef struct {
+    u16x8 old[256][16];     /* [v][k], lane j: the taps l >= 8 that fall on byte k = v for bit j */
+    int16_t t0[256];        /* the taps l < 8, by the last 8 bits (newest in bit 0) */
+} Filter;
+
 struct dst_decoder {
     int channels;
     BitReader gb;
     ArithCoder ac;
     Table fsets, probs;
     Segments fseg, pseg;
-    uint8_t status[DST_MAX_CHANNELS][16] __attribute__((aligned(16)));
-    int16_t filter[DST_MAX_ELEMENTS][16][256] __attribute__((aligned(16)));
     uint8_t reverse[256];
+    Filter filter[DST_MAX_ELEMENTS] __attribute__((aligned(64)));
+    /* probability tables by |predict| >> 3 (0..4096), the last entry repeated */
+    uint8_t ptab[DST_MAX_ELEMENTS][4097];
 };
 
 /* table_segmentation() (2.4). The resolution is sent at most once, before the
@@ -310,20 +335,43 @@ static inline int ac_get(ArithCoder *ac, BitReader *gb, int p)
     return e;
 }
 
-static int build_filter(int16_t table[DST_MAX_ELEMENTS][16][256], const Table *fsets)
+static int build_filter(Filter *filters, const Table *fsets)
 {
     for (unsigned i = 0; i < fsets->elements; i++) {
-        int length = fsets->length[i];
+        Filter *f = &filters[i];
+        const int length = fsets->length[i];
+        int c[128 + 16] = {0};
+        for (int l = 0; l < length; l++)
+            c[l] = fsets->coeff[i][l];
+        /* each group of 8 taps must fit an int16_t whatever the bits (as the
+           reference's per-byte tables must) */
         for (int j = 0; j < 16; j++) {
-            int total = length - j * 8;
-            total = total < 0 ? 0 : total > 8 ? 8 : total;
-            for (int k = 0; k < 256; k++) {
-                int64_t v = 0;
-                for (int l = 0; l < total; l++)
-                    v += (((k >> l) & 1) * 2 - 1) * fsets->coeff[i][j * 8 + l];
-                if ((int16_t)v != v)
-                    return -1;
-                table[i][j][k] = (int16_t)v;
+            int sum = 0;
+            for (int l = 0; l < 8; l++)
+                sum += abs(c[j * 8 + l]);
+            if (sum > 32767)
+                return -1;
+        }
+        for (int v = 0; v < 256; v++) {
+            int sum = 0;
+            for (int l = 0; l < 8; l++)
+                sum += (((v >> l) & 1) * 2 - 1) * c[l];
+            f->t0[v] = (int16_t)sum;
+        }
+        /* byte k holds x[i - 1 - 8k - b] in bit b: tap l = 8k + b + j for bit i + j */
+        for (int k = 0; k < 16; k++) {
+            u16x8 cv[8], base = {0};
+            for (int b = 0; b < 8; b++) {
+                for (int j = 0; j < 8; j++) {
+                    int l = 8 * k + b + j;
+                    cv[b][j] = (uint16_t)(l >= 8 ? c[l] : 0);
+                }
+                base -= cv[b];
+            }
+            f->old[0][k] = base;
+            for (int v = 1; v < 256; v++) {
+                u16x8 d = cv[__builtin_ctz(v)];
+                f->old[v][k] = f->old[v & (v - 1)][k] + d + d;
             }
         }
     }
@@ -337,7 +385,9 @@ dst_decoder_t *dst_decoder_new(int channels)
     dst_decoder_t *s = sc_aligned_alloc(64, sizeof(dst_decoder_t));
     if (!s)
         return NULL;
-    memset(s, 0, sizeof(*s));
+    /* the filter and probability tables (most of the struct) are built by
+       each frame before it reads them */
+    memset(s, 0, offsetof(dst_decoder_t, filter));
     s->channels = channels;
     for (int i = 0; i < 256; i++) {
         uint8_t r = 0;
@@ -354,105 +404,164 @@ void dst_decoder_free(dst_decoder_t *s)
     sc_aligned_free(s);
 }
 
-/* 0 to 11 code bits at `index`, for the branch-free renormalisation (n = 0 gives 0);
-   bits past the end of the frame read as 0 */
-static inline unsigned peek_code_bits(const uint8_t *buf, size_t nbytes, size_t index, int n)
+/* For the 8 bits of byte `byte`: the prediction from the taps l >= 8 (lane j
+   for bit j), from the 16 bytes before it; bytes before the frame are 0xAA. */
+static inline u16x8 predict_old(const Filter *f, const uint8_t *dsd, unsigned byte, int ch, const int C)
 {
-    size_t byte = index >> 3;
-    uint64_t w;
-    if (__builtin_expect(byte + 8 <= nbytes, 1)) {
-        memcpy(&w, buf + byte, 8);
-        w = __builtin_bswap64(w);
+    const uint8_t *h = dsd + (size_t)byte * C + ch;
+    u16x8 acc;
+    if (__builtin_expect(byte >= 16, 1)) {
+        acc = f->old[h[-C]][0];
+        for (int k = 1; k < 16; k++)
+            acc += f->old[h[-(k + 1) * C]][k];
     } else {
-        w = 0;
-        for (int i = 0; i < 8; i++)
-            w = w << 8 | (byte + i < nbytes ? buf[byte + i] : 0);
+        acc = f->old[byte >= 1 ? h[-C] : 0xAA][0];
+        for (int k = 1; k < 16; k++)
+            acc += f->old[(int)byte - 1 - k >= 0 ? h[-(k + 1) * C] : 0xAA][k];
     }
-    return (unsigned)(((w << (index & 7)) >> 1) >> (63 - n));
+    return acc;
+}
+
+/*
+ * The arithmetic decoder's state while decoding: a, and the code value c (32
+ * bits, as in ac_get()) in the top half of a 64-bit window whose bottom half
+ * holds the next `avail` code bits, so that renormalising is one shift.
+ */
+typedef struct {
+    uint64_t w;
+    unsigned a;
+    int avail;
+    size_t pos;             /* bit index of the first code bit not yet in w */
+} AcState;
+
+/* Top up the window to 32 code bits; bits past the end of the frame read as 0 */
+static inline void ac_refill(AcState *ac, const uint8_t *buf, size_t nbytes)
+{
+    size_t byte = ac->pos >> 3;
+    uint64_t v;
+    if (__builtin_expect(byte + 8 <= nbytes, 1)) {
+        memcpy(&v, buf + byte, 8);
+        v = __builtin_bswap64(v);
+    } else {
+        v = 0;
+        for (int i = 0; i < 8; i++)
+            v = v << 8 | (byte + i < nbytes ? buf[byte + i] : 0);
+    }
+    v <<= ac->pos & 7;                  /* at least 57 valid bits */
+    ac->w |= v >> (32 + ac->avail);     /* avail < 32 */
+    ac->pos += 32 - ac->avail;
+    ac->avail = 32;
+}
+
+/* Decode the 8 bits of one byte for every channel. early: the byte is one of
+   the first 16, where the half-probability rule (3.6) can apply. */
+static inline __attribute__((always_inline))
+void decode_byte(AcState *ac, const uint8_t *buf, size_t nbytes, unsigned byte,
+                 const Filter *const *filters, const uint8_t *const *probs,
+                 const unsigned *half, unsigned *st, uint8_t *dsd, const int C, const int early)
+{
+    uint16_t old[DST_MAX_CHANNELS][8] __attribute__((aligned(16)));
+    uint64_t w = ac->w;
+    unsigned a = ac->a;
+    int avail = ac->avail;
+
+    for (int ch = 0; ch < C; ch++) {
+        u16x8 v = predict_old(filters[ch], dsd, byte, ch, C);
+        memcpy(old[ch], &v, sizeof(v));
+    }
+    for (unsigned j = 0; j < 8; j++) {
+#pragma GCC unroll 6
+        for (int ch = 0; ch < C; ch++) {
+            const int16_t predict = (int16_t)(uint16_t)(filters[ch]->t0[st[ch]] + old[ch][j]);
+            unsigned prob = probs[ch][(unsigned)abs(predict) >> 3];
+            if (early && byte * 8 + j < half[ch])
+                prob = 128;
+
+            /* ac_get() on the window */
+            unsigned k = (a >> 8) | ((a >> 7) & 1);
+            unsigned q = k * prob;
+            unsigned a_q = a - q;
+            /* c is ready early; comparing it, not the window, keeps a shift
+               off the critical path */
+            int residual = (unsigned)(w >> 32) < a_q;
+            if (residual) {
+                a = a_q;
+            } else {
+                a = q;
+                w -= (uint64_t)a_q << 32;
+            }
+            /* Renormalise without a branch (n = 0 when a >= 2048): whether it
+               happens is data-dependent and mispredicts often (#21). a > 0. */
+            int n = __builtin_clz(a) - 20;
+            a <<= n;
+            w <<= n;            /* c = (c << n) | next n bits, modulo 2^32 */
+            avail -= n;
+            if (avail < 11) {
+                ac->w = w;
+                ac->avail = avail;
+                ac_refill(ac, buf, nbytes);
+                w = ac->w;
+                avail = ac->avail;
+            }
+
+            st[ch] = ((st[ch] << 1) + (((uint16_t)predict >> 15) ^ residual)) & 0xFF;
+        }
+    }
+    /* the last 8 output bits, earliest in the MSB */
+    for (int ch = 0; ch < C; ch++)
+        dsd[(size_t)byte * C + ch] = (uint8_t)st[ch];
+    ac->w = w;
+    ac->a = a;
+    ac->avail = avail;
 }
 
 /* Decode bits [from, to) of every channel (both multiples of 8); the filter
-   and ptable of each channel are fixed within the range. */
+   and ptable of each channel are fixed within the range. C is the channel
+   count, a constant in each instance so that the per-channel state stays in
+   registers. */
+static inline __attribute__((always_inline))
+void decode_range_n(dst_decoder_t *s, uint8_t *dsd, unsigned from, unsigned to,
+                    const unsigned *felem_of, const unsigned *pelem_of,
+                    const unsigned *half_len, const int C)
+{
+    const uint8_t *buf = s->gb.buf;
+    const size_t nbytes = s->gb.size_bits >> 3;
+    const Filter *filters[DST_MAX_CHANNELS];
+    const uint8_t *probs[DST_MAX_CHANNELS];
+    unsigned half[DST_MAX_CHANNELS], st[DST_MAX_CHANNELS];
+    AcState ac = { (uint64_t)s->ac.c << 32, s->ac.a, 0, s->gb.index };
+
+    ac_refill(&ac, buf, nbytes);
+    for (int ch = 0; ch < C; ch++) {
+        filters[ch] = &s->filter[felem_of[ch]];
+        probs[ch] = s->ptab[pelem_of[ch]];
+        half[ch] = half_len[ch];
+        st[ch] = from ? dsd[(size_t)(from / 8 - 1) * C + ch] : 0xAA;
+    }
+
+    unsigned byte = from >> 3;
+    for (; byte < to >> 3 && byte < 16; byte++)
+        decode_byte(&ac, buf, nbytes, byte, filters, probs, half, st, dsd, C, 1);
+    for (; byte < to >> 3; byte++)
+        decode_byte(&ac, buf, nbytes, byte, filters, probs, half, st, dsd, C, 0);
+
+    s->ac.a = ac.a;
+    s->ac.c = (unsigned)(ac.w >> 32);
+    s->gb.index = ac.pos - ac.avail;
+}
+
 static void decode_range(dst_decoder_t *s, uint8_t *dsd, unsigned from, unsigned to,
                          const unsigned *felem_of, const unsigned *pelem_of,
                          const unsigned *half_len)
 {
-    const int channels = s->channels;
-    const uint8_t *buf = s->gb.buf;
-    const size_t nbytes = s->gb.size_bits >> 3;
-    size_t index = s->gb.index;
-    unsigned a = s->ac.a, c = s->ac.c;
-    int16_t (*filters[DST_MAX_CHANNELS])[256];
-    const int *probs[DST_MAX_CHANNELS];
-    unsigned last[DST_MAX_CHANNELS], half[DST_MAX_CHANNELS];
-
-    for (int ch = 0; ch < channels; ch++) {
-        filters[ch] = s->filter[felem_of[ch]];
-        probs[ch] = s->probs.coeff[pelem_of[ch]];
-        last[ch] = s->probs.length[pelem_of[ch]] - 1;
-        half[ch] = half_len[ch];
+    switch (s->channels) {
+    case 1: decode_range_n(s, dsd, from, to, felem_of, pelem_of, half_len, 1); break;
+    case 2: decode_range_n(s, dsd, from, to, felem_of, pelem_of, half_len, 2); break;
+    case 3: decode_range_n(s, dsd, from, to, felem_of, pelem_of, half_len, 3); break;
+    case 4: decode_range_n(s, dsd, from, to, felem_of, pelem_of, half_len, 4); break;
+    case 5: decode_range_n(s, dsd, from, to, felem_of, pelem_of, half_len, 5); break;
+    default: decode_range_n(s, dsd, from, to, felem_of, pelem_of, half_len, 6); break;
     }
-
-    for (unsigned byte = from >> 3; byte < to >> 3; byte++) {
-        for (unsigned i = byte * 8; i < byte * 8 + 8; i++) {
-            for (int ch = 0; ch < channels; ch++) {
-                int16_t (*filter)[256] = filters[ch];
-                uint8_t *status = s->status[ch];
-                int prob;
-
-#define F(x) filter[(x)][status[(x)]]
-                const int16_t predict = F( 0) + F( 1) + F( 2) + F( 3) +
-                                        F( 4) + F( 5) + F( 6) + F( 7) +
-                                        F( 8) + F( 9) + F(10) + F(11) +
-                                        F(12) + F(13) + F(14) + F(15);
-#undef F
-
-                if (i >= half[ch]) {
-                    unsigned j = (unsigned)abs(predict) >> 3;
-                    prob = probs[ch][j < last[ch] ? j : last[ch]];
-                } else {
-                    prob = 128;
-                }
-
-                /* ac_get() with the coder state in registers */
-                unsigned k = (a >> 8) | ((a >> 7) & 1);
-                unsigned q = k * prob;
-                unsigned a_q = a - q;
-                int residual = c < a_q;
-                if (residual) {
-                    a = a_q;
-                } else {
-                    a = q;
-                    c -= a_q;
-                }
-                {
-                    /* Renormalise without a branch (n = 0 when a >= 2048): whether it
-                       happens is data-dependent and mispredicts often (#21). */
-                    int n = 11 - av_log2(a);
-                    a <<= n;
-                    c = (c << n) | peek_code_bits(buf, nbytes, index, n);
-                    index += n;
-                }
-
-                uint64_t v = ((predict >> 15) ^ residual) & 1;
-
-                /* 128-bit shift register, newest bit in status[0] bit 0 */
-                uint64_t lo, hi;
-                memcpy(&lo, status, 8);
-                memcpy(&hi, status + 8, 8);
-                hi = (hi << 1) | (lo >> 63);
-                lo = (lo << 1) | v;
-                memcpy(status, &lo, 8);
-                memcpy(status + 8, &hi, 8);
-            }
-        }
-        /* the last 8 output bits, earliest in the MSB */
-        for (int ch = 0; ch < channels; ch++)
-            dsd[(size_t)byte * channels + ch] = s->status[ch][0];
-    }
-    s->ac.a = a;
-    s->ac.c = c;
-    s->gb.index = index;
 }
 
 int dst_decode_frame(dst_decoder_t *s, const uint8_t *data, int size, uint8_t *dsd)
@@ -537,8 +646,12 @@ int dst_decode_frame(dst_decoder_t *s, const uint8_t *data, int size, uint8_t *d
 
     if (build_filter(s->filter, &s->fsets) < 0)
         return DST_ERR_INVALID;
-
-    memset(s->status, 0xAA, sizeof(s->status));
+    for (unsigned i = 0; i < s->probs.elements; i++) {
+        const unsigned len = s->probs.length[i];
+        for (unsigned j = 0; j < len; j++)
+            s->ptab[i][j] = (uint8_t)s->probs.coeff[i][j];
+        memset(s->ptab[i] + len, s->probs.coeff[i][len - 1], sizeof(s->ptab[i]) - len);
+    }
 
     /* DST_X_Bit, unused */
     ac_get(ac, gb, (s->reverse[s->fsets.coeff[0][0] & 127] >> 1) + 1);

@@ -31,6 +31,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
 
 ## Background
 
+- **[Author's note](author.md)**: why pysacd exists, in the author's words.
 - **[Performance](performance.md)**: benchmarks and their conditions.
   - [Conditions](performance.md#conditions)
   - [Extracting to DSF](performance.md#extracting-to-dsf)

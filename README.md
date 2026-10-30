@@ -33,6 +33,8 @@ pip install pysacd     # wheels for Linux, macOS and Windows; engine and libFLAC
 
 ## Why pysacd
 
+Why it exists, in the author's words: [author's note](docs/author.md).
+
 - **No fork, no scraping.**
   - **What you get back:** objects (or `--json`), not `sacd_extract -P` text.
   - **Failures** are exceptions, not exit codes and stderr.

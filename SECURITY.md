@@ -1,18 +1,53 @@
 # Security policy
 
+## Supported versions
+
+Security fixes go into the latest release and `master`. There are no maintained release
+branches: if you're on an older release, the fix is to upgrade.
+
+| Version | Supported |
+| --- | --- |
+| latest release ([releases](https://github.com/aclater/pysacd/releases)) | yes |
+| `master` | yes |
+| anything older | no |
+
 ## Reporting a vulnerability
 
-Please don't open a public issue. Instead, report it privately:
+Please don't open a public issue, pull request or discussion for a vulnerability. Report it
+privately through GitHub's private vulnerability reporting:
 
-- use GitHub's **Report a vulnerability** button on the repository's Security tab, if it's
-  available;
-- otherwise, open a draft security advisory, or contact the maintainer (`aclater` on GitHub).
+**<https://github.com/aclater/pysacd/security/advisories/new>**
 
-Include a disc image, network capture or command line that reproduces the problem. A
-`tests/sacdgen.py` script that builds a hostile image is ideal.
+(or the **Report a vulnerability** button on the repository's
+[Security tab](https://github.com/aclater/pysacd/security)). Only the maintainer sees the
+report.
 
-You'll get an acknowledgement within a week. Fixes land on `master`; there are no maintained
-release branches.
+Please include:
+
+- the pysacd version (`pysacd --version` shows it and how the engine was built), your OS
+  and Python version;
+- the command line or API call;
+- the input that triggers it: a disc image, a network capture, or best of all a
+  `tests/sacdgen.py` script that builds a hostile image. Don't send copyrighted disc
+  contents; a synthetic image or the few sectors involved are enough;
+- what happens (crash, hang, memory or disk use, a file written where it shouldn't be) and,
+  if you know, why.
+
+## What to expect
+
+pysacd is maintained by one person, so these are targets, not guarantees:
+
+- **acknowledgement** within 7 days;
+- **assessment** (confirmed or not, and how severe) within 14 days;
+- **a fix** for a confirmed issue within 90 days, usually much sooner, released as a new
+  version with the fix noted in its release notes.
+
+## Coordinated disclosure
+
+Please keep the details private until a fixed release is out, or until 90 days after your
+report, whichever comes first; if a fix needs longer, we'll agree a date with you. Once it's
+fixed, the issue is published as a GitHub security advisory (with a CVE when it warrants one),
+crediting you unless you'd rather not be named.
 
 ## Scope
 
@@ -36,5 +71,5 @@ Out of scope, by design:
 - **Running `pysacd ps3sim` on a non-loopback address** shares that image with anyone who can
   reach the port.
 
-How each kind of input is contained, and the tests that check it, are described in
-[docs/security.md](docs/security.md).
+How each kind of input is contained, and the tests that check it, are described in the threat
+model, [docs/security.md](https://github.com/aclater/pysacd/blob/master/docs/security.md).

@@ -62,6 +62,9 @@ terms may be added.
   Its compiled binary was the oracle throughout.
 - **FFmpeg's DST decoder** by Peter Ross (LGPL-2.1+), the base of
   `csrc/dstdec.c`.
+- **Sebastian Gesemann's dsd2pcm** (BSD-3-Clause), credited for the technique
+  in `csrc/dsp.c`'s first DSD-to-PCM stage: lookup tables of filter partial
+  sums indexed by whole DSD bytes.
 - **[MusicBrainz](https://musicbrainz.org)** and the **Cover Art Archive**,
   for tags and covers.
 - The **PS3 SACD Ripper** homebrew, whose protocol pysacd speaks.

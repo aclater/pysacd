@@ -4,18 +4,21 @@
  * One call converts any number of outputs (tracks, concatenations, an edit
  * master) from one area of an SACD image in a single sequential pass:
  *
- *   reader thread   reads the area once (large sequential reads), demuxes
- *                   audio frames, fills gaps with silence and groups the
- *                   frame stream into batches of BATCH_FRAMES
- *   N workers       decode DST and convert DSD->PCM per batch; each batch
+ *   reader thread   reads the frame range the outputs need through
+ *                   scarletbook-rs (#85): its pool of N threads decodes DST
+ *                   ahead of the reader, which receives every position in
+ *                   order (missing ones as 0x69 silence, invalid DST frames as
+ *                   0x55) and groups them into batches of BATCH_FRAMES
+ *   N workers       lay out DSF and convert DSD->PCM per batch; each batch
  *                   carries PRE/POST context frames so the PCM filters see
  *                   exactly what a continuous run would (gapless, and the
  *                   result does not depend on the thread count)
  *   writer thread   takes batches in order and writes every output that
  *                   overlaps them (DSF, DSDIFF DSD/DST, WAV, FLAC)
  *
- * The reader can also copy the whole image to a plain 2048-byte ISO in the
- * same pass. Called from Python through ctypes, which releases the GIL.
+ * An ISO copy (a plain 2048-byte image) is written first, in one sequential
+ * pass, and the audio then read from that local copy. Called from Python
+ * through ctypes, which releases the GIL.
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -39,9 +42,7 @@
 #endif
 
 #include "compat.h"
-#include "demux.h"
 #include "dsp.h"
-#include "dstdec.h"
 #include "sacd.h"
 #include "scarletbook.h"
 
@@ -60,7 +61,6 @@
 #define READ_SECTORS   1024            /* 2 MiB reads */
 #define DSF_BLOCK      4096
 #define OUT_BUFFER     (1 << 20)
-#define DST_ERROR_FILL 0x55            /* undecodable DST frame: what sacd_extract writes */
 
 enum { OUT_DSF = 0, OUT_FLAC = 1, OUT_WAV = 2, OUT_DFF_DSD = 3, OUT_DFF_DST = 4 };
 
@@ -113,6 +113,11 @@ typedef struct {
     void          (*log_fn)(void *ctx, int level, const char *msg);
     void           *log_ctx;
     int             log_level;
+    /* scarletbook (#85): the area by the LSN of its TOC, the image's 2048-byte sectors (for a
+       sector source), and the cancellation token while a run reads (sacdconv_cancel) */
+    uint32_t        toc_lsn;
+    uint64_t        image_sectors;
+    void * _Atomic  sb_cancel;
 } sc_area_t;
 
 /* ------------------------------------------------------------ batches */
@@ -122,6 +127,7 @@ typedef struct batch {
     uint32_t  tc0;              /* timecode of the first core frame */
     int       pre, n, post;     /* context before, core, context after */
     int       need_dsd, need_pcm, need_planar;
+    int       decoded;          /* dsd already holds every frame, decoded by scarletbook */
     uint8_t  *raw;              /* raw frame data, concatenated */
     size_t    raw_cap;
     uint32_t  off[SLOT_FRAMES], len[SLOT_FRAMES];
@@ -145,6 +151,7 @@ typedef struct {
     int             npool;
     batch_t        *free_list, *work_head, *work_tail;
     batch_t       **done;                       /* ring indexed by seq % npool */
+    int             need_decode, need_stored;   /* decoded DSD, stored frames (DSDIFF DST) */
     int             reader_done;
     uint64_t        total_batches;
     _Atomic int     failed;
@@ -216,13 +223,15 @@ static int range_wanted(engine_t *e, uint32_t lo, uint32_t hi)
 
 typedef struct {
     uint32_t tc;
-    uint32_t len;
-    uint8_t  dst, missing;
+    uint32_t len;               /* stored bytes in data (DSDIFF DST passthrough) */
+    uint8_t  dst, missing, bad;
     uint8_t  data[MAX_FRAME_SIZE];
+    uint8_t  dsd[MAX_CHANNELS_SACD * FRAME_BYTES_PER_CH];  /* decoded (when the outputs need it) */
 } frame_t;
 
 typedef struct {
     engine_t *e;
+    int       decoded;          /* the staged frames carry decoded DSD */
     frame_t  *stage;            /* frames waiting to be batched (SLOT_FRAMES) */
     int       nstage;           /* frames staged */
     int       pre;              /* how many leading staged frames are context */
@@ -290,9 +299,12 @@ static int emit_batch(reader_t *r, int ncore, int npost)
         b->len[i] = f->len;
         b->dst[i] = f->dst;
         b->missing[i] = f->missing;
-        b->bad[i] = 0;
+        b->bad[i] = f->bad;
+        if (r->decoded)
+            memcpy(b->dsd + (size_t)i * e->frame_bytes, f->dsd, e->frame_bytes);
         pos += f->len;
     }
+    b->decoded = r->decoded;
     b->seq = r->seq++;
     b->tc0 = r->stage[r->pre].tc;
     b->pre = r->pre;
@@ -325,15 +337,25 @@ static int emit_batch(reader_t *r, int ncore, int npost)
     return 0;
 }
 
-static int stage_frame(reader_t *r, uint32_t tc, const uint8_t *data, int len, int dst, int missing)
+/* Stage one position: its stored bytes (data, len) and, when decoding, its decoded DSD (dsd).
+   A missing position has no stored bytes; decoded, it is silence. */
+static int stage_frame(reader_t *r, uint32_t tc, const uint8_t *data, int len, int dst, int missing,
+                       const uint8_t *dsd, int bad)
 {
     frame_t *f = &r->stage[r->nstage++];
     f->tc = tc;
     f->len = missing ? 0 : (uint32_t)len;
     f->dst = (uint8_t)dst;
     f->missing = (uint8_t)missing;
-    if (!missing)
+    f->bad = (uint8_t)bad;
+    if (!missing && len)
         memcpy(f->data, data, len);
+    if (r->decoded) {
+        if (dsd)
+            memcpy(f->dsd, dsd, r->e->frame_bytes);
+        else
+            memset(f->dsd, DSD_SILENCE, r->e->frame_bytes);
+    }
     /* full batch plus its post context staged: emit */
     if (r->nstage == r->pre + BATCH_FRAMES + POST_FRAMES)
         return emit_batch(r, BATCH_FRAMES, POST_FRAMES);
@@ -348,150 +370,258 @@ static int fill_until(reader_t *r, uint32_t tc)
                tc_str(r->next_tc, a), tc_str(tc - 1, b), tc - r->next_tc);
     }
     for (; r->next_tc < tc; r->next_tc++)
-        if (stage_frame(r, r->next_tc, NULL, 0, 0, 1) < 0)
+        if (stage_frame(r, r->next_tc, NULL, 0, 0, 1, NULL, 0) < 0)
             return -1;
     return 0;
 }
 
-static int on_frame(void *ctx, uint32_t tc, const uint8_t *data, int size, int dst)
-{
-    reader_t *r = ctx;
-    engine_t *e = r->e;
 
-    if (tc >= r->want_hi)
-        return 1;
-    if (tc < r->next_tc)
+/* ------------------------------------------------------------ reader: scarletbook (#85) */
+
+/* Serialises sacdconv_cancel() against the reader handing out and freeing its token */
+static pthread_mutex_t cancel_mu = PTHREAD_MUTEX_INITIALIZER;
+
+/* A sector source (read_fn, 2048-byte sectors by LSN) as scarletbook's positional reader */
+typedef struct {
+    sc_area_t *a;
+    uint8_t   *scratch;         /* READ_SECTORS sectors */
+} sb_source_t;
+
+static int64_t sb_read_at(void *user, uint64_t offset, uint8_t *buf, size_t len)
+{
+    sb_source_t *src = user;
+    sc_area_t *a = src->a;
+    uint64_t total = a->image_sectors * LSN_SIZE;
+    size_t done = 0;
+    if (offset >= total)
         return 0;
-    if (!dst && size != e->frame_bytes) {
-        set_error(e, "DSD frame of %d bytes does not match %d channels", size, e->channels);
-        return -1;
+    if (len > total - offset)
+        len = (size_t)(total - offset);
+    while (done < len) {
+        uint64_t pos = offset + done;
+        uint64_t lsn = pos / LSN_SIZE;
+        size_t skip = (size_t)(pos % LSN_SIZE);
+        uint64_t n = (skip + (len - done) + LSN_SIZE - 1) / LSN_SIZE;
+        if (n > READ_SECTORS)
+            n = READ_SECTORS;
+        if (a->read_fn(a->read_ctx, (uint32_t)lsn, (uint32_t)n, src->scratch) != 0)
+            return -1;
+        size_t k = (size_t)n * LSN_SIZE - skip;
+        if (k > len - done)
+            k = len - done;
+        memcpy(buf + done, src->scratch + skip, k);
+        done += k;
     }
-    if (fill_until(r, tc) < 0 || stage_frame(r, tc, data, size, dst, 0) < 0)
-        return -1;
-    r->next_tc = tc + 1;
-    return stopping(e) ? -1 : 0;
+    return (int64_t)done;
 }
 
-static void *reader_main(void *arg)
+/* scarletbook's log, into the engine's: its errors as warnings, the rest at debug level (pysacd
+   reports missing frames, invalid DST frames and malformed sectors itself, from the statuses) */
+static void sb_log_cb(void *user, int32_t level, const char *msg)
+{
+    sc_log(user, level <= SB_LOG_ERROR ? SC_WARNING : SC_DEBUG, "scarletbook: %s", msg);
+}
+
+/* Open the image with scarletbook: by path, or through the sector source (src->scratch is
+   allocated for it; the caller frees it) */
+static SbStatus sb_open(sc_area_t *a, sb_source_t *src, SbDisc **disc)
+{
+    int32_t level = !a->log_fn ? SB_LOG_OFF : a->log_level <= SC_DEBUG ? SB_LOG_DEBUG : SB_LOG_ERROR;
+    if (!a->read_fn)
+        return sb_disc_open_file_with_log(a->iso_path, sb_log_cb, a, level, disc);
+    if (!(src->scratch = malloc((size_t)READ_SECTORS * LSN_SIZE)))
+        return SB_STATUS_OUT_OF_MEMORY;
+    return sb_disc_open_callbacks_at_with_log(sb_read_at, a->image_sectors * LSN_SIZE, src, sb_log_cb, a, level, disc);
+}
+
+static void sb_fail(engine_t *e, SbStatus st, const char *what)
+{
+    const char *msg = sb_last_error_message();
+    set_error(e, "%s: %s%s%s", what, sb_status_name(st), msg && *msg ? ": " : "", msg && *msg ? msg : "");
+}
+
+/* Log the malformed-sector warnings a handle has collected since the last call */
+static void sb_log_malformed(sc_area_t *a, SbTrackAudio *audio, SbRawFrames *raw, uint32_t *seen)
+{
+    SbWarning w;
+    while ((audio ? sb_track_audio_warning(audio, *seen, &w) : sb_raw_frames_warning(raw, *seen, &w)) == SB_STATUS_OK) {
+        sc_log(a, SC_WARNING, "malformed audio sector at LSN %lld: part or all of it dropped (%s)",
+               (long long)w.lsn, w.code ? w.code : "?");
+        (*seen)++;
+    }
+}
+
+static void log_missing(sc_area_t *a, uint32_t from, uint32_t to)
+{
+    char x[16], y[16];
+    sc_log(a, SC_WARNING, "frames %s-%s (%u) not found on the disc; filled with silence",
+           tc_str(from, x), tc_str(to - 1, y), to - from);
+}
+
+static void *sb_reader_main(void *arg)
 {
     engine_t *e = arg;
     sc_area_t *a = e->a;
-    sc_file_t fd = SC_NO_FILE;
-    int rc = 0;
-    FILE *iso = NULL;
-    uint8_t *raw = NULL, *plain = NULL;
-    frame_acc_t *acc = NULL;
-    reader_t r = {.e = e};
+    reader_t r = {.e = e, .decoded = e->need_decode};
+    sb_source_t src = {.a = a};
+    SbDisc *disc = NULL;
+    SbTrackAudio *audio = NULL;
+    SbRawFrames *raw = NULL;
+    SbPool *pool = NULL;
+    SbProgress *prog = NULL;
+    SbCancel *token = NULL;
+    uint8_t *dsd = malloc(e->frame_bytes), *stored = malloc(SB_MAX_FRAME_BYTES);
+    uint32_t nwarn = 0, miss_from = UINT32_MAX;
+    SbStatus st;
 
     r.stage = malloc(sizeof(frame_t) * SLOT_FRAMES);
-    raw = malloc((size_t)READ_SECTORS * a->sector_size);
-    plain = malloc((size_t)READ_SECTORS * LSN_SIZE);
-    acc = calloc(1, sizeof(*acc));
-    if (!r.stage || !raw || !plain || !acc) {
+    if (!r.stage || !dsd || !stored) {
         set_error(e, "out of memory");
         goto out;
     }
-    if (!a->read_fn) {
-        if ((fd = sc_open_read(a->iso_path)) == SC_NO_FILE) {
-            set_error(e, "%s: %s", a->iso_path, strerror(errno));
-            goto out;
-        }
+    if ((st = sb_open(a, &src, &disc)) < 0) {
+        sb_fail(e, st, "opening the image");
+        goto out;
+    }
+    if (sb_disc_cancel_token(disc, &token) == SB_STATUS_OK) {
+        pthread_mutex_lock(&cancel_mu);
+        atomic_store(&a->sb_cancel, token);
+        if (a->cancel)
+            sb_cancel_request(token);
+        pthread_mutex_unlock(&cancel_mu);
     }
 
-    if (a->iso_out_path) {
-        if (!(iso = sc_fopen_write(a->iso_out_path))) {
-            set_error(e, "%s: %s", a->iso_out_path, strerror(errno));
-            goto out;
-        }
-        setvbuf(iso, NULL, _IOFBF, 4 * OUT_BUFFER);
+    /* the area whose TOC the caller read (toc.Area.toc_start) */
+    SbDiscInfo di;
+    SbAreaInfo ai;
+    int found = 0;
+    if ((st = sb_disc_info(disc, &di)) < 0) {
+        sb_fail(e, st, "reading the disc");
+        goto out;
+    }
+    for (uint32_t i = 0; i < di.area_count && !found; i++)
+        found = sb_disc_area(disc, i, &ai) == SB_STATUS_OK && ai.toc_lsn == a->toc_lsn;
+    if (!found) {
+        set_error(e, "no area with its TOC at LSN %u", a->toc_lsn);
+        goto out;
+    }
+    if ((int)ai.channel_count != a->channels) {
+        set_error(e, "the area has %u channels, not %d", ai.channel_count, a->channels);
+        goto out;
     }
 
     r.want_lo = e->need_lo > PRE_FRAMES ? e->need_lo - PRE_FRAMES : 0;
     r.want_hi = e->need_hi + POST_FRAMES;
     r.next_tc = r.want_lo;
-    int demuxing = e->nouts > 0;
+    /* scarletbook reads the area's timeline, [0, play time); positions past it are silence */
+    uint32_t end = r.want_hi < ai.playtime_frames ? r.want_hi : ai.playtime_frames;
+    sc_log(a, SC_DEBUG, "scarletbook: area slot %u, frames %u-%u of %u, %s%s", ai.slot, r.want_lo, end,
+           ai.playtime_frames, e->need_decode ? "decoded" : "stored frames only",
+           e->need_decode && e->need_stored ? " and stored" : "");
 
-    uint32_t first = iso ? 0 : a->scan_lsn_start;
-    uint32_t last = iso ? a->iso_sectors - 1 : a->scan_lsn_end;
-    a->sectors_total = (uint64_t)last - first + 1;
-
-    for (uint32_t lsn = first; lsn <= last && !stopping(e); lsn += READ_SECTORS) {
-        uint32_t n = last - lsn + 1 < READ_SECTORS ? last - lsn + 1 : READ_SECTORS;
-        size_t want = (size_t)n * a->sector_size, got = 0;
-        double t0 = now_ms();
-        if (a->read_fn) {
-            if (a->read_fn(a->read_ctx, lsn, n, raw) != 0) {
-                /* the source leaves its reason in a->error, which set_error overwrites */
-                char why[sizeof(a->error)];
-                snprintf(why, sizeof(why), "%s", a->error[0] ? a->error : "source failed");
-                set_error(e, "read error at LSN %u (+%u): %s", lsn, n, why);
+    if (r.want_lo < end) {
+        if (e->need_decode) {
+            if ((st = sb_range_audio_open(disc, ai.slot, r.want_lo, end, &audio)) < 0) {
+                sb_fail(e, st, "opening the area's audio");
+                goto out;
+            }
+            int threads = a->threads > 0 ? a->threads : 0;
+            if ((st = sb_pool_new((uint32_t)(threads > SB_MAX_POOL_THREADS ? SB_MAX_POOL_THREADS : threads), &pool)) < 0 ||
+                (st = sb_track_audio_set_pool(audio, pool)) < 0 ||
+                (e->need_stored && (st = sb_track_audio_keep_stored(audio)) < 0) ||
+                (st = sb_track_audio_progress(audio, &prog)) < 0) {
+                sb_fail(e, st, "setting up the area's audio");
                 goto out;
             }
         } else {
-            while (got < want) {
-                long long k = sc_pread(fd, raw + got, want - got, (uint64_t)lsn * a->sector_size + got);
-                if (k <= 0) {
-                    set_error(e, "read error at LSN %u: %s", lsn, k < 0 ? strerror(errno) : "unexpected end of image");
-                    goto out;
-                }
-                got += k;
+            if ((st = sb_raw_frames_open(disc, ai.slot, r.want_lo, end, &raw)) < 0 ||
+                (st = sb_raw_frames_progress(raw, &prog)) < 0) {
+                sb_fail(e, st, "opening the area's frames");
+                goto out;
             }
         }
-        sc_log(a, SC_DEBUG, "read LSN %u+%u (%zu bytes) in %.1f ms", lsn, n, want, now_ms() - t0);
-        const uint8_t *sec = raw;
-        if (a->sector_size != LSN_SIZE) {
-            for (uint32_t i = 0; i < n; i++)
-                memcpy(plain + (size_t)i * LSN_SIZE, raw + (size_t)i * a->sector_size + a->data_offset, LSN_SIZE);
-            sec = plain;
-        }
-        if (iso && fwrite(sec, LSN_SIZE, n, iso) != n) {
-            set_error(e, "%s: %s", a->iso_out_path, strerror(errno));
-            goto out;
-        }
-        if (demuxing) {
-            for (uint32_t i = 0; i < n; i++) {
-                uint32_t s = lsn + i;
-                if (s < a->scan_lsn_start || s > a->scan_lsn_end)
-                    continue;
-                rc = demux_sector(sec + (size_t)i * LSN_SIZE, acc, e->channels, on_frame, &r);
-                if (rc < 0)
-                    goto out;
-                if (rc == DEMUX_CORRUPT) {
-                    sc_log(a, SC_WARNING, "malformed audio sector at LSN %u: part or all of it dropped", s);
-                    rc = 0;
-                    continue;
-                }
-                if (rc > 0) {
-                    demuxing = 0;   /* past the last frame needed */
-                    break;
-                }
-            }
-            if (!demuxing && !iso)
+
+        for (uint32_t k = 0; !stopping(e); k++) {
+            SbFrameInfo fi = {0};
+            SbRawFrameInfo ri = {0};
+            if (audio && e->need_stored)
+                st = sb_track_audio_read_with_stored(audio, disc, dsd, e->frame_bytes, &fi, stored,
+                                                     SB_MAX_FRAME_BYTES, &ri, 0);
+            else if (audio)
+                st = sb_track_audio_read(audio, disc, dsd, e->frame_bytes, &fi);
+            else
+                st = sb_raw_frames_read(raw, disc, stored, SB_MAX_FRAME_BYTES, &ri);
+            if (st == SB_STATUS_END)
                 break;
+            if (st == SB_STATUS_CANCELLED)
+                break;          /* a->cancel is set: the run ends as cancelled */
+            if (st < 0) {
+                sb_fail(e, st, "reading the area");
+                goto out;
+            }
+            uint32_t number = audio ? fi.number : ri.number;
+            if (number != r.next_tc) {
+                set_error(e, "scarletbook returned frame %u where %u was expected", number, r.next_tc);
+                goto out;
+            }
+            int missing = audio ? fi.status == SB_FRAME_STATUS_MISSING : ri.kind == SB_FRAME_KIND_MISSING;
+            int bad = audio && fi.status == SB_FRAME_STATUS_INVALID;
+            int with_stored = !audio || e->need_stored;
+            int is_dst = with_stored ? ri.kind == SB_FRAME_KIND_DST
+                                     : fi.status == SB_FRAME_STATUS_DECODED || fi.status == SB_FRAME_STATUS_INVALID;
+            if (bad && range_wanted(e, number, number + 1)) {
+                char t[16];
+                sc_log(a, SC_WARNING, "DST frame at %s (frame %u) could not be decoded (rule %u); filled with 0x55",
+                       tc_str(number, t), number, fi.dst_rule);
+            }
+            if (missing && range_wanted(e, number, number + 1)) {
+                if (miss_from == UINT32_MAX)
+                    miss_from = number;
+            } else if (miss_from != UINT32_MAX) {
+                log_missing(a, miss_from, number);
+                miss_from = UINT32_MAX;
+            }
+            if (stage_frame(&r, number, stored, with_stored && !missing ? (int)ri.size : 0, is_dst, missing,
+                            audio ? dsd : NULL, bad) < 0)
+                goto out;
+            r.next_tc = number + 1;
+            if (k % 32 == 31) {
+                uint64_t done = 0, expected = 0;
+                if (sb_progress_get(prog, &done, &expected) == SB_STATUS_OK) {
+                    a->sectors_done = done;
+                    a->sectors_total = expected;
+                }
+                sb_log_malformed(a, audio, raw, &nwarn);
+            }
         }
-        a->sectors_done += n;
+        if (miss_from != UINT32_MAX)
+            log_missing(a, miss_from, r.next_tc);
+        sb_log_malformed(a, audio, raw, &nwarn);
+        uint64_t done = 0, expected = 0;
+        if (prog && sb_progress_get(prog, &done, &expected) == SB_STATUS_OK) {
+            a->sectors_done = done;
+            a->sectors_total = done;
+        }
     }
     if (stopping(e))
         goto out;
-
-    if (e->nouts) {
-        if (demuxing && acc->started && frame_complete(acc, e->channels) &&
-            on_frame(&r, acc->tc, acc->data, acc->size, acc->dst) < 0)
-            goto out;
-        /* frames never found on disc (or past the area end) become silence */
-        if (fill_until(&r, r.want_hi) < 0)
-            goto out;
-        /* flush the remainder: everything staged after the context is core */
-        int ncore = r.nstage - r.pre;
-        if (ncore > 0 && emit_batch(&r, ncore, 0) < 0)
-            goto out;
-    }
+    /* positions past the play time (or past the area's end) become silence */
+    if (fill_until(&r, r.want_hi) < 0)
+        goto out;
+    int ncore = r.nstage - r.pre;
+    if (ncore > 0 && emit_batch(&r, ncore, 0) < 0)
+        goto out;
 
 out:
-    if (iso && fclose(iso) != 0)
-        set_error(e, "%s: %s", a->iso_out_path, strerror(errno));
-    if (fd != SC_NO_FILE)
-        sc_close(fd);
+    pthread_mutex_lock(&cancel_mu);
+    atomic_store(&a->sb_cancel, NULL);
+    pthread_mutex_unlock(&cancel_mu);
+    sb_cancel_free(token);
+    sb_progress_free(prog);
+    sb_track_audio_free(audio);
+    sb_raw_frames_free(raw);
+    sb_pool_free(pool);
+    sb_disc_free(disc);
     pthread_mutex_lock(&e->mu);
     e->reader_done = 1;
     e->total_batches = r.seq;
@@ -499,9 +629,9 @@ out:
     pthread_cond_broadcast(&e->cv_done);
     pthread_mutex_unlock(&e->mu);
     free(r.stage);
-    free(raw);
-    free(plain);
-    free(acc);
+    free(dsd);
+    free(stored);
+    free(src.scratch);
     return NULL;
 }
 
@@ -518,39 +648,10 @@ static inline uint32_t xorshift(uint32_t *s)
 
 static const uint8_t *bit_reverse_table(void);
 
-static void process_batch(engine_t *e, batch_t *b, dst_decoder_t **dec, dsd2pcm_t *dsp, const uint8_t *silence)
+static void process_batch(engine_t *e, batch_t *b, dsd2pcm_t *dsp, const uint8_t *silence)
 {
     int nf = b->pre + b->n + b->post;
     size_t fb = e->frame_bytes;
-
-    if (b->need_dsd) {
-        /* the context frames are there for the PCM filters: DSD outputs only read the core */
-        int from = b->need_pcm ? 0 : b->pre, to = b->need_pcm ? nf : b->pre + b->n;
-        for (int i = from; i < to; i++) {
-            uint8_t *out = b->dsd + i * fb;
-            if (b->missing[i]) {
-                memset(out, DSD_SILENCE, fb);
-            } else if (b->dst[i]) {
-                if (!*dec && !(*dec = dst_decoder_new(e->channels))) {
-                    set_error(e, "out of memory");
-                    return;
-                }
-                int err = dst_decode_frame(*dec, b->raw + b->off[i], b->len[i], out);
-                if (err != 0) {
-                    b->bad[i] = 1;
-                    memset(out, DST_ERROR_FILL, fb);
-                    if (i >= b->pre && i < b->pre + b->n) {   /* context frames are logged by their own batch */
-                        char t[16];
-                        uint32_t tc = b->tc0 + (uint32_t)(i - b->pre);
-                        sc_log(e->a, SC_WARNING, "DST frame at %s (frame %u, %u bytes) could not be decoded "
-                               "(error %d); filled with 0x55", tc_str(tc, t), tc, b->len[i], err);
-                    }
-                }
-            } else {
-                memcpy(out, b->raw + b->off[i], fb);
-            }
-        }
-    }
 
     if (b->need_planar) {
         /* DSF byte order: de-interleave and bit-reverse here, in parallel */
@@ -597,7 +698,6 @@ static void process_batch(engine_t *e, batch_t *b, dst_decoder_t **dec, dsd2pcm_
 static void *worker_main(void *arg)
 {
     engine_t *e = arg;
-    dst_decoder_t *dec = NULL;
     dsd2pcm_t *dsp = NULL;
     uint8_t *silence = malloc(e->frame_bytes);
 
@@ -630,7 +730,7 @@ static void *worker_main(void *arg)
             e->work_tail = NULL;
         pthread_mutex_unlock(&e->mu);
 
-        process_batch(e, b, &dec, dsp, silence);
+        process_batch(e, b, dsp, silence);
 
         pthread_mutex_lock(&e->mu);
         e->done[b->seq % e->npool] = b;
@@ -638,7 +738,6 @@ static void *worker_main(void *arg)
         pthread_mutex_unlock(&e->mu);
     }
 
-    dst_decoder_free(dec);
     if (dsp) {
         dsd2pcm_free(dsp);
         free(dsp);
@@ -1061,7 +1160,7 @@ static int writer_run(engine_t *e)
  * _load() refuses a library whose version, struct sizes or field offsets differ from its
  * ctypes mirrors. Bump SACDCONV_ABI whenever a struct or an exported signature changes.
  */
-#define SACDCONV_ABI 1
+#define SACDCONV_ABI 2     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel) */
 
 #define OFF(T, f) (uint32_t)offsetof(T, f)
 static const uint32_t area_layout[] = {
@@ -1073,6 +1172,7 @@ static const uint32_t area_layout[] = {
     OFF(sc_area_t, frames_done), OFF(sc_area_t, frames_total), OFF(sc_area_t, sectors_done),
     OFF(sc_area_t, sectors_total), OFF(sc_area_t, error), OFF(sc_area_t, read_fn),
     OFF(sc_area_t, read_ctx), OFF(sc_area_t, log_fn), OFF(sc_area_t, log_ctx), OFF(sc_area_t, log_level),
+    OFF(sc_area_t, toc_lsn), OFF(sc_area_t, image_sectors), OFF(sc_area_t, sb_cancel),
 };
 static const uint32_t output_layout[] = {
     sizeof(sc_output_t),
@@ -1137,6 +1237,84 @@ const char *sacdconv_build_info(void)
            ;
 }
 
+/* Cancel a running sacdconv_area_run() from another thread: the engine's own threads stop at
+   their next batch, and scarletbook's reads within 32 sectors (SbCancel). */
+void sacdconv_cancel(sc_area_t *a)
+{
+    a->cancel = 1;
+    pthread_mutex_lock(&cancel_mu);
+    SbCancel *token = atomic_load(&a->sb_cancel);
+    if (token)
+        sb_cancel_request(token);
+    pthread_mutex_unlock(&cancel_mu);
+}
+
+/* Copy the whole image to a->iso_out_path, as plain 2048-byte sectors, in one sequential pass:
+   scarletbook reads the user data of each sector, whatever the image's sector size */
+static int copy_image(sc_area_t *a)
+{
+    engine_t e = {.a = a};
+    sb_source_t src = {.a = a};
+    SbDisc *disc = NULL;
+    FILE *iso = NULL;
+    uint8_t *buf = malloc((size_t)READ_SECTORS * LSN_SIZE);
+    SbStatus st;
+    SbDiscInfo di;
+
+    pthread_mutex_init(&e.mu, NULL);
+    pthread_cond_init(&e.cv_free, NULL);
+    pthread_cond_init(&e.cv_work, NULL);
+    pthread_cond_init(&e.cv_done, NULL);
+    if (!buf) {
+        set_error(&e, "out of memory");
+        goto out;
+    }
+    if ((st = sb_open(a, &src, &disc)) < 0 || (st = sb_disc_info(disc, &di)) < 0) {
+        sb_fail(&e, st, "opening the image");
+        goto out;
+    }
+    if (!(iso = sc_fopen_write(a->iso_out_path))) {
+        set_error(&e, "%s: %s", a->iso_out_path, strerror(errno));
+        goto out;
+    }
+    setvbuf(iso, NULL, _IOFBF, 4 * OUT_BUFFER);
+    sc_log(a, SC_INFO, "engine: copying %llu sectors to %s", (unsigned long long)di.sectors, a->iso_out_path);
+    a->sectors_total = di.sectors;
+    for (uint64_t lsn = 0; lsn < di.sectors && !a->cancel; lsn += READ_SECTORS) {
+        uint32_t n = di.sectors - lsn < READ_SECTORS ? (uint32_t)(di.sectors - lsn) : READ_SECTORS;
+        double t0 = now_ms();
+        if ((st = sb_disc_read_sectors(disc, lsn, n, buf, (size_t)n * LSN_SIZE)) < 0) {
+            char what[64];
+            snprintf(what, sizeof(what), "read error at LSN %llu (+%u)", (unsigned long long)lsn, n);
+            sb_fail(&e, st, what);
+            goto out;
+        }
+        sc_log(a, SC_DEBUG, "read LSN %llu+%u in %.1f ms", (unsigned long long)lsn, n, now_ms() - t0);
+        if (fwrite(buf, LSN_SIZE, n, iso) != n) {
+            set_error(&e, "%s: %s", a->iso_out_path, strerror(errno));
+            goto out;
+        }
+        a->sectors_done += n;
+    }
+out:
+    if (iso && fclose(iso) != 0 && !e.failed)
+        set_error(&e, "%s: %s", a->iso_out_path, strerror(errno));
+    sb_disc_free(disc);
+    free(src.scratch);
+    free(buf);
+    pthread_mutex_destroy(&e.mu);
+    pthread_cond_destroy(&e.cv_free);
+    pthread_cond_destroy(&e.cv_work);
+    pthread_cond_destroy(&e.cv_done);
+    if (e.failed)
+        return -1;
+    if (a->cancel) {
+        snprintf(a->error, sizeof(a->error), "cancelled");
+        return -1;
+    }
+    return 0;
+}
+
 int sacdconv_has_flac(void)
 {
 #ifdef HAVE_FLAC
@@ -1183,6 +1361,10 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
             e.need_hi = o->tc_end;
         if (o->format == OUT_FLAC || o->format == OUT_WAV)
             want_pcm = 1;
+        if (o->format == OUT_DFF_DST)
+            e.need_stored = 1;
+        else
+            e.need_decode = 1;
         if (o->format == OUT_FLAC && !sacdconv_has_flac()) {
             snprintf(a->error, sizeof(a->error), "built without libFLAC (install flac-devel and rebuild)");
             return -1;
@@ -1197,6 +1379,21 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
     if (!nouts)
         e.need_lo = e.need_hi = 0;
     a->frames_total = e.need_hi - (nouts ? e.need_lo : 0);
+
+    /* An ISO copy first, in one pass; the audio is then read from that local copy, so a sector
+       source (a PS3) is read once */
+    if (a->iso_out_path) {
+        if (copy_image(a) < 0)
+            return -1;
+        a->iso_path = a->iso_out_path;
+        a->iso_out_path = NULL;
+        a->read_fn = NULL;
+        a->sector_size = LSN_SIZE;
+        a->data_offset = 0;
+    }
+    if (!nouts)
+        return 0;
+    a->sectors_done = 0;
 
     if (want_pcm) {
         dsd2pcm_t *probe = malloc(sizeof(*probe));
@@ -1240,14 +1437,12 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
            a->channels, nouts, e.need_lo, e.need_hi, a->scan_lsn_start, a->scan_lsn_end,
            a->read_fn ? " via sector source" : "", nworkers, want_pcm ? ", PCM " : "",
            want_pcm ? (a->pcm_rate == 88200 ? "88.2 kHz" : "176.4 kHz") : "");
-    if (a->iso_out_path)
-        sc_log(a, SC_INFO, "engine: copying %u sectors to %s", a->iso_sectors, a->iso_out_path);
     double t_start = now_ms();
     int started = 0;
     for (; started < nworkers; started++)
         if (pthread_create(&workers[started], NULL, worker_main, &e) != 0)
             break;
-    if (started == 0 || pthread_create(&reader, NULL, reader_main, &e) != 0) {
+    if (started == 0 || pthread_create(&reader, NULL, sb_reader_main, &e) != 0) {
         set_error(&e, "cannot start threads");
     } else {
         writer_run(&e);

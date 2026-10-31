@@ -11,10 +11,12 @@ from pathlib import Path
 from pysacd import SACDImage
 from pysacd.convert import Options, naming_values, render
 from pysacd.musicbrainz import physical_discs
-from pysacd.toc import Area, Timecode, Track
+from pysacd.toc import Area, Timecode, read_toc
+
+sys.path.insert(0, os.path.dirname(__file__))
+import sacdgen
 
 S = 2048
-AUDIO_LSN = 600
 FRAME = 4704  # bytes per channel per frame
 
 try:
@@ -25,53 +27,12 @@ except Exception:  # noqa: BLE001 - any failure to load means "not built"; tests
     HAVE_NATIVE = False
 
 
-def mux(frames: list[bytes], first_tc: int = 0) -> list[bytes]:
-    """Pack plain-DSD frames into Scarletbook audio sectors."""
-    sectors, fi, off = [], 0, 0
-    while fi < len(frames):
-        packets, infos, payload, space = [], [], b"", S - 1
-        while fi < len(frames) and len(packets) < 7:
-            start = off == 0
-            overhead = 2 + (3 if start else 0)
-            n = min(2045, space - overhead, len(frames[fi]) - off)
-            if n <= 0 or (start and len(infos) == 7):
-                break
-            packets.append((start, n))
-            if start:
-                tc = first_tc + fi
-                infos.append(bytes([tc // 4500, tc // 75 % 60, tc % 75]))
-            payload += frames[fi][off:off + n]
-            off += n
-            space -= overhead + n
-            if off == len(frames[fi]):
-                fi, off = fi + 1, 0
-        sec = bytes([len(infos) << 2 | len(packets) << 5])
-        sec += b"".join(bytes([s << 7 | 2 << 3 | n >> 8, n & 0xFF]) for s, n in packets)
-        sec += b"".join(infos) + payload
-        sectors.append(sec.ljust(S, b"\0"))
-    return sectors
-
-
 def build(path: Path, frames: list[bytes], split: int):
-    """Image with two tracks: frames [0, split) and [split, len)."""
-    sectors = mux(frames)
-    # LSN where the frame `split` starts (first sector carrying its frame info)
-    starts = []
-    for i, sec in enumerate(sectors):
-        n = sec[0] >> 2 & 7
-        starts += [AUDIO_LSN + i] * n
-    img = bytearray(AUDIO_LSN * S)
-    img[510 * S:510 * S + 8] = b"SACDMTOC"
-    img += b"".join(sectors)
-    path.write_bytes(img)
-    end = AUDIO_LSN + len(sectors) - 1
-    tc = lambda f: Timecode(f // 4500, f // 75 % 60, f % 75)
-    tracks = [
-        Track(1, AUDIO_LSN, starts[split] - AUDIO_LSN, tc(0), tc(split), 0),
-        Track(2, starts[split], end - starts[split] + 1, tc(split), tc(len(frames) - split), 0),
-    ]
-    area = Area("TWOCHTOC", (1, 20), 0, 0, 0, 4, 2, 2, 0, 2, 0, 0, tc(len(frames)), 0,
-                AUDIO_LSN, end, [], tracks=tracks)
+    """Image with two tracks: frames [0, split) and [split, len). A real TOC (tests/sacdgen.py):
+    the engine reads the area through scarletbook, which parses the image itself (#85)."""
+    sacdgen.build_iso(path, [sacdgen.AreaSpec(2, frames, [split, len(frames) - split], dst=False)])
+    area = read_toc(path).stereo
+    assert area is not None
     return area
 
 

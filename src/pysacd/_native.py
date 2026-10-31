@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -78,6 +79,10 @@ class _Area(ctypes.Structure):
         ("log_fn", _LOG_FN),
         ("log_ctx", ctypes.c_void_p),
         ("log_level", ctypes.c_int),
+        # scarletbook (#85): the area by its TOC's LSN, the image size, the engine's cancel token
+        ("toc_lsn", ctypes.c_uint32),
+        ("image_sectors", ctypes.c_uint64),
+        ("sb_cancel", ctypes.c_void_p),
     ]
 
 
@@ -106,13 +111,15 @@ def _load():
         lib.sacdconv_area_run.restype = ctypes.c_int
         lib.sacdconv_has_flac.restype = ctypes.c_int
         lib.sacdconv_build_info.restype = ctypes.c_char_p
+        lib.sacdconv_cancel.argtypes = [ctypes.POINTER(_Area)]
+        lib.sacdconv_cancel.restype = None
         _check_abi(lib, path)
         _check_scarletbook(lib, path)
         _lib = lib
     return _lib
 
 
-ABI = 1    # SACDCONV_ABI in csrc/sacdconv.c
+ABI = 2    # SACDCONV_ABI in csrc/sacdconv.c
 
 
 def _layout(struct) -> list[int]:
@@ -140,9 +147,10 @@ def _check_abi(lib, path) -> None:
 
 
 # The scarletbook-rs C library linked into the engine (#85): its C ABI version, and the oldest
-# release with every call pysacd uses (cancellation, progress, stored frames in one pass)
+# release with every call pysacd uses (0.5.0: cancellation, progress, stored frames in one pass;
+# 0.5.1: TOC timecodes as stored)
 SB_ABI = 2
-SB_MIN_VERSION = (0, 5, 0)
+SB_MIN_VERSION = (0, 5, 1)
 
 
 def _version_tuple(text: str) -> tuple[int, ...]:
@@ -307,8 +315,10 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
             raise NativeError(f"area LSN {a.scan_lsn_start}-{a.scan_lsn_end} lies outside the image "
                               f"({image.total_sectors} sectors)")
         a.channels = area.channel_count
+        a.toc_lsn = area.toc_start      # which area scarletbook reads: the one whose TOC this is
     else:
         a.channels = 2
+    a.image_sectors = image.total_sectors
     a.pcm_rate = pcm_rate
     a.gain_db = gain_db
     a.threads = threads
@@ -355,8 +365,11 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
             if progress:
                 progress(Progress(a.frames_done, a.frames_total, a.sectors_done, a.sectors_total))
     except BaseException:
-        a.cancel = 1
+        # the engine's threads and scarletbook's reads stop within a batch / 32 sectors
+        t0 = time.monotonic()
+        lib.sacdconv_cancel(ctypes.byref(a))
         t.join()
+        log.debug("engine cancelled in %.3f s", time.monotonic() - t0)
         raise
 
     for o, s in zip(outs, specs):

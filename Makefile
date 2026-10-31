@@ -110,7 +110,9 @@ SB_LIBS = $(shell cat $(SCARLETBOOK_DIR)/native-static-libs.txt)
 SB_STRIP = $(if $(filter -g -g%,$(CFLAGS)),,-Wl,-S)
 override CFLAGS += -I$(SCARLETBOOK_DIR)/include
 
-SRC := $(addprefix csrc/,sacdconv.c demux.c dsp.c dstdec.c)
+# demux.c and dstdec.c are no longer part of the engine (scarletbook reads the audio, #85); the
+# fuzz harnesses below still build them until they are removed.
+SRC := $(addprefix csrc/,sacdconv.c dsp.c)
 # BUILD and LIB can be overridden: the wheel build (setup.py) uses a private directory.
 BUILD ?= build
 OBJ := $(patsubst csrc/%.c,$(BUILD)/%.o,$(SRC))

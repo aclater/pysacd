@@ -40,8 +40,9 @@ exported signature changes.
 
 pysacd is moving its SACD engine (TOC parsing, sector formats, demultiplexing, DST decoding) onto
 scarletbook-rs, a clean-room Rust library, through its C interface (ABI 2). The plan and the
-reasons are in issue #85. So far the library is linked in, checked and exported, but nothing
-calls it yet.
+reasons are in issue #85. The library is linked in, checked and exported; the TOC is read
+through it (see [below](#the-toc-through-scarletbook)), and audio still goes through pysacd's
+own engine.
 
 **What is linked.** `scarletbook.lock` pins one scarletbook release: its version, C ABI, commit,
 and the SHA-256 of `scarletbook-ffi-<version>-<target>.tar.gz` for every target it is built for.
@@ -89,6 +90,37 @@ with no release build, build `crates/scarletbook-ffi` with cargo and arrange its
 the header and the output of `cargo rustc --crate-type staticlib -- --print native-static-libs`
 the same way. Set `SCARLETBOOK_TARGET` when a compiler wrapper misreports its target: Fedora's
 `musl-gcc`, for example, says `x86_64-redhat-linux`.
+
+### The TOC through scarletbook
+
+`SACDImage.read_toc()` reads the TOC with scarletbook by default (`src/pysacd/_sbtoc.py`).
+`engine="python"`, or `PYSACD_TOC_ENGINE=python`, uses pysacd's own parser instead.
+
+- **ctypes, not C glue.** Each field is one call to the documented ABI (`sb_disc_info`,
+  `sb_disc_string`, `sb_track_info`, ...) on the engine library, following scarletbook's README.
+  Reading a TOC isn't a hot path; see [performance](performance.md#reading-a-toc-in-process-against-a-subprocess).
+- **One source for every kind of input.** The image is opened with `sb_disc_open_callbacks_at`,
+  reading through the `SACDImage`'s file object: a path, a caller's file object and a PS3 server
+  (`remote.RemoteDisc`) all go the same way. The sector layout is still detected by
+  `SACDImage`, which also reads the audio for the engine for now.
+- **The same objects.** Where scarletbook gives bytes as stored (catalogue numbers, language
+  codes, manufacturer data), `_sbtoc` renders them exactly as `toc.py` does. Its text strings
+  (UTF-8) were already identical. Its warnings are the specification's codes (see
+  [the Python library](library.md#which-parser-reads-the-toc)).
+- **Timecodes as stored (a stopgap).** scarletbook gives play times and track times as frame
+  counts. A timecode a hostile disc stores out of range, such as `255:255:255`, then prints
+  as its normalised count (`259:18:30`), while `sacd_extract` and pysacd 0.2 print the stored
+  bytes in `-P`, cue, XML and DSDIFF markers. `_sbtoc` therefore reads the stored
+  minutes/seconds/frames bytes from the area TOC copy scarletbook used, and uses them only
+  where their frame count equals scarletbook's. The count always comes from scarletbook.
+  This goes away once scarletbook hands the timecodes out as stored; that has been requested.
+
+**Checking the two agree.** `tests/test_toc_engines.py` compares the two engines on the
+hostile corpus (`tests/sacdgen.py`), on synthetic discs in every character set, and on 150
+seeded mutations of a valid TOC (`PYSACD_TOC_MUTATIONS` for more). `tools/toc_compare.py`
+does the same for any images or directories. It compares every field of the objects,
+`pysacd toc --json` byte for byte (warnings left out), and the beets-pysacd fingerprint.
+`--no-values` names the differing fields without their contents, for private discs.
 
 **Moving to another scarletbook release:**
 

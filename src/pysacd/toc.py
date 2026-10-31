@@ -96,7 +96,7 @@ class SACDError(Exception):
 # Which parser SACDImage.read_toc() uses, unless PYSACD_TOC_ENGINE says otherwise (#85):
 # "scarletbook" (scarletbook-rs, through the native engine) or "python" (pysacd's own, below).
 TOC_ENGINES = ("scarletbook", "python")
-DEFAULT_TOC_ENGINE = "python"
+DEFAULT_TOC_ENGINE = "scarletbook"
 
 
 @dataclass(frozen=True)

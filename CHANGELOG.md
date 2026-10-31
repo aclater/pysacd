@@ -9,6 +9,16 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- The TOC is now read by scarletbook-rs, through the engine (#85, phase 2). The Disc, Area
+  and Track objects are the same as before, field for field: on the sacd-spec conformance
+  corpus (125 images read, 11 rejected by both), on real discs, and on a library of 139 ISOs,
+  where the beets-pysacd fingerprints are unchanged too. Names, tags, cue sheets, XML, `-P`
+  text and `toc --json` don't change. Only the warnings change: they are now the
+  specification's diagnostic codes, filed under their area, such as
+  `area-toc-copies-differ (2ch area)`. `PYSACD_TOC_ENGINE=python` (or
+  `read_toc(path, engine="python")`) uses pysacd's own parser, and `tools/toc_compare.py`
+  compares the two. Reading a TOC now needs the native engine, which every wheel has.
+
 - Build: the engine now links the [scarletbook-rs](https://github.com/aclater/scarletbook-rs)
   C library 0.5.0 (C ABI 2) statically, in every wheel and every build from source. This is the
   first step of moving pysacd's SACD engine onto it (#85); nothing calls it yet, and output is

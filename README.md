@@ -20,7 +20,7 @@
 `sacd_extract`: the same options, the same file names, the same bytes.**
 
 ```python
-from pysacd import read_toc                 # pure Python: no binary, no subprocess
+from pysacd import read_toc                 # in-process: no subprocess, no text to parse
 
 disc = read_toc("album.iso")
 print(disc.artist, "-", disc.title)
@@ -53,7 +53,8 @@ Why it exists, in the author's words: [author's note](docs/author.md).
   - **What you get back:** objects (or `--json`), not `sacd_extract -P` text.
   - **Failures** are exceptions, not exit codes and stderr.
   - **Progress** is a callback; to cancel, raise from it.
-  - **The TOC reader** is pure Python and needs no binary.
+  - **The TOC reader** runs in-process, through scarletbook-rs: one call returns objects
+    (see [the Python library](docs/library.md)).
 - **One pass, every output.** One call reads an area once and writes DSF,
   DSDIFF, WAV and FLAC (any mix), plus an ISO copy. DST is decoded on every
   core, with the GIL released.

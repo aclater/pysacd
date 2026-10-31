@@ -18,6 +18,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
 - **[Converting with `pysacd convert`](converting.md)**: naming templates, tags, MusicBrainz, gapless PCM.
   - [Submitting ISRCs to MusicBrainz](converting.md#submitting-isrcs-to-musicbrainz)
 - **[The Python library](library.md)**: the Python API, what's parsed, image formats.
+  - [Which parser reads the TOC](library.md#which-parser-reads-the-toc)
   - [What's parsed](library.md#whats-parsed)
   - [Image formats](library.md#image-formats)
 - **[SACD Ripper network protocol (PS3 server)](ps3-protocol.md)**: reading from a PS3: usage, the wire protocol and the PS3's quirks.

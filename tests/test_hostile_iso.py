@@ -206,7 +206,8 @@ class Expectations(unittest.TestCase):
         d = self._disc("area-audio-reversed")
         self.assertIsNone(d.stereo)
         self.assertIsNotNone(d.multichannel)
-        self.assertTrue(any("ends before it starts" in w for w in d.warnings))
+        # pysacd's parser words it, scarletbook gives the specification's code (#85)
+        self.assertTrue(any("ends before it starts" in w or "area-audio-range-reversed" in w for w in d.warnings))
 
     def test_tracks_held_to_the_playtime(self):
         for name in ("track-duration-max", "track-start-max", "track-start-past-playtime"):
@@ -215,7 +216,8 @@ class Expectations(unittest.TestCase):
             for t in area.tracks:
                 self.assertLessEqual(t.start.total_frames + t.duration.total_frames,
                                      area.total_playtime.total_frames, name)
-            self.assertTrue(any("past the area's playtime" in w for w in area.warnings), name)
+            self.assertTrue(any("past the area's playtime" in w or "past-playtime" in w for w in area.warnings),
+                            (name, area.warnings))
 
     @unittest.skipUnless(_native_ok(), "native engine not built")
     def test_tracks_cut_to_the_playtime_extract_normally(self):

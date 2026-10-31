@@ -220,7 +220,8 @@ class CorruptTOC(unittest.TestCase):
         img[p:p + 2] = b"\xff\xff"
         bad = read_toc(io.BytesIO(bytes(img)))
         self.assertEqual(len(bad.stereo.tracks), len(disc.stereo.tracks))
-        self.assertTrue(any("outside the area TOC" in w for w in bad.stereo.warnings), bad.stereo.warnings)
+        self.assertTrue(any("outside the area TOC" in w or "track-text-offset-invalid" in w
+                            for w in bad.stereo.warnings), bad.stereo.warnings)
 
     def test_truncated_images(self):
         for seed in range(min(N, 100)):

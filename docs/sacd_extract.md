@@ -45,6 +45,8 @@ deliberate:
 | Raw-sector images (2064/2054 bytes per sector) | refused | read; `-I` writes a plain ISO | real rips exist in that form |
 | A dropped PS3 connection | gives up | reconnects and resumes, after checking it's still the same disc | PS3 drives are flaky |
 | Running as root | runs | runs, with a one-line warning | `sacd_extract` users run it with `sudo`; [security](security.md#running-as-root) |
+| An image cut short inside the audio | stops at the cut, writing what it has | reads up to the cut and writes the rest of each track as silence (counted as missing frames, exit status 1) | scarletbook's reading of the specification: positions it can't find are missing frames |
+| A DST frame the specification calls invalid (for example a code value out of range, sacd-spec corpus `dst-code-all-ones`) | decodes it anyway, into undefined audio | fills it with 0x55, as for any undecodable frame, warns, and counts it as a DST error (exit status 1) | the frame has no defined audio; since 0.3.0 scarletbook decodes, and it applies the specification's validity rules |
 | `-b` (pauses) | cuts on sectors, so a boundary frame can land in both tracks | cuts on frame timecodes | gapless and unambiguous |
 | DSDIFF "creating machine" comment; `.cue`/`.xml` version lines | name sacd-ripper | name pysacd | honesty; otherwise byte-identical |
 | Console messages | | `-P` and the cfg summary are identical; other lines are worded differently | |

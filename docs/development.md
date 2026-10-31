@@ -40,9 +40,10 @@ exported signature changes.
 
 pysacd is moving its SACD engine (TOC parsing, sector formats, demultiplexing, DST decoding) onto
 scarletbook-rs, a clean-room Rust library, through its C interface (ABI 2). The plan and the
-reasons are in issue #85. The library is linked in, checked and exported; the TOC is read
-through it (see [below](#the-toc-through-scarletbook)), and audio still goes through pysacd's
-own engine.
+reasons are in issue #85. The library is linked in, checked and exported. The TOC is read
+through it (see [below](#the-toc-through-scarletbook)), and so is the audio
+([below](#the-audio-through-scarletbook)). `csrc/demux.c` and `csrc/dstdec.c` are no longer
+used by the engine; they go in the next step.
 
 **What is linked.** `scarletbook.lock` pins one scarletbook release: its version, C ABI, commit,
 and the SHA-256 of `scarletbook-ffi-<version>-<target>.tar.gz` for every target it is built for.
@@ -66,8 +67,9 @@ in the archive's `native-static-libs.txt`.
   about 2.4 MB on x86-64 Linux, and a wheel by about 1 MB.
 - **Checked twice.** `csrc/sacdconv.c` refuses at compile time a header whose `SB_ABI_VERSION`
   isn't 2. When the engine loads, `_native.py` refuses it if the linked library's
-  `sb_abi_version()` isn't 2 or its `sb_version()` is older than 0.5.0. 0.5.0 is the first
-  release with cancellation, progress, and stored and decoded frames in one pass.
+  `sb_abi_version()` isn't 2 or its `sb_version()` is older than 0.5.1. 0.5.0 is the first
+  release with cancellation, progress, and stored and decoded frames in one pass, and 0.5.1
+  the first with the TOC's timecodes as stored.
 - **Logged.** `_native.build_info()` (in `pysacd --version` and in log files) names the
   scarletbook version, and the debug log carries its full `sb_build_info()`.
 
@@ -107,13 +109,13 @@ the same way. Set `SCARLETBOOK_TARGET` when a compiler wrapper misreports its ta
   codes, manufacturer data), `_sbtoc` renders them exactly as `toc.py` does. Its text strings
   (UTF-8) were already identical. Its warnings are the specification's codes (see
   [the Python library](library.md#which-parser-reads-the-toc)).
-- **Timecodes as stored (a stopgap).** scarletbook gives play times and track times as frame
-  counts. A timecode a hostile disc stores out of range, such as `255:255:255`, then prints
-  as its normalised count (`259:18:30`), while `sacd_extract` and pysacd 0.2 print the stored
-  bytes in `-P`, cue, XML and DSDIFF markers. `_sbtoc` therefore reads the stored
-  minutes/seconds/frames bytes from the area TOC copy scarletbook used, and uses them only
-  where their frame count equals scarletbook's. The count always comes from scarletbook.
-  This goes away once scarletbook hands the timecodes out as stored; that has been requested.
+- **Timecodes as stored.** scarletbook gives play times and track times as frame counts, and,
+  since 0.5.1, as stored (`sb_area_playtime_stored`, `sb_track_timecodes_stored`; requested by
+  pysacd, [scarletbook-rs#127](https://github.com/aclater/scarletbook-rs/issues/127)). A
+  timecode a hostile disc stores out of range, such as `255:255:255`, is written as stored in
+  `-P`, cue, XML and DSDIFF markers, as `sacd_extract` and pysacd 0.2 write it. Where
+  scarletbook cut a track to the area's play time, its cut count is used, as pysacd's parser
+  did.
 
 **Checking the two agree.** `tests/test_toc_engines.py` compares the two engines on the
 hostile corpus (`tests/sacdgen.py`), on synthetic discs in every character set, and on 150
@@ -121,6 +123,53 @@ seeded mutations of a valid TOC (`PYSACD_TOC_MUTATIONS` for more). `tools/toc_co
 does the same for any images or directories. It compares every field of the objects,
 `pysacd toc --json` byte for byte (warnings left out), and the beets-pysacd fingerprint.
 `--no-values` names the differing fields without their contents, for private discs.
+
+### The audio through scarletbook
+
+The engine's reader thread (`sb_reader_main` in `csrc/sacdconv.c`) opens the image with
+scarletbook, by path, or through the sector source (`sb_disc_open_callbacks_at`) for a PS3. It
+finds the area by its TOC's LSN, the one `toc.Area.toc_start` names, and reads the frame range
+every output needs as one range (`sb_range_audio_open`). Two frames of context before it and
+one after are included, exactly as before, so that PCM output is sample-identical.
+
+- **Decoding in scarletbook's pool.** The range is decoded on a pool of `--threads` threads
+  (`sb_pool_new`, `sb_track_audio_set_pool`). The reader receives every position in order:
+  missing ones as 0x69 silence, invalid DST frames as 0x55, the fills pysacd always used. The
+  workers lay out DSF and convert to PCM, and the writer is unchanged.
+- **Stored and decoded frames in one pass.** When a DSDIFF output keeps DST frames as stored
+  (`dff-dst`: the edit master, `-p` without `-c`) next to decoded outputs, the range is read
+  with `sb_track_audio_read_with_stored`. When only stored frames are needed, the range is
+  read with `sb_raw_frames_read` and nothing is decoded.
+- **Past the play time.** scarletbook reads an area's timeline, `[0, play time)`. Positions
+  an output asks for beyond it are silence, as they were.
+- **Cancellation.** `_native.run_area` calls `sacdconv_cancel()` when its caller is
+  interrupted (Ctrl-C, or an exception from the progress callback). That sets the engine's
+  flag and requests scarletbook's cancellation token (`SbCancel`), which stops a read within
+  32 sectors, the scan before a range's first frame included. `tests/test_engine_scarletbook.py`
+  checks that a run reading from a slow source stops within a second.
+- **Progress.** The reader copies scarletbook's sector counts (`SbProgress`) into the engine's
+  progress fields.
+- **ISO copy first.** `-I` copies the image in one sequential pass, as before, and the audio is
+  then read from the local copy: a PS3 is read once, and the copy needs no second engine.
+- **Logging.** scarletbook's log goes to the `pysacd.engine` logger: its errors as warnings, the
+  rest at debug level. pysacd logs missing frames, invalid DST frames and malformed sectors
+  itself, from the frame statuses and `sb_track_audio_warning`.
+- **Exact reads only, for `-t` too.** pysacd never turns on scarletbook's provisional reading
+  (`SB_SEEK_POLICY_SPECULATIVE`). A provisional range far into an area can differ from a straight
+  read on a hostile image until it's refuted (sacdfs measured this on the corpus image
+  `area-audio-past-end`). Confirming it means reading the area up to the range anyway
+  (`sb_disc_seek_verify`), which is what an exact read costs. So a range far into an area is
+  read exactly, scanning the audio sectors before it (reading, not decoding). pysacd 0.2
+  started 128 sectors before the track's LSN in the TOC, trusting the TOC. The cost is in
+  [performance](performance.md).
+
+**Checking the outputs.** `tools/extract_compare.py` runs `pysacd-extract` and `pysacd convert`
+in 19 modes with two pysacd source trees, and the `sacd_extract`-compatible modes with
+`sacd_extract` as a black box. The modes cover DSF, DSDIFF with DST kept or decoded, the edit
+master alone and with DSF (one pass), cue and XML, pauses, no padding, single tracks,
+concatenation, multichannel, `-P`, FLAC, WAV at 176.4 kHz, and `convert` with and without
+pauses. The new tree must give the same files, names and bytes as the old one, and must match
+`sacd_extract` file by file wherever the old one did. `--no-values` reports counts only.
 
 **Moving to another scarletbook release:**
 

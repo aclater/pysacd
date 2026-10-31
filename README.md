@@ -60,9 +60,11 @@ Why it exists, in the author's words: [author's note](docs/author.md).
   core, with the GIL released.
 - **Byte-for-byte compatible** with `sacd_extract`, apart from a few
   [deliberate exceptions](docs/sacd_extract.md#compatibility-policy).
-- **Clean by construction.** No Philips/ISO reference code, ever. DST
-  decoding comes from FFmpeg's LGPL decoder, completed through an auditable
-  two-agent clean room. See [clean room and licences](docs/clean-room.md).
+- **Clean by construction.** No Philips/ISO reference code, ever. The SACD
+  engine (TOC, sectors, DST decoding) is
+  [scarletbook-rs](https://github.com/aclater/scarletbook-rs), a clean-room
+  library written only from published specifications. See
+  [clean room and licences](docs/clean-room.md).
 - **Goes further than `sacd_extract`:**
   - gapless 24-bit FLAC/WAV;
   - MusicBrainz tags and cover art, with your own naming;

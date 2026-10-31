@@ -9,6 +9,17 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- Audio is now read and DST decoded by scarletbook-rs, on a pool of decoding threads (#85,
+  phase 3). Output is byte-identical to 0.2.2 on the real test discs and on the sacd-spec
+  conformance corpus, except on four hostile corpus images:
+  - an image cut short inside the audio now gives the rest of each track as silence,
+    counted as missing frames, where 0.2.2 stopped with a read error;
+  - a DST frame the specification calls invalid is now filled with 0x55 and counted as a
+    DST error, where 0.2.2 (and `sacd_extract`) decoded it into undefined audio.
+  Ctrl-C stops a run within a second, also while scarletbook scans an area on the way to a
+  track. An ISO copy (`-I`) is now written first and the audio read from the copy, so a PS3
+  is still read once. See [development](docs/development.md#the-audio-through-scarletbook).
+
 - The TOC is now read by scarletbook-rs, through the engine (#85, phase 2). The Disc, Area
   and Track objects are the same as before, field for field: on the sacd-spec conformance
   corpus (125 images read, 11 rejected by both), on real discs, and on a library of 139 ISOs,
@@ -20,7 +31,7 @@ behaviour, and a patch version only adds or fixes. Each release on
   compares the two. Reading a TOC now needs the native engine, which every wheel has.
 
 - Build: the engine now links the [scarletbook-rs](https://github.com/aclater/scarletbook-rs)
-  C library 0.5.0 (C ABI 2) statically, in every wheel and every build from source. This is the
+  C library 0.5.1 (C ABI 2) statically, in every wheel and every build from source. This is the
   first step of moving pysacd's SACD engine onto it (#85); nothing calls it yet, and output is
   unchanged. The build downloads the release archive for its target and refuses it unless it
   matches the SHA-256 pinned in `scarletbook.lock`. CI checks that every pin carries scarletbook's

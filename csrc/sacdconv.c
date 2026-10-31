@@ -179,9 +179,15 @@ static void set_error(engine_t *e, const char *fmt, ...)
     pthread_mutex_unlock(&e->mu);
 }
 
+/* The cancel flag is set by sacdconv_cancel() on the caller's thread while the engine runs */
+static int cancelled(const sc_area_t *a)
+{
+    return __atomic_load_n(&a->cancel, __ATOMIC_ACQUIRE);
+}
+
 static int stopping(engine_t *e)
 {
-    return e->failed || e->a->cancel;
+    return e->failed || cancelled(e->a);
 }
 
 static void sc_log(sc_area_t *a, int level, const char *fmt, ...)
@@ -486,7 +492,7 @@ static void *sb_reader_main(void *arg)
     if (sb_disc_cancel_token(disc, &token) == SB_STATUS_OK) {
         pthread_mutex_lock(&cancel_mu);
         atomic_store(&a->sb_cancel, token);
-        if (a->cancel)
+        if (cancelled(a))
             sb_cancel_request(token);
         pthread_mutex_unlock(&cancel_mu);
     }
@@ -1241,7 +1247,7 @@ const char *sacdconv_build_info(void)
    their next batch, and scarletbook's reads within 32 sectors (SbCancel). */
 void sacdconv_cancel(sc_area_t *a)
 {
-    a->cancel = 1;
+    __atomic_store_n(&a->cancel, 1, __ATOMIC_RELEASE);
     pthread_mutex_lock(&cancel_mu);
     SbCancel *token = atomic_load(&a->sb_cancel);
     if (token)
@@ -1280,7 +1286,7 @@ static int copy_image(sc_area_t *a)
     setvbuf(iso, NULL, _IOFBF, 4 * OUT_BUFFER);
     sc_log(a, SC_INFO, "engine: copying %llu sectors to %s", (unsigned long long)di.sectors, a->iso_out_path);
     a->sectors_total = di.sectors;
-    for (uint64_t lsn = 0; lsn < di.sectors && !a->cancel; lsn += READ_SECTORS) {
+    for (uint64_t lsn = 0; lsn < di.sectors && !cancelled(a); lsn += READ_SECTORS) {
         uint32_t n = di.sectors - lsn < READ_SECTORS ? (uint32_t)(di.sectors - lsn) : READ_SECTORS;
         double t0 = now_ms();
         if ((st = sb_disc_read_sectors(disc, lsn, n, buf, (size_t)n * LSN_SIZE)) < 0) {
@@ -1308,7 +1314,7 @@ out:
     pthread_cond_destroy(&e.cv_done);
     if (e.failed)
         return -1;
-    if (a->cancel) {
+    if (cancelled(a)) {
         snprintf(a->error, sizeof(a->error), "cancelled");
         return -1;
     }
@@ -1455,7 +1461,7 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
     for (int i = 0; i < started; i++)
         pthread_join(workers[i], NULL);
 
-    rc = e.failed ? -1 : a->cancel ? (snprintf(a->error, sizeof(a->error), "cancelled"), -1) : 0;
+    rc = e.failed ? -1 : cancelled(a) ? (snprintf(a->error, sizeof(a->error), "cancelled"), -1) : 0;
     sc_log(a, rc ? SC_ERROR : SC_INFO, "engine: %s after %.2f s: %llu frames, %llu sectors read%s%s",
            rc ? "failed" : "finished", (now_ms() - t_start) / 1e3, (unsigned long long)a->frames_done,
            (unsigned long long)a->sectors_done, rc ? ": " : "", rc ? a->error : "");

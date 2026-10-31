@@ -164,9 +164,9 @@ one after are included, exactly as before, so that PCM output is sample-identica
   [performance](performance.md).
 
 **Checking the outputs.** `tools/extract_compare.py` runs `pysacd-extract` and `pysacd convert`
-in 19 modes with two pysacd source trees, and the `sacd_extract`-compatible modes with
+in 21 modes with two pysacd source trees, and the `sacd_extract`-compatible modes with
 `sacd_extract` as a black box. The modes cover DSF, DSDIFF with DST kept or decoded, the edit
-master alone and with DSF (one pass), cue and XML, pauses, no padding, single tracks,
+master alone and with DSF (one pass), cue and XML, pauses, no padding, single tracks, the ISO copy alone and with DSF,
 concatenation, multichannel, `-P`, FLAC, WAV at 176.4 kHz, and `convert` with and without
 pauses. The new tree must give the same files, names and bytes as the old one, and must match
 `sacd_extract` file by file wherever the old one did. `--no-values` reports counts only.

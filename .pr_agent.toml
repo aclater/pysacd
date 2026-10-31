@@ -12,17 +12,17 @@ require_tests_review = true
 require_security_review = true
 require_estimate_effort_to_review = false
 extra_instructions = """
-pysacd reads SACD disc images: a Python TOC reader, a multithreaded C engine
-(csrc/, loaded through ctypes) and pysacd-extract, a drop-in replacement for
+pysacd reads SACD disc images through scarletbook-rs, linked into a multithreaded C engine
+(csrc/, loaded through ctypes), with pysacd-extract, a drop-in replacement for
 sacd_extract. CLAUDE.md holds the full rules. Review against these first:
 
 - Clean room: the Philips/ISO MPEG-4 reference DST code is GPL-incompatible
-  and must never enter the repository, directly or paraphrased. DST changes
-  are written from docs/dst-bitstream.md and FFmpeg (LGPL) only. Flag code
-  or comments that look lifted from the reference decoder or sacd-ripper's
-  libdstdec.
-- Licences: new code is GPL-2.0-or-later; csrc/dstdec.c stays
-  LGPL-2.1-or-later. Flag dependencies or copied code under incompatible terms.
+  and must never enter the repository, directly or paraphrased. Flag code or
+  comments that look lifted from the reference decoder or sacd-ripper's
+  libdstdec. DST decoding is scarletbook-rs's (a separate clean room, used only
+  as its released binary through its C interface).
+- Licences: everything is GPL-2.0-or-later; scarletbook-rs (MIT OR Apache-2.0)
+  is used under MIT. Flag dependencies or copied code under incompatible terms.
 - Untrusted input: disc images and network data may be malformed or hostile.
   In C, flag unchecked lengths, out-of-bounds reads or writes, integer
   overflow in size arithmetic, and unbounded allocation; in Python, unchecked

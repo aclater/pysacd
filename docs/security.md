@@ -227,12 +227,13 @@ reproduces from the seed in a failure. `PYSACD_FUZZ=N` runs N cases. Fixed when 
 - a track-text offset pointing past the end of the area TOC (now a warning, and the track
   keeps no text).
 
-The native engine's parsers, the sector demuxer and the DST decoder, have libFuzzer
-harnesses (`fuzz/`, built with ASan and UBSan). They run for 2 minutes per harness on pull
-requests that touch the engine, and for 30 minutes weekly. Their seeds are synthetic frames
-from the test encoder, covering every optional DST feature and the invalid frames. Crashing
-inputs go into `fuzz/regressions/`, which `tests/test_fuzz_engine.py` replays on every test
-run. The first long run (2026-10-28, 12 cores, 30 minutes) found nothing: about 1.8 million
-DST frames and 0.4 million sector sequences, with no crash, sanitizer report or hang. The
+Disc images are parsed by scarletbook-rs since 0.3.0 (#85): sectors, TOCs, frames and DST,
+fuzzed in its own repository. pysacd's engine around it has a libFuzzer harness
+(`fuzz/fuzz_engine.c`, built with ASan and UBSan). It feeds hostile images through
+`sacdconv_area_run()`, every writer included, for 2 minutes on pull requests that touch the
+engine and for 30 minutes weekly. Its seeds are pysacd's hostile corpus. Crashing inputs go
+into `fuzz/regressions/fuzz_engine/`, which `tests/test_fuzz_engine.py` replays on every test
+run. Up to 0.2, pysacd's own demultiplexer and DST decoder had harnesses of their own; their
+first long run (2026-10-28) found nothing. The
 end-to-end hostile-image corpus (see [Hostile images](#hostile-images)) runs every
 extraction path on broken images, also under ASan and UBSan.

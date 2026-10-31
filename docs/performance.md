@@ -215,7 +215,7 @@ each 200 reads, 3 rounds alternating the two engines, median per disc:
 
 | TOC engine | Time per disc |
 |---|---|
-| pysacd's own parser (`PYSACD_TOC_ENGINE=python`) | 0.13 ms (0.09–0.24) |
+| pysacd 0.2's own parser (removed in 0.3.0) | 0.13 ms (0.09–0.24) |
 | scarletbook-rs, through ctypes (the default) | 0.59 ms (0.42–0.95) |
 
 scarletbook does more per disc: it checks all three master TOC copies and both copies of

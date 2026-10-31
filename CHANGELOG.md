@@ -9,6 +9,13 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- pysacd's own SACD engine is gone (#85, phase 4): its TOC parser (and `PYSACD_TOC_ENGINE`),
+  sector demultiplexer and DST decoder, with the DST specification that served them. All of
+  it is in the history up to v0.2.2. scarletbook-rs reads and decodes everything, and
+  `SACDImage.read_sectors()` reads through it too, so raw-sector images go through one reader.
+  All of pysacd is now GPL-2.0-or-later. The fuzzing moves to one harness that feeds hostile
+  images through the engine's writers.
+
 - A track far into an area (`-t`, `convert -t`) starts provisionally again (#85): scarletbook
   finds its first frame without reading the area before it, which is exact on a well-formed
   disc and is what 0.2.2 did from the TOC's track positions. Output is byte-identical to 0.2.2.

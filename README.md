@@ -97,13 +97,12 @@ The [documentation index](docs/README.md) lists every document and its sections.
 | [Logging](docs/logging.md) | what to attach when something fails |
 | [Security](docs/security.md) | hostile discs, servers and text; report vulnerabilities via [SECURITY.md](SECURITY.md) |
 | [Clean room and licences](docs/clean-room.md) | where the code came from, acknowledgements |
-| [DST bitstream](docs/dst-bitstream.md) | the clean-room specification |
 | [Development](docs/development.md) | building, tests, CI; contributor rules in [CLAUDE.md](CLAUDE.md) |
 | [Contributing](CONTRIBUTING.md) | reporting bugs, the pull-request process, project rules |
 | [Changelog](CHANGELOG.md) | what changed in each release |
 
 ## License
 
-GPL-2.0-or-later, with `csrc/dstdec.c` under LGPL-2.1-or-later. The engine links the
+GPL-2.0-or-later. The engine links the
 [scarletbook-rs](https://github.com/aclater/scarletbook-rs) C library statically, which pysacd
 uses under MIT (it is MIT OR Apache-2.0). See [clean room and licences](docs/clean-room.md).

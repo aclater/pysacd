@@ -33,7 +33,6 @@ GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("performance.md", "benchmarks and their conditions"),
         ("security.md", "hostile discs, servers and text"),
         ("clean-room.md", "where the code came from, licences, acknowledgements"),
-        ("dst-bitstream.md", "the clean-room DST specification"),
     ]),
     ("Contributing", [
         ("development.md", "building, tests, CI, testing without a PS3"),

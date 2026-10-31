@@ -6,7 +6,7 @@ Layout (2048-byte sectors):
              area TOC = header, SACDTTxt, SACD_IGL (2 sectors), SACDTRL1, SACDTRL2
 
 The field offsets follow src/pysacd/toc.py. Audio sectors carry one packet
-per frame per sector, as csrc/demux.c expects: a frame's sector_count (frame
+per frame per sector, as the Scarletbook specification has it: a frame's sector_count (frame
 info byte 3, bits 2..6) is the number of sectors, i.e. packets, it occupies.
 """
 
@@ -247,7 +247,7 @@ def build_iso(path: str | Path, areas: list[AreaSpec], title: str = "pysacd DST 
 #
 # Each case starts from a small valid disc (a stereo DST area and a 6-channel plain DSD area)
 # and breaks one thing: the master TOC, an area TOC, the audio sectors or the sector layout.
-# Offsets are those of src/pysacd/toc.py and csrc/demux.c.
+# Offsets are those of the Scarletbook specification (pysacd's parser up to 0.2 used the same).
 
 DSD_SILENCE = 0x69
 FRAME_BYTES = 4704                      # per channel

@@ -7,14 +7,13 @@ Instructions for coding agents working in this repository. Read
 
 A toolkit for SACD (Scarletbook) disc images. It has four parts:
 
-- a TOC reader (`src/pysacd/toc.py`): the Disc, Area and Track objects, read
-  through scarletbook-rs by default (`src/pysacd/_sbtoc.py`), or by pysacd's own
-  parser with `PYSACD_TOC_ENGINE=python` (#85). Both must give the same objects:
-  `tests/test_toc_engines.py`, `tools/toc_compare.py`;
+- the TOC as Python objects (`src/pysacd/toc.py`: Disc, Area, Track and
+  SACDImage), read by scarletbook-rs through ctypes (`src/pysacd/_sbtoc.py`);
 - a multithreaded C engine (`csrc/`, built by `make`, loaded through ctypes)
   that writes DSF, DSDIFF, WAV and FLAC in one pass per area. It links the
-  scarletbook-rs C library statically (pinned in `scarletbook.lock`), which is
-  becoming its SACD engine (#85; docs/development.md, "The scarletbook library");
+  scarletbook-rs C library statically (pinned in `scarletbook.lock`), which
+  reads the images and decodes DST (#85; docs/development.md, "The scarletbook
+  library");
 - `pysacd-extract`, a drop-in replacement for `sacd_extract`;
 - `pysacd convert`, with MusicBrainz tagging and configurable naming.
 
@@ -23,13 +22,10 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
 - **Clean room for DST.** The Philips/ISO MPEG-4 reference DST decoder (and
   anything derived from it, such as sacd-ripper's `libdstdec`) is not
   GPL-compatible and must never enter the repository, its history or its
-  issues. Don't read it.
-  - DST work is done from [docs/dst-bitstream.md](docs/dst-bitstream.md) and
-    FFmpeg's LGPL code only.
+  issues. Don't read it. DST decoding is scarletbook-rs's; pysacd has no DST
+  decoder of its own since 0.3.0 (its test-only encoder stays).
   - `sacd_extract` may be used only as a compiled black box for comparisons.
-  - Errata go in section 8 of the specification.
-- **Licences.** New code is GPL-2.0-or-later. `csrc/dstdec.c` is
-  LGPL-2.1-or-later and keeps its header. Add no dependency or copied code
+- **Licences.** All code is GPL-2.0-or-later. Add no dependency or copied code
   under incompatible terms. scarletbook-rs (MIT OR Apache-2.0) is used under MIT.
 - **scarletbook-rs is a separate clean room.** Use it only as its signed
   release binaries and documented C interface. Never send it code: anything

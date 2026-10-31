@@ -1,4 +1,4 @@
-"""Test-only DST encoder, written from docs/dst-bitstream.md (section 6).
+"""Test-only DST encoder, written from docs/dst-bitstream.md as of v0.2.2 (section 6; see docs/clean-room.md).
 
 The frame header (segmentation, mapping, half-probability flags, filter
 coefficient sets, probability tables) is written here; the per-bit model
@@ -292,7 +292,7 @@ def encode_frame(dsd: bytes, channels: int, fr: Frame | None = None, fallback: b
     """Encode one frame of DSD (decoder layout, FL * channels bytes).
 
     The reference decoder keeps the arithmetic code in an array of NB * Nch
-    entries and overflows it on longer code (docs/dst-bitstream.md, section 8).
+    entries and overflows it on longer code (docs/dst-bitstream.md at v0.2.2, section 8).
     Such a frame is returned as a plain frame unless `fallback` is False.
     """
     fr = fr or Frame()

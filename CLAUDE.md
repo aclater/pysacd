@@ -9,7 +9,9 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
 
 - a pure-Python TOC reader (`src/pysacd/toc.py`);
 - a multithreaded C engine (`csrc/`, built by `make`, loaded through ctypes)
-  that writes DSF, DSDIFF, WAV and FLAC in one pass per area;
+  that writes DSF, DSDIFF, WAV and FLAC in one pass per area. It links the
+  scarletbook-rs C library statically (pinned in `scarletbook.lock`), which is
+  becoming its SACD engine (#85; docs/development.md, "The scarletbook library");
 - `pysacd-extract`, a drop-in replacement for `sacd_extract`;
 - `pysacd convert`, with MusicBrainz tagging and configurable naming.
 
@@ -25,7 +27,12 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
   - Errata go in section 8 of the specification.
 - **Licences.** New code is GPL-2.0-or-later. `csrc/dstdec.c` is
   LGPL-2.1-or-later and keeps its header. Add no dependency or copied code
-  under incompatible terms.
+  under incompatible terms. scarletbook-rs (MIT OR Apache-2.0) is used under MIT.
+- **scarletbook-rs is a separate clean room.** Use it only as its signed
+  release binaries and documented C interface. Never send it code: anything
+  pysacd needs from it goes to the owner as a requirement, to be filed there.
+  A new pin in `scarletbook.lock` must be an attested release; CI's
+  `scarletbook provenance` job checks this.
 - **sacd_extract compatibility is byte-for-byte.** For the same options,
   `pysacd-extract` must produce the same files, names and bytes as
   `sacd_extract`: DSF, DSDIFF, edit master, cue, xml and `-P` text. The only

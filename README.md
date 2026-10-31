@@ -101,5 +101,6 @@ The [documentation index](docs/README.md) lists every document and its sections.
 
 ## License
 
-GPL-2.0-or-later, with `csrc/dstdec.c` under LGPL-2.1-or-later. See
-[clean room and licences](docs/clean-room.md).
+GPL-2.0-or-later, with `csrc/dstdec.c` under LGPL-2.1-or-later. The engine links the
+[scarletbook-rs](https://github.com/aclater/scarletbook-rs) C library statically, which pysacd
+uses under MIT (it is MIT OR Apache-2.0). See [clean room and licences](docs/clean-room.md).

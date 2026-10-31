@@ -9,6 +9,15 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- Build: the engine now links the [scarletbook-rs](https://github.com/aclater/scarletbook-rs)
+  C library 0.5.0 (C ABI 2) statically, in every wheel and every build from source. This is the
+  first step of moving pysacd's SACD engine onto it (#85); nothing calls it yet, and output is
+  unchanged. The build downloads the release archive for its target and refuses it unless it
+  matches the SHA-256 pinned in `scarletbook.lock`. CI checks that every pin carries scarletbook's
+  signed build provenance. `SCARLETBOOK_DIR` builds offline. `pysacd --version` names the
+  linked scarletbook release. The engine is larger (about 2.4 MB) and, on x86-64 Linux, no
+  longer CET-marked; see [development](docs/development.md#the-scarletbook-library).
+
 - Docs: credit Sebastian Gesemann's dsd2pcm (BSD-3-Clause) for the byte-lookup-table technique in the DSD-to-PCM converter's first stage (`csrc/dsp.c`, [clean room and licences](docs/clean-room.md)).
 
 ## 0.2.2 (2026-10-30)

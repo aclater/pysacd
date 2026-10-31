@@ -25,7 +25,11 @@ bundle with `--bundle <file>.intoto.jsonl` added.
 Wheels are portable builds: the PCM filters pick AVX-512, AVX2 or the baseline
 when the library loads.
 
-**From source** on Linux or macOS (needs a C compiler and make; libFLAC for FLAC output):
+**From source** on Linux or macOS (needs a C compiler and make; libFLAC for FLAC output). The
+build downloads the [scarletbook-rs](https://github.com/aclater/scarletbook-rs) C library that
+the engine links, from its GitHub release, and checks it against the SHA-256 pinned in
+`scarletbook.lock`. To build offline, see
+[development](development.md#the-scarletbook-library).
 
 ```sh
 # Fedora/RHEL: sudo dnf install gcc make flac-devel
@@ -43,6 +47,8 @@ statically, so the DLL needs nothing beside it, and works with the normal
 python.org Python:
 
 ```sh
+# with your Python, from any shell: the scarletbook library the engine links (pinned, checked)
+python tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook
 # in an MSYS2 UCRT64 shell
 pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-flac
 make                                          # builds src/pysacd/_sacdconv.dll

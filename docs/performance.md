@@ -181,18 +181,21 @@ two builds, mean of 3 runs, with Python start-up included:
 | DSD | DSF, stereo area (`-2 -s`) | 0.88 s | 0.81 s | −8% |
 | DSD | FLAC (`-2 --flac`) | 4.45 s | 4.45 s | ±0 |
 | DSD | edit master and DSF in one pass (`-2 -e -s`) | 1.55 s | 1.55 s | ±0 |
-| DSD | last track only (`-2 -s -t N`) | 0.10 s | 0.46 s | 4.6× |
+| DSD | last track only (`-2 -s -t N`) | 0.11 s | 0.12 s | +5% |
+| DSD | last track to FLAC (`-2 --flac -t N`) | 0.25 s | 0.26 s | +2% |
 | DST | DSF (`-2 -s`) | 3.26 s | 3.75 s | +15% |
 | DST | FLAC (`-2 --flac`) | 5.37 s | 5.64 s | +5% |
 | DST | edit master and DSF in one pass (`-2 -e -s`) | 3.37 s | 3.85 s | +14% |
-| DST | last track only (`-2 -s -t N`) | 0.32 s | 0.45 s | +41% |
+| DST | last track only (`-2 -s -t N`) | 0.29 s | 0.33 s | +15% |
+| DST | last track to FLAC (`-2 --flac -t N`) | 0.45 s | 0.48 s | +8% |
 
 - **DST decoding** through scarletbook's pool is up to 15% slower end to end than pysacd's own
   decoder was. This has been reported to scarletbook-rs.
-- **A single track far into an area** (`-t`) costs a read of the audio sectors before it,
-  because pysacd reads exactly (see [development](development.md#the-audio-through-scarletbook)).
-  0.2.2 started near the track's LSN from the TOC instead. From local storage this costs a
-  fraction of a second; from a network share, the time to read the area up to the track.
+- **A single track far into an area** (`-t`) starts provisionally, as 0.2.2 did from the TOC
+  (see [development](development.md#the-audio-through-scarletbook)); the last-track rows above
+  are measured that way, 5 runs each. With `--exact` the area is read up to the track:
+  0.49 s (DSD) and 0.43 s (DST) for the last track from local storage, and from a network
+  share, the time to read the area up to the track.
 - **Ctrl-C** stops a DST to FLAC run in 0.07 s, the same as 0.2.2.
 
 ## Reading a TOC: in-process against a subprocess

@@ -62,6 +62,8 @@ short ones:
   matched release, asking first ([details](converting.md#submitting-isrcs-to-musicbrainz));
 - `--templates`: your own folder and file naming;
 - `--threads`;
+- `--exact`: for a track far into an area, read the area up to it instead of starting
+  provisionally ([why](development.md#the-audio-through-scarletbook));
 - `--disc N/M`: place a disc mastered as 1/1 into a set;
 - `--log-file`, `--log-level`: see [logging](logging.md).
 

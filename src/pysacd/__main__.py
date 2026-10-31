@@ -254,6 +254,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--flac-level", type=int, choices=range(9), metavar="0-8", help="FLAC compression (default 5)")
     _bool(c, "pauses", "include the pauses between tracks, as pysacd-extract -b (default off: trimmed)")
     c.add_argument("-j", "--jobs", type=int, help="worker threads (default: CPU count)")
+    _bool(c, "exact", "for a track far into an area, read the area up to it instead of starting provisionally "
+                      "(exact on a well-formed disc; slower from a network share) (default off)")
     _bool(c, "musicbrainz", "look up the release on MusicBrainz (default on)")
     c.add_argument("--mb-release", help="use this MusicBrainz release id")
     _bool(c, "mb-text-search", "fall back to title/artist search when barcode/catalog fail (default off)")

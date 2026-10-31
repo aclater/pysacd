@@ -75,6 +75,7 @@ class Opts:
     gain_db: float = 0.0
     flac_level: int = 5
     threads: int = 0
+    exact: bool = False                 # --exact: no provisional range starts (#85)
     musicbrainz: bool = False
     mb_release: str | None = None
     mb_contact: str | None = None
@@ -130,6 +131,9 @@ def parse_args(argv: list[str]) -> Opts:
     x.add_argument("--gain-db", type=float, default=0.0, help="PCM gain (default 0)")
     x.add_argument("--flac-level", type=int, choices=range(9), metavar="0-8", default=5)
     x.add_argument("--threads", type=int, default=0, help="worker threads (default: CPU count)")
+    x.add_argument("--exact", action="store_true",
+                   help="for a track far into an area, read the area up to it instead of starting "
+                        "provisionally (exact on a well-formed disc; slower from a network share)")
     x.add_argument("--id3tag", type=int, choices=range(6), help="ID3 mode as in sacd_extract.cfg (default 4)")
     x.add_argument("--musicbrainz", action="store_true", help="tag from MusicBrainz (DSF/FLAC/WAV)")
     x.add_argument("--mb-release", help="MusicBrainz release id to use")
@@ -159,7 +163,7 @@ def parse_args(argv: list[str]) -> Opts:
              input=a.input.lstrip("=") if a.input else None,
              output_dir=_dirarg(a.output_dir), output_dir_conc=_dirarg(a.output_dir_conc),
              pcm=a.pcm, pcm_rate=a.pcm_rate, gain_db=a.gain_db, flac_level=a.flac_level,
-             threads=a.threads, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
+             threads=a.threads, exact=a.exact, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
              mb_contact=a.mb_contact, submit_isrcs=a.submit_isrcs, cover=a.cover, templates=a.templates, config=a.config,
              use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc), log_file=a.log_file, log_level=a.log_level)
     if a.tracks:
@@ -809,13 +813,18 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
         for j in jobs:
             log.debug("  %s -> %s (track %s, frames %d-%d)", j.kind, safetext.for_terminal(j.final), j.track,
                       j.spec.tc_start, j.spec.tc_end)
-        _native.run_area(img, o.input, area, specs, o.pcm_rate, o.gain_db, o.threads,
-                         iso_out=iso_path, progress=_progress)
+        run = _native.run_area(img, o.input, area, specs, o.pcm_rate, o.gain_db, o.threads,
+                               iso_out=iso_path, progress=_progress, exact=o.exact)
     except BaseException:
         for s in specs:
             Path(s.path).unlink(missing_ok=True)
         raise
     rc = 0
+    if run.refuted_from is not None:
+        rc = 1
+        print(f"WARNING: the start of the selected tracks was found provisionally, and on this image that turned "
+              f"out wrong: frames before {run.refuted_from} may differ from an exact read. Run again with --exact.",
+              file=sys.stderr)
     for j in jobs:
         s = j.spec
         if j.dst:

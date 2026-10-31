@@ -120,6 +120,14 @@ typedef struct {
     uint32_t        toc_lsn;
     uint64_t        image_sectors;
     void * _Atomic  sb_cancel;
+    /* range starts (#85): exact = 1 reads the area up to the range; 0 lets scarletbook start
+       provisionally (SB_SEEK_POLICY_SPECULATIVE). Results: provisional (1 provisional, 2 confirmed
+       by the background check), refuted_from (UINT32_MAX, or the frame from which a refuted
+       provisional reading was exact) */
+    int             exact;
+    int             provisional;
+    uint32_t        refuted_from;
+    int64_t         seek_min_gap;       /* sectors (SB_SEEK_DEFAULT_MIN_GAP when negative) */
 } sc_area_t;
 
 /* ------------------------------------------------------------ batches */
@@ -460,6 +468,28 @@ static void sb_log_malformed(sc_area_t *a, SbTrackAudio *audio, SbRawFrames *raw
     }
 }
 
+/* Checks a provisional reading in the background, on a clone of the disc, while the run reads:
+   scarletbook builds the area's seek index from its first sector and reports, once the index
+   reaches the provisional start, whether the positions were those of an exact read. Stops when
+   the run ends, whether or not it got that far. */
+typedef struct {
+    SbDisc     *clone;
+    uint32_t    slot;
+    _Atomic int stop;
+} verifier_t;
+
+#define VERIFY_STEP 8192        /* sectors per sb_disc_seek_verify call (16 MiB): how soon it stops */
+
+static void *verify_main(void *arg)
+{
+    verifier_t *v = arg;
+    uint8_t complete = 0;
+    while (!atomic_load(&v->stop) && !complete)
+        if (sb_disc_seek_verify(v->clone, v->slot, VERIFY_STEP, &complete) < 0)
+            break;
+    return NULL;
+}
+
 static void log_missing(sc_area_t *a, uint32_t from, uint32_t to)
 {
     char x[16], y[16];
@@ -481,6 +511,9 @@ static void *sb_reader_main(void *arg)
     SbCancel *token = NULL;
     uint8_t *dsd = NULL, *stored = NULL;     /* the stage slot being read into */
     uint32_t nwarn = 0, miss_from = UINT32_MAX;
+    verifier_t ver = {0};       /* the background check of a provisional start */
+    pthread_t ver_thread;
+    int ver_started = 0;
     SbStatus st;
 
     r.stage = malloc(sizeof(frame_t) * SLOT_FRAMES);
@@ -528,6 +561,23 @@ static void *sb_reader_main(void *arg)
            ai.playtime_frames, e->need_decode ? "decoded" : "stored frames only",
            e->need_decode && e->need_stored ? " and stored" : "");
 
+    /* A range far into the area starts provisionally unless the caller asked for exact reading:
+       on a well-formed disc that is exact by the specification (4.2 item 8), and it avoids
+       reading the area up to the range. With a file, the area's seek index is kept so that a
+       clone can check the provisional start while the run reads (sector sources can't be
+       read from two threads). */
+    int speculative = !a->exact && r.want_lo > 0;
+    int verifiable = speculative && !a->read_fn;
+    ver.slot = ai.slot;
+    uint64_t gap = a->seek_min_gap < 0 ? SB_SEEK_DEFAULT_MIN_GAP : (uint64_t)a->seek_min_gap;
+    if (speculative && (st = sb_disc_seek_policy_set(disc, ai.slot, SB_SEEK_POLICY_SPECULATIVE, gap)) < 0) {
+        sb_fail(e, st, "setting the seek policy");
+        goto out;
+    }
+    if (verifiable && sb_disc_seek_index_enable(disc, ai.slot, SB_SEEK_DEFAULT_INTERVAL,
+                                                SB_SEEK_DEFAULT_INLINE_BUDGET) < 0)
+        verifiable = 0;
+
     if (r.want_lo < end) {
         if (e->need_decode) {
             if ((st = sb_range_audio_open(disc, ai.slot, r.want_lo, end, &audio)) < 0) {
@@ -571,6 +621,19 @@ static void *sb_reader_main(void *arg)
                 sb_fail(e, st, "reading the area");
                 goto out;
             }
+            if (k == 0 && speculative) {
+                SbSpeculation sp;
+                if ((audio ? sb_track_audio_speculation(audio, &sp) : sb_raw_frames_speculation(raw, &sp)) ==
+                        SB_STATUS_OK && sp.state != SB_SPECULATION_EXACT) {
+                    a->provisional = 1;
+                    sc_log(a, SC_INFO, "scarletbook: frames from %u start provisionally at LSN %llu, without "
+                           "reading the area before them (exact on a well-formed disc; --exact reads it); %s",
+                           sp.first, (unsigned long long)sp.lsn,
+                           verifiable ? "checking it in the background" : "not checked (sector source)");
+                    if (verifiable && sb_disc_clone(disc, &ver.clone) == SB_STATUS_OK)
+                        ver_started = pthread_create(&ver_thread, NULL, verify_main, &ver) == 0;
+                }
+            }
             uint32_t number = audio ? fi.number : ri.number;
             if (number != r.next_tc) {
                 set_error(e, "scarletbook returned frame %u where %u was expected", number, r.next_tc);
@@ -609,6 +672,30 @@ static void *sb_reader_main(void *arg)
         if (miss_from != UINT32_MAX)
             log_missing(a, miss_from, r.next_tc);
         sb_log_malformed(a, audio, raw, &nwarn);
+        if (ver_started) {
+            atomic_store(&ver.stop, 1);
+            pthread_join(ver_thread, NULL);
+            ver_started = 0;
+        }
+        if (a->provisional) {
+            SbSpeculation ev;
+            int verdict = 0;
+            while (sb_disc_seek_event_next(disc, ai.slot, &ev) == SB_STATUS_OK) {
+                if (ev.state == SB_SPECULATION_REFUTED) {
+                    if (ev.exact_from < a->refuted_from)
+                        a->refuted_from = ev.exact_from;
+                    verdict = 1;
+                } else if (ev.state == SB_SPECULATION_CONFIRMED && !verdict) {
+                    a->provisional = 2;
+                }
+            }
+            if (a->refuted_from != UINT32_MAX)
+                sc_log(a, SC_WARNING, "scarletbook: the provisional start was wrong on this image: frames before %u "
+                       "may differ from an exact read; run again with --exact", a->refuted_from);
+            else
+                sc_log(a, SC_INFO, "scarletbook: provisional start %s", a->provisional == 2 ? "confirmed"
+                       : "not checked before the run ended (exact on a well-formed disc)");
+        }
         uint64_t done = 0, expected = 0;
         if (prog && sb_progress_get(prog, &done, &expected) == SB_STATUS_OK) {
             a->sectors_done = done;
@@ -625,6 +712,11 @@ static void *sb_reader_main(void *arg)
         goto out;
 
 out:
+    if (ver_started) {
+        atomic_store(&ver.stop, 1);
+        pthread_join(ver_thread, NULL);
+    }
+    sb_disc_free(ver.clone);
     pthread_mutex_lock(&cancel_mu);
     atomic_store(&a->sb_cancel, NULL);
     pthread_mutex_unlock(&cancel_mu);
@@ -1170,7 +1262,8 @@ static int writer_run(engine_t *e)
  * _load() refuses a library whose version, struct sizes or field offsets differ from its
  * ctypes mirrors. Bump SACDCONV_ABI whenever a struct or an exported signature changes.
  */
-#define SACDCONV_ABI 2     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel) */
+#define SACDCONV_ABI 3     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
+                              3: provisional range starts (exact, provisional, refuted_from) */
 
 #define OFF(T, f) (uint32_t)offsetof(T, f)
 static const uint32_t area_layout[] = {
@@ -1183,6 +1276,8 @@ static const uint32_t area_layout[] = {
     OFF(sc_area_t, sectors_total), OFF(sc_area_t, error), OFF(sc_area_t, read_fn),
     OFF(sc_area_t, read_ctx), OFF(sc_area_t, log_fn), OFF(sc_area_t, log_ctx), OFF(sc_area_t, log_level),
     OFF(sc_area_t, toc_lsn), OFF(sc_area_t, image_sectors), OFF(sc_area_t, sb_cancel),
+    OFF(sc_area_t, exact), OFF(sc_area_t, provisional), OFF(sc_area_t, refuted_from),
+    OFF(sc_area_t, seek_min_gap),
 };
 static const uint32_t output_layout[] = {
     sizeof(sc_output_t),
@@ -1342,6 +1437,8 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
 
     a->error[0] = 0;
     a->frames_done = a->sectors_done = 0;
+    a->provisional = 0;
+    a->refuted_from = UINT32_MAX;
     if (a->read_fn && (a->sector_size != LSN_SIZE || a->data_offset != 0)) {
         snprintf(a->error, sizeof(a->error), "a sector source must deliver plain 2048-byte sectors");
         return -1;

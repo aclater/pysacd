@@ -146,6 +146,75 @@ class Engine(unittest.TestCase):
             _native.run_area(img, iso, area, [self.spec(area, 0, "dsf", "x.dsf")])
 
 
+@unittest.skipUnless(_native_ok(), "native engine not built")
+class ProvisionalStarts(unittest.TestCase):
+    """A range far into an area starts provisionally unless exact reading is asked for (#85):
+    exact on a well-formed disc, so the output is the same either way."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_track(self, iso: Path, area, i: int, exact: bool, gap: int | None = 0, fmt: str = "dsf"):
+        t = area.tracks[i]
+        out = self.dir / f"t{i}-{exact}.{fmt}"
+        spec = _native.OutputSpec(fmt, out, t.start.total_frames, t.start.total_frames + t.duration.total_frames)
+        with SACDImage(iso) as img:
+            info = _native.run_area(img, iso, area, [spec], exact=exact, seek_min_gap=gap)
+        data = out.read_bytes()
+        out.unlink()
+        return info, data
+
+    def test_last_track_same_bytes_either_way(self):
+        iso = self.dir / "d.iso"
+        sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, _frames(600), [200, 200, 200], dst=False)])
+        area = read_toc(iso).stereo
+        for fmt in ("dsf", "wav"):
+            with self.subTest(fmt=fmt):
+                spec_info, provisional = self.run_track(iso, area, 2, exact=False, fmt=fmt)
+                exact_info, exact = self.run_track(iso, area, 2, exact=True, fmt=fmt)
+                self.assertTrue(spec_info.provisional)
+                self.assertIsNone(spec_info.refuted_from)
+                self.assertFalse(exact_info.provisional)
+                self.assertEqual(provisional, exact)
+
+    def test_default_gap_keeps_short_seeks_exact(self):
+        # scarletbook's default gap (2048 sectors) is far more than this small image holds
+        iso = self.dir / "d.iso"
+        sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, _frames(60), [20, 20, 20], dst=False)])
+        area = read_toc(iso).stereo
+        info, _ = self.run_track(iso, area, 2, exact=False, gap=None)
+        self.assertFalse(info.provisional)
+
+    def test_hostile_images_agree_with_exact_reads(self):
+        # every hostile image, every track: a provisional start gives the bytes of an exact read
+        # (or both fail), and no provisional reading is refuted
+        for h in sacdgen.hostile_corpus():
+            iso = self.dir / f"{h.name}.iso"
+            iso.write_bytes(h.image)
+            try:
+                disc = read_toc(iso)
+            except Exception:  # noqa: BLE001, S112 - an unreadable TOC: nothing to extract
+                continue
+            for area in disc.areas:
+                for i in range(1, len(area.tracks)):
+                    got = {}
+                    for exact in (False, True):
+                        try:
+                            got[exact] = self.run_track(iso, area, i, exact)
+                        except _native.NativeError:
+                            got[exact] = None
+                    with self.subTest(image=h.name, area=area.kind, track=i + 1):
+                        if got[False] is None or got[True] is None:
+                            self.assertIs(got[False], got[True])
+                            continue
+                        self.assertIsNone(got[False][0].refuted_from)
+                        self.assertEqual(got[False][1], got[True][1])
+
+
 def sacdgen_dst(plain: bytes) -> bytes:
     """An uncoded DST frame (the 0 bit, then plain DSD): valid in a DST area."""
     return b"\x00" + plain

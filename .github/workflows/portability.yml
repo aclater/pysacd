@@ -5,8 +5,8 @@ name: portability
 
 on:
   pull_request:
-    paths: ["csrc/**", "Makefile", "setup.py", "src/**", "tests/**", "fuzz/**",
-            ".github/workflows/portability.yml"]
+    paths: ["csrc/**", "Makefile", "setup.py", "src/**", "tests/**", "fuzz/**", "scarletbook.lock",
+            "tools/scarletbook.py", ".github/workflows/portability.yml"]
   schedule:
     - cron: "41 4 * * 1"
   workflow_dispatch:
@@ -70,12 +70,22 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-flac
 
+      # The MSYS2 shell has no Python of its own: fetch the scarletbook library (#85) with the
+      # runner's, so that make finds it in place
+      - name: Fetch the scarletbook library
+        shell: bash
+        run: python -I tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook
+
       - name: Build the engine (warnings are errors)
         shell: msys2 {0}
         run: |
           make CFLAGS="-O2 -Werror"
           make test-tools
           objdump -p src/pysacd/_sacdconv.dll | grep "DLL Name"
+          # exports: the engine's functions and scarletbook's C ABI, nothing of Rust's runtime
+          objdump -p src/pysacd/_sacdconv.dll | sed -n '/Ordinal\/Name Pointer/,/^$/p' | grep -E '^\s*\[ *[0-9]+\]' | awk '{print $NF}' > exports.txt
+          grep -c '^sb_' exports.txt
+          ! grep -v -e '^sb_' -e '^sacdconv_' exports.txt
 
       - name: Tests
         shell: bash

@@ -9,7 +9,7 @@ name: wheels (release)
 on:
   pull_request:
     paths: ["setup.py", "pyproject.toml", "MANIFEST.in", "Makefile", "csrc/**", "tests/wheel_smoke.py",
-            ".github/workflows/workflow.yml"]
+            "scarletbook.lock", "tools/scarletbook.py", "licenses/**", ".github/workflows/workflow.yml"]
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -18,8 +18,25 @@ permissions:
   contents: read
 
 jobs:
+  scarletbook:
+    # Every wheel links the scarletbook-rs C library pinned in scarletbook.lock (#85), and each
+    # build checks its download against the pinned SHA-256. Before building, check that every
+    # pinned archive is an attested scarletbook-rs release (tag and commit), as ci.yml does.
+    name: scarletbook provenance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check every pinned archive's digest and attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I tools/scarletbook.py attest --dir "$RUNNER_TEMP/scarletbook"
+
   wheels:
     name: wheel (${{ matrix.name }})
+    needs: [scarletbook]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -89,6 +106,7 @@ jobs:
           path: wheelhouse/*.whl
 
   sdist:
+    needs: [scarletbook]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

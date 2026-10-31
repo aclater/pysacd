@@ -181,3 +181,15 @@ A DST disc, 200 reads × 3 rounds, median:
 
 The time saved is small next to what you get: a structured object, not text
 to parse.
+
+Since 0.3.0 the TOC is read through scarletbook-rs (#85). Measured on the 5 real test discs,
+each 200 reads, 3 rounds alternating the two engines, median per disc:
+
+| TOC engine | Time per disc |
+|---|---|
+| pysacd's own parser (`PYSACD_TOC_ENGINE=python`) | 0.13 ms (0.09–0.24) |
+| scarletbook-rs, through ctypes (the default) | 0.59 ms (0.42–0.95) |
+
+scarletbook does more per disc: it checks all three master TOC copies and both copies of
+each area TOC, and pysacd makes about a hundred ctypes calls to copy the fields out. A
+TOC is read once per disc, so half a millisecond doesn't show in any command.

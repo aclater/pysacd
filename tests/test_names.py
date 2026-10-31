@@ -22,7 +22,7 @@ import sacdgen
 
 from pysacd import _native, convert, musicbrainz, safetext, tagging
 from pysacd.convert import NAME_MAX_BYTES, _clusters, name_key, render, unique_path
-from pysacd.toc import _decode, read_toc
+from pysacd.toc import read_toc
 
 FRAME = bytes([0x69]) * (4704 * 2)          # DSD silence, 2 channels
 SACD_EXTRACT = os.environ.get("SACD_EXTRACT")
@@ -119,24 +119,37 @@ class Collisions(unittest.TestCase):
 class Decoding(unittest.TestCase):
     """Disc text is decoded before any check, and never yields lone surrogates."""
 
+    def raw_title(self, charset: int, raw: bytes) -> str:
+        """The album title scarletbook reads when the disc stores these bytes for it: a disc
+        built with a placeholder title of the same length, then patched."""
+        placeholder = "Q" * len(raw)
+        with tempfile.TemporaryDirectory() as d:
+            iso = Path(d) / "t.iso"
+            sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [FRAME] * 10, [10], dst=False, titles=["t"], charset=charset)],
+                              info=sacdgen.DiscInfo(title=placeholder, artist="a", charset=charset))
+            img = iso.read_bytes()
+            self.assertGreaterEqual(img.count(placeholder.encode()), 1)   # every copy of the master TOC
+            iso.write_bytes(img.replace(placeholder.encode(), raw))
+            return read_toc(iso).text["album_title"]
+
     def test_codecs(self):
         cases = [
-            (b"\x83\x5c\x95\x5c", "shift_jisx0213", "ソ表"),       # 0x5C trail bytes
-            (b"\xb3\x5c", "big5", "許"),                           # 0x5C trail byte
-            (b"\xc4\xe3\xba\xc3", "gb2312", "你好"),
-            (b"\xc7\xd1\xb1\xb9", "euc_kr", "한국"),
-            (b"a\x01b", "latin-1", "a b"),                          # controls become spaces
+            (b"\x83\x5c\x95\x5c", 3, "ソ表"),        # Shift-JIS, 0x5C trail bytes
+            (b"\xb3\x5c", 6, "許"),                     # Big5, 0x5C trail byte
+            (b"\xc4\xe3\xba\xc3", 5, "你好"),         # GB 2312
+            (b"\xc7\xd1\xb1\xb9", 4, "한국"),         # KSC 5601
+            (b"a\x01b", 2, "a b"),                      # controls become spaces
         ]
-        for raw, codec, want in cases:
-            with self.subTest(codec=codec):
-                self.assertEqual(_decode(raw, codec), want)
+        for raw, charset, want in cases:
+            with self.subTest(charset=charset):
+                self.assertEqual(self.raw_title(charset, raw), want)
 
     def test_invalid_sequences_replace(self):
-        for raw, codec in ((b"ab\x83", "shift_jisx0213"), (b"\xff\xfe\xfd", "big5"), (b"\xa1", "gb2312"),
-                           (b"\xc7", "euc_kr"), (b"\x83\x01", "shift_jisx0213")):
-            with self.subTest(codec=codec, raw=raw):
-                s = _decode(raw, codec)
-                self.assertIn("�", s)
+        for raw, charset in ((b"ab\x83", 3), (b"\xff\xfe\xfd", 6), (b"\xa1", 5), (b"\xc7", 4),
+                             (b"\x83\x01", 3)):
+            with self.subTest(charset=charset, raw=raw):
+                s = self.raw_title(charset, raw)
+                self.assertIn("\ufffd", s)
                 s.encode("utf-8")                                   # strict: no surrogates
                 self.assertFalse(any(c < " " for c in s))
 

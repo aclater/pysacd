@@ -66,69 +66,7 @@ _Static_assert(MAX_FRAME_SIZE >= SB_MAX_FRAME_BYTES, "a stage slot holds any sto
 
 enum { OUT_DSF = 0, OUT_FLAC = 1, OUT_WAV = 2, OUT_DFF_DSD = 3, OUT_DFF_DST = 4 };
 
-/* Must match pysacd/_native.py */
-typedef struct {
-    int             format;
-    const char     *path;
-    uint32_t        tc_start, tc_end;   /* frames [tc_start, tc_end) */
-    int32_t         head_frame;         /* DSF nopad: file starts with the last */
-    uint32_t        head_bytes;         /*   head_bytes/channel of this frame (-1: none) */
-    uint32_t        tail_bytes;         /* DSF nopad: drop this many bytes/channel at the end */
-    const uint8_t  *header;             /* DSDIFF: written at offset 0 */
-    uint32_t        header_len;
-    const uint8_t  *footer;             /* DSF: ID3 tag; DSDIFF: chunks after the data */
-    uint32_t        footer_len;
-    uint64_t       *dst_offsets;        /* DSDIFF DST: frame index (absolute offsets) */
-    uint32_t       *dst_lengths;
-    uint32_t        dst_cap;
-    int             flac_level;
-    uint32_t        flac_padding;       /* PADDING block so tags can be added in place */
-    /* results */
-    uint32_t        frames_written, frames_missing, dst_errors;
-    uint32_t        dst_count;
-    uint64_t        samples;            /* per channel, at the output rate */
-    uint64_t        data_bytes;         /* size of the audio data region */
-    char            error[256];
-} sc_output_t;
-
-typedef struct {
-    const char     *iso_path;
-    int             sector_size, data_offset;
-    uint32_t        scan_lsn_start, scan_lsn_end;   /* audio sectors to demux */
-    int             channels;
-    int             pcm_rate;
-    double          gain_db;
-    int             threads;
-    const char     *iso_out_path;       /* also copy the image here (NULL: no) */
-    uint32_t        iso_sectors;
-    volatile int    cancel;
-    /* progress (read by Python while running) */
-    volatile uint64_t frames_done, frames_total;
-    volatile uint64_t sectors_done, sectors_total;
-    char            error[256];
-    /* optional sector source instead of reading iso_path (e.g. a disc on a
-       network server): fill buf with count 2048-byte sectors from lsn,
-       return 0, or -1 with a message in error */
-    int           (*read_fn)(void *ctx, uint32_t lsn, uint32_t count, uint8_t *buf);
-    void           *read_ctx;
-    /* optional diagnostics sink; messages below log_level aren't formatted */
-    void          (*log_fn)(void *ctx, int level, const char *msg);
-    void           *log_ctx;
-    int             log_level;
-    /* scarletbook (#85): the area by the LSN of its TOC, the image's 2048-byte sectors (for a
-       sector source), and the cancellation token while a run reads (sacdconv_cancel) */
-    uint32_t        toc_lsn;
-    uint64_t        image_sectors;
-    void * _Atomic  sb_cancel;
-    /* range starts (#85): exact = 1 reads the area up to the range; 0 lets scarletbook start
-       provisionally (SB_SEEK_POLICY_SPECULATIVE). Results: provisional (1 provisional, 2 confirmed
-       by the background check), refuted_from (UINT32_MAX, or the frame from which a refuted
-       provisional reading was exact) */
-    int             exact;
-    int             provisional;
-    uint32_t        refuted_from;
-    int64_t         seek_min_gap;       /* sectors (SB_SEEK_DEFAULT_MIN_GAP when negative) */
-} sc_area_t;
+#include "sacdconv_api.h"
 
 /* ------------------------------------------------------------ batches */
 
@@ -1262,16 +1200,17 @@ static int writer_run(engine_t *e)
  * _load() refuses a library whose version, struct sizes or field offsets differ from its
  * ctypes mirrors. Bump SACDCONV_ABI whenever a struct or an exported signature changes.
  */
-#define SACDCONV_ABI 3     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
-                              3: provisional range starts (exact, provisional, refuted_from) */
+#define SACDCONV_ABI 4     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
+                              3: provisional range starts (exact, provisional, refuted_from);
+                              4: the old engine's scan range and ISO sector count removed */
 
 #define OFF(T, f) (uint32_t)offsetof(T, f)
 static const uint32_t area_layout[] = {
     sizeof(sc_area_t),
     OFF(sc_area_t, iso_path), OFF(sc_area_t, sector_size), OFF(sc_area_t, data_offset),
-    OFF(sc_area_t, scan_lsn_start), OFF(sc_area_t, scan_lsn_end), OFF(sc_area_t, channels),
+    OFF(sc_area_t, channels),
     OFF(sc_area_t, pcm_rate), OFF(sc_area_t, gain_db), OFF(sc_area_t, threads),
-    OFF(sc_area_t, iso_out_path), OFF(sc_area_t, iso_sectors), OFF(sc_area_t, cancel),
+    OFF(sc_area_t, iso_out_path), OFF(sc_area_t, cancel),
     OFF(sc_area_t, frames_done), OFF(sc_area_t, frames_total), OFF(sc_area_t, sectors_done),
     OFF(sc_area_t, sectors_total), OFF(sc_area_t, error), OFF(sc_area_t, read_fn),
     OFF(sc_area_t, read_ctx), OFF(sc_area_t, log_fn), OFF(sc_area_t, log_ctx), OFF(sc_area_t, log_level),
@@ -1540,8 +1479,8 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
         e.free_list = b;
     }
 
-    sc_log(a, SC_INFO, "engine: %d channels, %d outputs, frames %u-%u, LSN %u-%u%s, %d worker threads%s%s",
-           a->channels, nouts, e.need_lo, e.need_hi, a->scan_lsn_start, a->scan_lsn_end,
+    sc_log(a, SC_INFO, "engine: %d channels, %d outputs, frames %u-%u, area TOC at LSN %u%s, %d worker threads%s%s",
+           a->channels, nouts, e.need_lo, e.need_hi, a->toc_lsn,
            a->read_fn ? " via sector source" : "", nworkers, want_pcm ? ", PCM " : "",
            want_pcm ? (a->pcm_rate == 88200 ? "88.2 kHz" : "176.4 kHz") : "");
     double t_start = now_ms();

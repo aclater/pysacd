@@ -9,6 +9,13 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- A track far into an area (`-t`, `convert -t`) starts provisionally again (#85): scarletbook
+  finds its first frame without reading the area before it, which is exact on a well-formed
+  disc and is what 0.2.2 did from the TOC's track positions. Output is byte-identical to 0.2.2.
+  The run logs that it started provisionally and checks the start in the background. If the
+  check finds it wrong, pysacd warns and suggests `--exact`, the new option that reads the
+  area up to the track.
+
 - Audio is now read and DST decoded by scarletbook-rs, on a pool of decoding threads (#85,
   phase 3). Output is byte-identical to 0.2.2 on the real test discs and on the sacd-spec
   conformance corpus, except on four hostile corpus images:

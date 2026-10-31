@@ -154,14 +154,30 @@ one after are included, exactly as before, so that PCM output is sample-identica
 - **Logging.** scarletbook's log goes to the `pysacd.engine` logger: its errors as warnings, the
   rest at debug level. pysacd logs missing frames, invalid DST frames and malformed sectors
   itself, from the frame statuses and `sb_track_audio_warning`.
-- **Exact reads only, for `-t` too.** pysacd never turns on scarletbook's provisional reading
-  (`SB_SEEK_POLICY_SPECULATIVE`). A provisional range far into an area can differ from a straight
-  read on a hostile image until it's refuted (sacdfs measured this on the corpus image
-  `area-audio-past-end`). Confirming it means reading the area up to the range anyway
-  (`sb_disc_seek_verify`), which is what an exact read costs. So a range far into an area is
-  read exactly, scanning the audio sectors before it (reading, not decoding). pysacd 0.2
-  started 128 sectors before the track's LSN in the TOC, trusting the TOC. The cost is in
-  [performance](performance.md).
+- **Provisional starts for ranges far into an area** (`-t`, `convert -t`, `-k`). When an
+  output's frames start far into the area, scarletbook starts provisionally
+  (`SB_SEEK_POLICY_SPECULATIVE`, with its default gap of 2048 sectors): it finds the range's
+  first frame with a short search of the frame timecodes instead of reading the whole area up
+  to it.
+  - **Why.** Exact reads made `-t` on the last track 4.6× slower than 0.2.2 locally. From a
+    network share they cost a read of the area up to the track, up to about 1 GB. On a
+    well-formed disc a provisional start is exact by the specification (4.2 item 8), so the
+    output is byte-identical to 0.2.2 and `sacd_extract`: 0.2.2 started near the track's LSN
+    from the TOC, which no reader can verify either. On a hostile image neither is guaranteed
+    exact.
+  - **Logged.** The run logs once, at info level, that it started provisionally.
+  - **Checked where possible.** With an image file, the area's seek index is kept, and a clone
+    of the disc checks the provisional start in the background (`sb_disc_seek_verify`) while
+    the run reads. The check stops when the run ends, so it never makes the run longer.
+  - **Refuted.** If the verdict comes back *refuted*, pysacd warns clearly: the frames before
+    the frame from which reading was exact again may differ from an exact read, so run again
+    with `--exact`. The exit status is then 1. A sector source (a PS3) can't be read from two
+    threads, so a provisional start from one is logged as not checked.
+  - **`--exact`** (`pysacd-extract`, `pysacd convert`) reads the area up to the range, as a
+    straight read does.
+  - **Tested.** `tests/test_engine_scarletbook.py` compares provisional and exact reads of every
+    track of every hostile image (`seek_min_gap=0`, so every range is provisional): same bytes,
+    or both fail, and none refuted. The harness's range modes do the same on real discs.
 
 **Checking the outputs.** `tools/extract_compare.py` runs `pysacd-extract` and `pysacd convert`
 in 21 modes with two pysacd source trees, and the `sacd_extract`-compatible modes with

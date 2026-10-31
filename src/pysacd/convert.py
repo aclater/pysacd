@@ -34,6 +34,7 @@ class Options:
     flac_level: int = 5
     pauses: bool = False                      # include the pauses between tracks, as pysacd-extract -b
     jobs: int = 0                             # worker threads, 0 = CPU count
+    exact: bool = False                       # read the area up to a track far into it, never provisionally (#85)
     musicbrainz: bool = True
     mb_release: str | None = None
     mb_text_search: bool = False
@@ -426,8 +427,8 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
 
     start = time.monotonic()
     try:
-        _native.run_area(img, iso, area, specs, opts.pcm_rate, opts.gain_db, opts.jobs,
-                         progress=_progress_printer(label))
+        run = _native.run_area(img, iso, area, specs, opts.pcm_rate, opts.gain_db, opts.jobs,
+                               progress=_progress_printer(label), exact=opts.exact)
     except BaseException as e:
         for spec in specs:
             Path(spec.path).unlink(missing_ok=True)
@@ -436,8 +437,12 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
             return len(specs)
         raise
     _log("")
+    if run.refuted_from is not None:
+        _log(f"{label}: WARNING: the start of these tracks was found provisionally, and on this image that "
+             f"turned out wrong: frames before {run.refuted_from} may differ from an exact read. Run again "
+             "with --exact.")
 
-    failures = 0
+    failures = 1 if run.refuted_from is not None else 0
     for t, tags, path, spec in todo:
         try:
             if fmt != "dsf":

@@ -3,6 +3,8 @@ stored and decoded outputs in one pass, and an ISO copy before the audio."""
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import sys
 import tempfile
@@ -10,6 +12,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 import sacdgen
@@ -144,6 +147,129 @@ class Engine(unittest.TestCase):
         area.toc_start += 1
         with SACDImage(iso) as img, self.assertRaisesRegex(_native.NativeError, "no area with its TOC"):
             _native.run_area(img, iso, area, [self.spec(area, 0, "dsf", "x.dsf")])
+
+
+@unittest.skipUnless(_native_ok(), "native engine not built")
+class ProvisionalStarts(unittest.TestCase):
+    """A range far into an area starts provisionally unless exact reading is asked for (#85):
+    exact on a well-formed disc, so the output is the same either way."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_track(self, iso: Path, area, i: int, exact: bool, gap: int | None = 0, fmt: str = "dsf"):
+        t = area.tracks[i]
+        out = self.dir / f"t{i}-{exact}.{fmt}"
+        spec = _native.OutputSpec(fmt, out, t.start.total_frames, t.start.total_frames + t.duration.total_frames)
+        with SACDImage(iso) as img:
+            info = _native.run_area(img, iso, area, [spec], exact=exact, seek_min_gap=gap)
+        data = out.read_bytes()
+        out.unlink()
+        return info, data
+
+    def test_last_track_same_bytes_either_way(self):
+        iso = self.dir / "d.iso"
+        sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, _frames(600), [200, 200, 200], dst=False)])
+        area = read_toc(iso).stereo
+        for fmt in ("dsf", "wav"):
+            with self.subTest(fmt=fmt):
+                spec_info, provisional = self.run_track(iso, area, 2, exact=False, fmt=fmt)
+                exact_info, exact = self.run_track(iso, area, 2, exact=True, fmt=fmt)
+                self.assertTrue(spec_info.provisional)
+                self.assertIsNone(spec_info.refuted_from)
+                self.assertFalse(exact_info.provisional)
+                self.assertEqual(provisional, exact)
+
+    def test_default_gap_keeps_short_seeks_exact(self):
+        # scarletbook's default gap (2048 sectors) is far more than this small image holds
+        iso = self.dir / "d.iso"
+        sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, _frames(60), [20, 20, 20], dst=False)])
+        area = read_toc(iso).stereo
+        info, _ = self.run_track(iso, area, 2, exact=False, gap=None)
+        self.assertFalse(info.provisional)
+
+    def test_hostile_images_agree_with_exact_reads(self):
+        # every hostile image, every track: a provisional start gives the bytes of an exact read
+        # (or both fail), and no provisional reading is refuted
+        for h in sacdgen.hostile_corpus():
+            iso = self.dir / f"{h.name}.iso"
+            iso.write_bytes(h.image)
+            try:
+                disc = read_toc(iso)
+            except Exception:  # noqa: BLE001, S112 - an unreadable TOC: nothing to extract
+                continue
+            for area in disc.areas:
+                for i in range(1, len(area.tracks)):
+                    got = {}
+                    for exact in (False, True):
+                        try:
+                            got[exact] = self.run_track(iso, area, i, exact)
+                        except _native.NativeError:
+                            got[exact] = None
+                    with self.subTest(image=h.name, area=area.kind, track=i + 1):
+                        if got[False] is None or got[True] is None:
+                            self.assertIs(got[False], got[True])
+                            continue
+                        self.assertIsNone(got[False][0].refuted_from)
+                        self.assertEqual(got[False][1], got[True][1])
+
+
+@unittest.skipUnless(_native_ok(), "native engine not built")
+class RefutedWarning(unittest.TestCase):
+    """When the background check refutes a provisional start, both commands say so, suggest
+    --exact, and exit with status 1; --exact reaches the engine."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.iso = self.dir / "d.iso"
+        sacdgen.build_iso(self.iso, [sacdgen.AreaSpec(2, _frames(60), [20, 20, 20], dst=False, titles=["A", "B", "C"])])
+        self.calls: list[dict] = []
+        real = _native.run_area
+
+        def fake(*args, **kwargs):
+            self.calls.append(kwargs)
+            real(*args, **kwargs)
+            return _native.RunInfo(provisional=True, refuted_from=7)
+
+        patcher = mock.patch.object(_native, "run_area", side_effect=fake)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_extract(self):
+        from pysacd import extract
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.chdir(self.dir):
+            rc = extract.main(["--no-cfg", "-2", "-s", "-t", "3", "-i", str(self.iso)])
+        self.assertEqual(rc, 1)
+        self.assertIn("frames before 7 may differ from an exact read", err.getvalue())
+        self.assertIn("--exact", err.getvalue())
+        self.assertFalse(self.calls[0]["exact"])
+        (self.dir / "x").mkdir()
+        with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.chdir(self.dir / "x"):
+            extract.main(["--no-cfg", "-2", "-s", "-t", "3", "--exact", "-i", str(self.iso)])
+        self.assertEqual(len(self.calls), 2)
+        self.assertTrue(self.calls[-1]["exact"])
+
+    def test_convert(self):
+        from pysacd import convert
+        opts = convert.Options(musicbrainz=False, cover=False, cover_file="", tracks=[3],
+                               output_dir=str(self.dir / "c"))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            failures = convert.convert(str(self.iso), opts)
+        self.assertGreaterEqual(failures, 1)
+        self.assertIn("Run again with --exact", out.getvalue())
+        self.assertFalse(self.calls[0]["exact"])
 
 
 def sacdgen_dst(plain: bytes) -> bytes:

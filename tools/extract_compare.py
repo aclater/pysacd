@@ -32,6 +32,7 @@ import tempfile
 import time
 from pathlib import Path
 
+# LAST and MIDDLE stand for the area's last and middle track.
 # name: (tool, arguments); tool is "extract" (pysacd-extract, also run with sacd_extract) or
 # "extract+" (pysacd-extract only: pysacd extensions) or "convert" (pysacd convert)
 MODES = {
@@ -51,6 +52,8 @@ MODES = {
     "iso": ("extract", ["-I"]),
     "iso+dsf": ("extract", ["-I", "-2", "-s"]),
     "flac": ("extract+", ["-2", "--flac"]),
+    "flac-last-track": ("extract+", ["-2", "--flac", "-t", "LAST"]),
+    "dsdiff-c-middle-track": ("extract", ["-2", "-p", "-c", "-t", "MIDDLE"]),
     "wav-176k": ("extract+", ["-2", "--wav", "--pcm-rate", "176400"]),
     "mch-flac": ("extract+", ["-m", "--flac"]),
     "convert-flac": ("convert", ["-f", "flac"]),
@@ -153,9 +156,9 @@ def one(kind: str, which: str, image: Path, args: list[str], work: Path, srcs: d
 def compare(image: Path, mode: str, srcs: dict[str, str], sacd_extract: str | None, threads: int,
             keep: Path | None) -> dict:
     kind, args = MODES[mode]
-    if "LAST" in args:
+    if "LAST" in args or "MIDDLE" in args:
         n = last_track(srcs["new"], image, "m" if "-m" in args else "2")
-        args = [str(n) if a == "LAST" else a for a in args]
+        args = [str(n) if a == "LAST" else str(max(1, (n + 1) // 2)) if a == "MIDDLE" else a for a in args]
     work = Path(tempfile.mkdtemp(prefix="cmp-", dir=keep))
     try:
         res = {w: one(kind, w, image, args, work, srcs, sacd_extract, threads) for w in ("old", "new", "sacd_extract")}

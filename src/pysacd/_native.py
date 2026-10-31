@@ -83,6 +83,11 @@ class _Area(ctypes.Structure):
         ("toc_lsn", ctypes.c_uint32),
         ("image_sectors", ctypes.c_uint64),
         ("sb_cancel", ctypes.c_void_p),
+        # range starts: exact and seek_min_gap (in), provisional and refuted_from (out)
+        ("exact", ctypes.c_int),
+        ("provisional", ctypes.c_int),
+        ("refuted_from", ctypes.c_uint32),
+        ("seek_min_gap", ctypes.c_int64),
     ]
 
 
@@ -119,7 +124,7 @@ def _load():
     return _lib
 
 
-ABI = 2    # SACDCONV_ABI in csrc/sacdconv.c
+ABI = 3    # SACDCONV_ABI in csrc/sacdconv.c
 
 
 def _layout(struct) -> list[int]:
@@ -232,6 +237,18 @@ class OutputSpec:
 
 
 @dataclass
+class RunInfo:
+    """How run_area read the area. A range far into an area starts provisionally unless exact
+    reading was asked for (#85): `provisional` says it did, `confirmed` that the background
+    check found it exact, and `refuted_from` (when not None) the frame from which a provisional
+    reading that turned out wrong was exact again: outputs before it may differ from an exact
+    read."""
+    provisional: bool = False
+    confirmed: bool = False
+    refuted_from: int | None = None
+
+
+@dataclass
 class Progress:
     frames_done: int
     frames_total: int
@@ -268,7 +285,8 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
              pcm_rate: int = 88200, gain_db: float = 0.0, threads: int = 0,
              iso_out: str | os.PathLike | None = None,
              progress: Callable[[Progress], None] | None = None, interval: float = 0.5,
-             source: SectorSource | None = None) -> None:
+             source: SectorSource | None = None, exact: bool = False,
+             seek_min_gap: int | None = None) -> RunInfo:
     """Produce all outputs from one area in a single pass. Blocking, multithreaded.
 
     `progress` is called from this thread every `interval` seconds while the
@@ -276,6 +294,12 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     With `source`, sectors come from that callable instead of the file at
     iso_path (which is then only a name for messages). Engine diagnostics go to
     the "pysacd.engine" logger.
+
+    A range that starts far into the area starts provisionally (scarletbook's speculative seek
+    policy: exact on a well-formed disc, without reading the area up to the range) unless
+    `exact` is true. The returned RunInfo says whether it did, and how it was checked.
+    `seek_min_gap` (sectors) overrides how far the exact start must lie before the range for
+    a provisional start to be used (scarletbook's default, 2048, when None); tests set it to 0.
     """
     lib = _load()
     outs = (_Output * max(1, len(specs)))()
@@ -319,6 +343,8 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     else:
         a.channels = 2
     a.image_sectors = image.total_sectors
+    a.exact = int(exact)
+    a.seek_min_gap = -1 if seek_min_gap is None else seek_min_gap
     a.pcm_rate = pcm_rate
     a.gain_db = gain_db
     a.threads = threads
@@ -380,3 +406,6 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
             s.dst_index = [(o.dst_offsets[i], o.dst_lengths[i]) for i in range(n)]
     if result and result[0] != 0:
         raise NativeError(a.error.decode(errors="replace"))
+    info = RunInfo(provisional=a.provisional > 0, confirmed=a.provisional == 2,
+                   refuted_from=None if a.refuted_from == 0xFFFFFFFF else a.refuted_from)
+    return info

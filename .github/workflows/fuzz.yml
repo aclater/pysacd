@@ -1,13 +1,15 @@
-# Fuzz the C code that parses untrusted disc data (#36): the sector demuxer and
-# the DST decoder, with libFuzzer under ASan + UBSan.  Pull requests get a short
-# run; the weekly run is longer and keeps its corpus in the cache.  A crash fails
-# the job and uploads the input; minimise it and add it to fuzz/regressions/.
+# Fuzz pysacd's engine on hostile disc images (#36, #85): fuzz/fuzz_engine.c runs
+# sacdconv_area_run() on each input, with libFuzzer under ASan + UBSan. The image parsing
+# itself (TOC, sectors, DST) is scarletbook-rs's, fuzzed in its own repository; this covers
+# pysacd's reader, batches, workers and writers around it. Pull requests get a short run; the
+# weekly run is longer and keeps its corpus in the cache. A crash fails the job and uploads
+# the input; minimise it and add it to fuzz/regressions/fuzz_engine/.
 
 name: fuzz
 
 on:
   pull_request:
-    paths: ["csrc/**", "fuzz/**", "tests/native/**", ".github/workflows/fuzz.yml"]
+    paths: ["csrc/**", "fuzz/**", "tests/sacdgen.py", "scarletbook.lock", ".github/workflows/fuzz.yml"]
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
@@ -22,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        harness: [dst_frame, demux]
+        harness: [engine]
     env:
       SECONDS_PER_RUN: ${{ github.event_name == 'pull_request' && 120 || 1800 }}
     steps:
@@ -52,7 +54,9 @@ jobs:
       - name: Fuzz
         run: |
           mkdir -p build/fuzz-corpus/${{ matrix.harness }} build/fuzz-crash
+          # the seed images are up to 2 MB; libFuzzer's default length limit would cut them
           build/fuzz_${{ matrix.harness }} -jobs="$(nproc)" -workers="$(nproc)" -max_total_time="$SECONDS_PER_RUN" \
+            -max_len=4194304 -timeout=60 \
             -artifact_prefix=build/fuzz-crash/ -print_final_stats=1 \
             build/fuzz-corpus/${{ matrix.harness }} build/fuzz-seeds/${{ matrix.harness }} \
             fuzz/regressions/fuzz_${{ matrix.harness }}

@@ -1,46 +1,43 @@
 #!/usr/bin/env python3
-"""Write the fuzzers' seed corpora: synthetic DST frames and audio sectors (#36).
+"""Write the engine fuzzer's seed corpus: synthetic disc images (#36, #85).
 
     PYTHONPATH=src:tests python3 fuzz/make_seeds.py build/fuzz-seeds
 
-Every seed comes from the test-only DST encoder (make test-tools): each
-optional DST feature at 2, 5 and 6 channels, the hand-made invalid frames,
-and those frames muxed into sectors, DST and plain. No real disc data is
-used, so the corpora can be shared freely.
+Seeds for fuzz/fuzz_engine.c, in OUT/engine: pysacd's hostile corpus (tests/sacdgen.py:
+malformed TOCs, audio sectors and layouts around a small valid disc with a stereo DST area and
+a 6-channel DSD area) and, when the test-only DST encoder is built (make test-tools), a small
+disc of coded DST frames with every optional DST feature. No real disc data is used, so the
+corpus can be shared freely.
 """
 
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 import sacdgen
-import test_dst_full as dst
-
-CHANNELS = {2: 0, 5: 1, 6: 2}       # first input byte -> channel count, as the harnesses read it
 
 
 def main() -> int:
-    out = Path(sys.argv[1] if len(sys.argv) > 1 else "build/fuzz-seeds")
-    frames_dir, demux_dir = out / "dst_frame", out / "demux"
-    frames_dir.mkdir(parents=True, exist_ok=True)
-    demux_dir.mkdir(parents=True, exist_ok=True)
+    out = Path(sys.argv[1] if len(sys.argv) > 1 else "build/fuzz-seeds") / "engine"
+    out.mkdir(parents=True, exist_ok=True)
     n = 0
-    for ch, sel in CHANNELS.items():
-        enc = dst.encoded(ch)
-        for name, _, frame in enc:
-            (frames_dir / f"{ch}ch-{name}").write_bytes(bytes([sel]) + frame)
-            n += 1
-        for name, frame in dst.invalid_frames(ch).items():
-            (frames_dir / f"{ch}ch-invalid-{name}").write_bytes(bytes([sel]) + frame)
-            n += 1
-        dst_frames = [f for _, _, f in enc]
-        sectors, _ = sacdgen.mux(dst_frames[:8], dst=True)
-        (demux_dir / f"{ch}ch-dst").write_bytes(bytes([sel]) + b"".join(sectors[:64]))
-        plain = [d for _, d, _ in enc[:3]]
-        sectors, _ = sacdgen.mux(plain, dst=False)
-        (demux_dir / f"{ch}ch-plain").write_bytes(bytes([sel]) + b"".join(sectors[:64]))
-        n += 2
+    for h in sacdgen.hostile_corpus():
+        (out / f"{h.name}.iso").write_bytes(h.image)
+        n += 1
+    try:
+        import test_dst_full as dst
+        if dst.HAVE_ENCODER:
+            for ch in (2, 6):
+                frames = [f for _, _, f in dst.encoded(ch)]
+                with tempfile.TemporaryDirectory() as tmp:
+                    iso = Path(tmp) / "d.iso"
+                    sacdgen.build_iso(iso, [sacdgen.AreaSpec(ch, frames, [len(frames)], dst=True)])
+                    (out / f"dst-features-{ch}ch.iso").write_bytes(iso.read_bytes())
+                n += 1
+    except ImportError:
+        pass
     print(f"wrote {n} seeds to {out}")
     return 0
 

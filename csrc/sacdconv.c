@@ -46,6 +46,8 @@
 #include "sacd.h"
 #include "scarletbook.h"
 
+_Static_assert(MAX_FRAME_SIZE >= SB_MAX_FRAME_BYTES, "a stage slot holds any stored frame scarletbook returns");
+
 /* The scarletbook-rs C library is linked in statically (#85; Makefile, scarletbook.lock), and
  * its sb_* functions are exported from this library for _native.py. This file is written
  * against C ABI 2: refuse a header of any other ABI at compile time; _native.py checks the
@@ -354,13 +356,14 @@ static int stage_frame(reader_t *r, uint32_t tc, const uint8_t *data, int len, i
     f->dst = (uint8_t)dst;
     f->missing = (uint8_t)missing;
     f->bad = (uint8_t)bad;
-    if (!missing && len)
+    /* the scarletbook reader reads straight into the next slot: nothing to copy then */
+    if (!missing && len && data != f->data)
         memcpy(f->data, data, len);
     if (r->decoded) {
-        if (dsd)
-            memcpy(f->dsd, dsd, r->e->frame_bytes);
-        else
+        if (!dsd)
             memset(f->dsd, DSD_SILENCE, r->e->frame_bytes);
+        else if (dsd != f->dsd)
+            memcpy(f->dsd, dsd, r->e->frame_bytes);
     }
     /* full batch plus its post context staged: emit */
     if (r->nstage == r->pre + BATCH_FRAMES + POST_FRAMES)
@@ -476,12 +479,12 @@ static void *sb_reader_main(void *arg)
     SbPool *pool = NULL;
     SbProgress *prog = NULL;
     SbCancel *token = NULL;
-    uint8_t *dsd = malloc(e->frame_bytes), *stored = malloc(SB_MAX_FRAME_BYTES);
+    uint8_t *dsd = NULL, *stored = NULL;     /* the stage slot being read into */
     uint32_t nwarn = 0, miss_from = UINT32_MAX;
     SbStatus st;
 
     r.stage = malloc(sizeof(frame_t) * SLOT_FRAMES);
-    if (!r.stage || !dsd || !stored) {
+    if (!r.stage) {
         set_error(e, "out of memory");
         goto out;
     }
@@ -550,6 +553,9 @@ static void *sb_reader_main(void *arg)
         for (uint32_t k = 0; !stopping(e); k++) {
             SbFrameInfo fi = {0};
             SbRawFrameInfo ri = {0};
+            /* read into the stage's next slot (stage_frame then copies nothing) */
+            dsd = r.stage[r.nstage].dsd;
+            stored = r.stage[r.nstage].data;
             if (audio && e->need_stored)
                 st = sb_track_audio_read_with_stored(audio, disc, dsd, e->frame_bytes, &fi, stored,
                                                      SB_MAX_FRAME_BYTES, &ri, 0);
@@ -635,8 +641,6 @@ out:
     pthread_cond_broadcast(&e->cv_done);
     pthread_mutex_unlock(&e->mu);
     free(r.stage);
-    free(dsd);
-    free(stored);
     free(src.scratch);
     return NULL;
 }

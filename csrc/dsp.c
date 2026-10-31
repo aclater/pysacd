@@ -1,6 +1,11 @@
 /*
  * DSD64 -> PCM conversion: three linear-phase Kaiser-windowed FIR stages.
  *
+ * Stage 1 evaluates its filter with lookup tables indexed by whole DSD bytes
+ * (one table of partial sums per 8 taps). That technique is credited to
+ * Sebastian Gesemann's dsd2pcm (BSD-3-Clause, 2009), which FFmpeg and MPD
+ * also use.
+ *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 

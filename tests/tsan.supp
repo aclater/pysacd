@@ -1,0 +1,14 @@
+# ThreadSanitizer suppressions for CI's TSan job (#85).
+#
+# The scarletbook-rs library linked into the engine is Rust, built without TSan
+# instrumentation: TSan sees its memcpy calls (intercepted in libc) but not the
+# atomics and fences that order them, so its lock-free internals look like
+# races. These entries cover only Rust code inside scarletbook's archive (its
+# own crates and its dependencies, by their mangled crate names); pysacd's C
+# code stays fully checked. scarletbook's concurrency is tested in its own CI.
+race:crossbeam_epoch
+race:crossbeam_deque
+race:crossbeam_utils
+race:rayon_core
+race:11scarletbook
+race:15scarletbook_ffi

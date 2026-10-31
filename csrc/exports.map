@@ -1,0 +1,11 @@
+/* What _sacdconv.so exports on Linux (#85): the engine's functions, which _native.py calls,
+   and scarletbook's C ABI (sb_*), linked in statically and called through ctypes. Everything
+   else, Rust's runtime included, stays local. macOS: exports.darwin. Windows exports every
+   global symbol (see the Makefile). */
+{
+  global:
+    sacdconv_*;
+    sb_*;
+  local:
+    *;
+};

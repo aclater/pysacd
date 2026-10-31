@@ -223,6 +223,23 @@ jobs:
       - name: Tests against sacd_extract
         run: PYTHONPATH=src:tests python -m pytest -q tests/test_dst_full.py tests/test_sbcompat.py
 
+  scarletbook:
+    # The engine links the scarletbook-rs C library pinned in scarletbook.lock (#85); every build
+    # checks its download against the SHA-256 pinned there. This checks the pins themselves: each
+    # archive must carry a signed build provenance attestation from scarletbook-rs's release
+    # workflow, for the pinned tag and commit. A pin that isn't an attested release fails here.
+    name: scarletbook provenance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check every pinned archive's digest and attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I tools/scarletbook.py attest --dir "$RUNNER_TEMP/scarletbook"
+
   privacy:
     # The repository must not carry hostnames or home-network names, in files
     # or in commit identities.  The generic pattern is always checked; extra

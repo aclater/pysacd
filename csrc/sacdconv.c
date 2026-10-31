@@ -43,6 +43,15 @@
 #include "dsp.h"
 #include "dstdec.h"
 #include "sacd.h"
+#include "scarletbook.h"
+
+/* The scarletbook-rs C library is linked in statically (#85; Makefile, scarletbook.lock), and
+ * its sb_* functions are exported from this library for _native.py. This file is written
+ * against C ABI 2: refuse a header of any other ABI at compile time; _native.py checks the
+ * linked library's sb_abi_version() and sb_version() when it loads. */
+#if !defined(SB_ABI_VERSION) || SB_ABI_VERSION != 2
+#error "pysacd needs the scarletbook C library with SB_ABI_VERSION 2 (see scarletbook.lock)"
+#endif
 
 #define BATCH_FRAMES   32
 #define PRE_FRAMES     2               /* PCM filter warm-up context */

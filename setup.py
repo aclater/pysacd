@@ -5,6 +5,11 @@ extension module, so one wheel per platform serves every Python version
 (tag py3-none-<platform>). It is built with `make PORTABLE=1`: generic
 x86-64/aarch64 code, with the PCM filters' SIMD picked at load time.
 Set PYSACD_NATIVE=1 to build for this machine's CPU instead (-march=native).
+
+The scarletbook-rs C library is linked into it statically (#85): tools/scarletbook.py
+downloads the release pinned in scarletbook.lock for the compiler's target and checks its
+SHA-256 first. SCARLETBOOK_DIR=DIR uses a library unpacked there instead, and
+PYSACD_SCARLETBOOK_CACHE=DIR keeps the downloaded archives for the next build.
 """
 
 import os
@@ -33,10 +38,21 @@ class BuildEngine(build_py):
         dest.mkdir(parents=True, exist_ok=True)
         # A private build directory: never touch the developer's build/ or src/pysacd/ library
         with tempfile.TemporaryDirectory() as tmp:
+            sb_dir = os.environ.get("SCARLETBOOK_DIR")
+            if not sb_dir:
+                # Fetched here rather than by make: on Windows, make runs under MSYS, which may
+                # have no Python of its own
+                sb_dir = (Path(tmp) / "scarletbook").as_posix()
+                # (the tool asks $CC, else the platform's compiler, for the target to fetch)
+                fetched = subprocess.run([sys.executable, "-I", (ROOT / "tools" / "scarletbook.py").as_posix(),
+                                          "fetch", "--dest", sb_dir], check=False)
+                if fetched.returncode:
+                    sys.exit("pysacd: fetching the scarletbook library failed (see above). Offline, set "
+                             "SCARLETBOOK_DIR to an unpacked copy; see docs/development.md.")
             try:
                 # forward slashes: MSYS make on Windows mangles backslashes
                 subprocess.run(["make", "-C", ROOT.as_posix(), f"BUILD={Path(tmp).as_posix()}",
-                                f"LIB={(dest / LIB).as_posix()}",
+                                f"LIB={(dest / LIB).as_posix()}", f"SCARLETBOOK_DIR={sb_dir}",
                                 *([] if native else ["PORTABLE=1"])], check=True)
             except FileNotFoundError:
                 sys.exit("pysacd: building from source needs `make` and a C compiler (gcc or clang; MinGW-w64 "

@@ -56,6 +56,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [How DST decoding was built](clean-room.md#how-dst-decoding-was-built)
   - [sacd_extract only as a black box](clean-room.md#sacd_extract-only-as-a-black-box)
   - [Licences](clean-room.md#licences)
+  - [scarletbook-rs](clean-room.md#scarletbook-rs)
   - [Acknowledgements](clean-room.md#acknowledgements)
 - **[DST frame format and decoding process](dst-bitstream.md)**: the clean-room DST specification.
   - [1. Scope and provenance](dst-bitstream.md#1-scope-and-provenance)
@@ -71,6 +72,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
 
 - **[Development](development.md)**: building, tests, CI, testing without a PS3.
   - [Building](development.md#building)
+  - [The scarletbook library](development.md#the-scarletbook-library)
   - [Tests](development.md#tests)
   - [CI](development.md#ci)
   - [Testing without a PS3](development.md#testing-without-a-ps3)

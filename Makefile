@@ -1,9 +1,14 @@
-# Builds the native helper src/pysacd/_sacdconv.so (DSF/DSDIFF/WAV always, FLAC if libFLAC is found).
+# Builds the native helper src/pysacd/_sacdconv.so (DSF/DSDIFF/WAV always, FLAC if libFLAC is found),
+# with the scarletbook-rs C library linked in statically (#85).
 #   make                 build, tuned for this CPU (-march=native)
 #   make PORTABLE=1      build for generic x86-64
 #   make HARDEN=0        without the hardening flags (sanitizer builds)
 #   make clean
 #   make test-tools      also build the test-only DST encoder (build/dstenc.so)
+#   make SCARLETBOOK_DIR=DIR   use the scarletbook C library unpacked in DIR (include/, lib/,
+#                        native-static-libs.txt) instead of downloading the pinned release
+
+.DEFAULT_GOAL := all
 
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
@@ -19,17 +24,31 @@ PKGFLAGS := --static
 FLAC_DEFS := -DFLAC__NO_DLL
 # C99 printf (%zu) instead of msvcrt's
 OS_DEFS  := -D__USE_MINGW_ANSI_STDIO=1
+# scarletbook (#85): every member of the archive, so that all of its sb_* functions are in the
+# DLL for ctypes. A .def file lists what the DLL exports, the engine's functions and scarletbook's
+# C ABI, generated from their sources; without one, MinGW's ld would export Rust's internals too.
+SB_WHOLE = -Wl,--whole-archive $(1) -Wl,--no-whole-archive
+SB_EXPORTS = $(BUILD)/exports.def -Wl,--gc-sections
+SB_EXPORTS_DEP = $(BUILD)/exports.def
 else ifeq ($(UNAME_S),Darwin)
 # macOS: clang, a .dylib, and -mcpu=native on Apple silicon (#8)
 CC      ?= cc
 LIBEXT  := dylib
 SHARED  := -dynamiclib
 NATIVE  := $(if $(filter arm64,$(UNAME_M)),-mcpu=native,-march=native)
+SB_WHOLE = -Wl,-force_load,$(1)
+# export the engine's functions and scarletbook's C ABI only, not Rust's internals; drop the rest
+SB_EXPORTS := -Wl,-exported_symbols_list,csrc/exports.darwin -Wl,-dead_strip
+SB_EXPORTS_DEP := csrc/exports.darwin
 else
 CC      ?= gcc
 LIBEXT  := so
 SHARED  := -shared
 NATIVE  := -march=native
+SB_WHOLE = -Wl,--whole-archive $(1) -Wl,--no-whole-archive
+# export the engine's functions and scarletbook's C ABI only, not Rust's internals; drop the rest
+SB_EXPORTS := -Wl,--version-script=csrc/exports.map -Wl,--gc-sections
+SB_EXPORTS_DEP := csrc/exports.map
 endif
 ifdef PORTABLE
 # generic x86-64, with the PCM filters picked at load time for the CPU (see csrc/dsp.c)
@@ -71,6 +90,26 @@ override CFLAGS += -DHAVE_FLAC_MT
 endif
 endif
 
+# The scarletbook-rs C library (#85), linked statically: the release pinned in scarletbook.lock,
+# downloaded and checked against its SHA-256 by tools/scarletbook.py into build/scarletbook, for
+# the target $(CC) builds for. SCARLETBOOK_DIR=DIR (make's command line or the environment) uses
+# a library unpacked there instead, with the release archive's layout; nothing is downloaded.
+PYTHON ?= python3
+ifeq ($(origin SCARLETBOOK_DIR),undefined)
+SCARLETBOOK_DIR := build/scarletbook
+SB_READY := $(SCARLETBOOK_DIR)/.pysacd-scarletbook
+$(SB_READY): scarletbook.lock tools/scarletbook.py
+	$(PYTHON) tools/scarletbook.py fetch --cc "$(CC)" --dest $(SCARLETBOOK_DIR)
+else
+SB_READY := $(SCARLETBOOK_DIR)/include/scarletbook.h
+endif
+SB_LIB  := $(SCARLETBOOK_DIR)/lib/libscarletbook_ffi.a
+# read when linking, after the library has been fetched
+SB_LIBS = $(shell cat $(SCARLETBOOK_DIR)/native-static-libs.txt)
+# Rust's debug information makes the library ten times larger: leave it out unless CFLAGS asks for -g
+SB_STRIP = $(if $(filter -g -g%,$(CFLAGS)),,-Wl,-S)
+override CFLAGS += -I$(SCARLETBOOK_DIR)/include
+
 SRC := $(addprefix csrc/,sacdconv.c demux.c dsp.c dstdec.c)
 # BUILD and LIB can be overridden: the wheel build (setup.py) uses a private directory.
 BUILD ?= build
@@ -82,10 +121,19 @@ ifeq ($(FLAC_LIBS),)
 	@echo "note: libFLAC not found; built without FLAC output (install flac-devel and 'make clean all')"
 endif
 
-$(LIB): $(OBJ)
-	$(CC) $(SHARED) $(CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+$(LIB): $(OBJ) $(SB_READY) $(SB_EXPORTS_DEP)
+	$(CC) $(SHARED) $(CFLAGS) $(LDFLAGS) $(SB_EXPORTS) $(SB_STRIP) -o $@ $(OBJ) \
+	    $(call SB_WHOLE,$(SB_LIB)) $(SB_LIBS) $(LDLIBS)
 
-$(BUILD)/%.o: csrc/%.c $(wildcard csrc/*.h)
+# Windows: every function declared in scarletbook.h and every sacdconv_* function defined in
+# csrc/sacdconv.c (each declaration starts its line: `type name(` or `type *name(`)
+$(BUILD)/exports.def: $(SB_READY) csrc/sacdconv.c
+	@mkdir -p $(dir $@)
+	{ echo EXPORTS; \
+	  sed -n 's/^[A-Za-z][A-Za-z0-9_ ]*[ *]\(sb_[a-z0-9_]*\)(.*/    \1/p' $(SCARLETBOOK_DIR)/include/scarletbook.h; \
+	  sed -n 's/^[A-Za-z][A-Za-z0-9_ ]*[ *]\(sacdconv_[a-z0-9_]*\)(.*/    \1/p' csrc/sacdconv.c; } > $@
+
+$(BUILD)/%.o: csrc/%.c $(wildcard csrc/*.h) $(SB_READY)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -112,7 +160,12 @@ build/fuzz_%: fuzz/fuzz_%.c $(FUZZ_SRC) $(wildcard csrc/*.h)
 	@mkdir -p $(dir $@)
 	$(FUZZ_CC) $(FUZZ_FLAGS) -o $@ $< $(FUZZ_SRC) -lm
 
+# `make clean` keeps the downloaded scarletbook library (build/scarletbook); distclean removes it too.
 clean:
-	rm -rf build src/pysacd/_sacdconv.so src/pysacd/_sacdconv.dylib src/pysacd/_sacdconv.dll
+	find build -mindepth 1 -maxdepth 1 ! -name scarletbook -exec rm -rf {} + 2>/dev/null || true
+	rm -rf src/pysacd/_sacdconv.so src/pysacd/_sacdconv.dylib src/pysacd/_sacdconv.dll
 
-.PHONY: all clean test-tools fuzz
+distclean: clean
+	rm -rf build
+
+.PHONY: all clean distclean test-tools fuzz

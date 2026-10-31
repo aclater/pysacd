@@ -170,7 +170,8 @@ jobs:
           sudo sysctl -w vm.mmap_rnd_bits=28
           export LD_PRELOAD="$(gcc -print-file-name=libtsan.so.2)"   # the runtime, not the linker script
           # Reports go to a file: pytest captures stderr, and halt_on_error exits before it can print it.
-          export TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:log_path=$RUNNER_TEMP/tsan
+          # Rust code in the scarletbook library isn't instrumented: tests/tsan.supp says why
+          export TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:log_path=$RUNNER_TEMP/tsan:suppressions=$PWD/tests/tsan.supp
           # numpy's OpenBLAS threads race in their own uninstrumented code (seen in CI); one
           # thread keeps TSan on pysacd's engine
           export OPENBLAS_NUM_THREADS=1

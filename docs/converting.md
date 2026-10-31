@@ -86,15 +86,18 @@ How it works:
 
 - **Audio:** one call into `_sacdconv.so` (through ctypes, which releases the
   GIL) produces every output for an area in one sequential pass over the image:
-  - **Reader thread:** demuxes the audio sectors into batches of 32 frames.
-  - **Worker pool** (`-j` or `--threads`, defaulting to the CPU count):
-    decodes DST, converts DSD to PCM, and lays out DSF blocks.
+  - **Reader thread:** reads the frames the outputs need through
+    [scarletbook-rs](https://github.com/aclater/scarletbook-rs) (#85), whose pool of decoding
+    threads decodes DST ahead of it, and groups them into batches of 32 frames. Where a DSDIFF
+    output keeps the DST frames as stored (edit master, `-p` without `-c`), scarletbook hands
+    out each position's stored frame next to its decoded audio, from the same read.
+  - **Worker pool** (`-j` or `--threads`, defaulting to the CPU count): converts DSD to PCM
+    and lays out DSF blocks. scarletbook's decoding pool has as many threads.
   - **Writer thread:** writes every overlapping output in order. That covers
-    DSF, DSDIFF (DSD or DST passthrough), WAV, FLAC, and optionally a plain
-    ISO copy.
+    DSF, DSDIFF (DSD or DST passthrough), WAV and FLAC.
 
-  Even a single long DST track uses every core. DST is decoded by a port of
-  FFmpeg's decoder (`csrc/dstdec.c`).
+  An ISO copy (`-I`) is written first, in one sequential pass, and the audio then read from
+  that copy, so a PS3 is read only once. Even a single long DST track uses every core.
 - **PCM (FLAC/WAV):** a three-stage linear-phase FIR (2.8224 MHz → 352.8 →
   176.4 → 88.2 kHz) with a stopband of about 105 dB and TPDF dither. The
   default gain is 0 dB, which puts SACD's 0 dB reference at −6 dBFS, so

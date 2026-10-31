@@ -66,8 +66,9 @@ conformance corpus of [sacd-spec](https://github.com/aclater/sacd-spec). Its cle
 its `CLEANROOM.md`. pysacd uses it as a released, signed binary through its C interface. Nothing
 from pysacd's DST decoder or specification goes into it, and nothing from it comes back into
 pysacd's code. Requirements pysacd finds are filed with scarletbook-rs as issues, never as
-patches. The TOC is read through it; audio still goes through pysacd's own engine, so
-`csrc/dstdec.c` and the documentation above still describe how pysacd decodes.
+patches. The TOC and the audio are read through it, so scarletbook decodes DST. `csrc/dstdec.c`
+and the documentation above describe the decoder pysacd used up to 0.2; it leaves the
+repository in the next step of #85.
 
 ## Acknowledgements
 

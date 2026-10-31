@@ -66,6 +66,10 @@ class SbTextChannel(C.Structure):
     _fields_ = [("language", C.c_uint8 * 2), ("charset", C.c_uint8), ("reserved", C.c_uint8)]
 
 
+class SbTimecode(C.Structure):
+    _fields_ = [("minutes", C.c_uint8), ("seconds", C.c_uint8), ("frames", C.c_uint8)]
+
+
 class SbAreaDetails(C.Structure):
     _fields_ = [(name, C.c_uint8) for name in (
         "version_major", "version_minor", "max_available_channels", "mute_flags",
@@ -73,7 +77,8 @@ class SbAreaDetails(C.Structure):
 
 
 # Sizes stated in scarletbook.h: a mismatch means these mirrors are wrong for the library
-_SIZES = {SbDiscInfo: 32, SbAreaInfo: 52, SbTrackInfo: 28, SbGenre: 2, SbTextChannel: 4, SbAreaDetails: 8}
+_SIZES = {SbDiscInfo: 32, SbAreaInfo: 52, SbTrackInfo: 28, SbGenre: 2, SbTextChannel: 4, SbAreaDetails: 8,
+          SbTimecode: 3}
 
 # int64_t (*SbReadAtFn)(void *user, uint64_t offset, uint8_t *buf, size_t len)
 READ_AT = C.CFUNCTYPE(C.c_int64, C.c_void_p, C.c_uint64, C.POINTER(C.c_uint8), C.c_size_t)
@@ -139,6 +144,8 @@ def _lib():
         bind("sb_area_string", S, H, U32, U32, C.c_char_p, SIZE, P(SIZE))
         bind("sb_track_info", S, H, U32, U32, P(SbTrackInfo))
         bind("sb_track_string", S, H, U32, U32, U32, C.c_char_p, SIZE, P(SIZE))
+        bind("sb_area_playtime_stored", S, H, U32, P(SbTimecode))          # 0.5.1
+        bind("sb_track_timecodes_stored", S, H, U32, U32, P(SbTimecode), P(SbTimecode))
         _bound = lib
         return lib
 
@@ -249,7 +256,7 @@ def read_toc(img: SACDImage) -> Disc:
             raise SACDError(f"not a readable Scarletbook disc ({name}: {msg})" if msg else
                             f"not a readable Scarletbook disc ({name})")
         try:
-            return _build(lib, disc, img)
+            return _build(lib, disc)
         except SbFailure as e:
             if failure:
                 raise OSError(f"reading the image failed: {failure[0]}") from e
@@ -259,42 +266,15 @@ def read_toc(img: SACDImage) -> Disc:
         fh.seek(pos)
 
 
-def _stored_timecodes(img: SACDImage, toc_lsn: int, toc_sectors: int, tracks: int):
-    """The area's timecodes as stored: (play time, [(start, duration)] per track), each the
-    (minutes, seconds, frames) bytes, or None where they can't be read.
-
-    A stopgap until scarletbook hands these out as stored (requested; see #85). scarletbook
-    gives frame counts, and a timecode like 255:255:255 (seconds and frames out of range,
-    which only hostile images have) prints differently from the same count normalised. -P,
-    cue, XML and DSDIFF markers write the stored bytes, as sacd_extract does. The bytes are
-    used only where their frame count equals scarletbook's (see _as_stored), so this reads
-    representation, never values: play time at offset 64 of the area TOC copy scarletbook
-    used, track times in its SACDTRL2 sector (start at 8 + 4i, duration at 1028 + 4i).
-    """
-    from .toc import SACDError
-
-    try:
-        data = img.read_sectors(toc_lsn, min(toc_sectors, 128))
-    except (OSError, SACDError):
-        return None, []
-    play = tuple(data[64:67]) if len(data) >= 67 else None
-    times: list = []
-    for p in range(2048, len(data) - 2047, 2048):
-        if data[p:p + 8] == b"SACDTRL2":
-            for i in range(min(tracks, 255)):
-                times.append((tuple(data[p + 8 + 4 * i:p + 11 + 4 * i]),
-                              tuple(data[p + 1028 + 4 * i:p + 1031 + 4 * i])))
-            break
-    return play, times
-
-
 def _timecode(frames: int):
     from .toc import FRAME_RATE, Timecode
     return Timecode(frames // (60 * FRAME_RATE), frames // FRAME_RATE % 60, frames % FRAME_RATE)
 
 
 def _as_stored(frames: int, stored):
-    """scarletbook's frame count, written as the disc stores it when that's the same count."""
+    """scarletbook's frame count, written as the disc stores it when that's the same count: a
+    stored 255:255:255 stays that (as sacd_extract and pysacd 0.2 print it in -P, cue, XML and
+    DSDIFF markers), and a time scarletbook cut to the area's play time is written as cut."""
     from .toc import Timecode
     if stored is not None and len(stored) == 3:
         t = Timecode(*stored)
@@ -303,7 +283,7 @@ def _as_stored(frames: int, stored):
     return _timecode(frames)
 
 
-def _build(lib, disc, img: SACDImage) -> Disc:
+def _build(lib, disc) -> Disc:
     from .toc import Area, Disc, Genre, Locale, Track
 
     info = SbDiscInfo()
@@ -360,7 +340,9 @@ def _build(lib, disc, img: SACDImage) -> Disc:
         _check(lib, lib.sb_disc_area(disc, index, C.byref(a)), "sb_disc_area")
         d = SbAreaDetails()
         _check(lib, lib.sb_area_details(disc, a.slot, C.byref(d)), "sb_area_details")
-        stored_play, stored_times = _stored_timecodes(img, a.toc_lsn, a.toc_sectors, a.track_count)
+        stored = SbTimecode()
+        _check(lib, lib.sb_area_playtime_stored(disc, a.slot, C.byref(stored)), "sb_area_playtime_stored")
+        stored_play = (stored.minutes, stored.seconds, stored.frames)
         area_locales = []
         for i in range(min(d.text_channel_count, 10)):
             ch = SbTextChannel()
@@ -392,6 +374,9 @@ def _build(lib, disc, img: SACDImage) -> Disc:
         for number in range(1, a.track_count + 1):
             t = SbTrackInfo()
             _check(lib, lib.sb_track_info(disc, a.slot, number, C.byref(t)), "sb_track_info")
+            ts, td = SbTimecode(), SbTimecode()
+            _check(lib, lib.sb_track_timecodes_stored(disc, a.slot, number, C.byref(ts), C.byref(td)),
+                   "sb_track_timecodes_stored")
             track_text = {}
             for i, name in enumerate(_TRACK_TEXT):
                 s = _text(lib, lib.sb_track_string, disc, a.slot, number, i)
@@ -406,9 +391,8 @@ def _build(lib, disc, img: SACDImage) -> Disc:
                 number=t.number,
                 start_lsn=t.start_lsn,
                 length_lsn=t.length_sectors,
-                start=_as_stored(t.start_frame, stored_times[number - 1][0] if number <= len(stored_times) else None),
-                duration=_as_stored(t.duration_frames,
-                                    stored_times[number - 1][1] if number <= len(stored_times) else None),
+                start=_as_stored(t.start_frame, (ts.minutes, ts.seconds, ts.frames)),
+                duration=_as_stored(t.duration_frames, (td.minutes, td.seconds, td.frames)),
                 flags=t.duration_flags,
                 isrc=isrc,
                 genre=Genre(t.genre_category, t.genre_index) if t.has_genre else None,

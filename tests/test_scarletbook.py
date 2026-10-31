@@ -169,7 +169,7 @@ class Engine(unittest.TestCase):
         self.assertEqual(_native._version_tuple("0.5.0"), (0, 5, 0))
         self.assertEqual(_native._version_tuple("0.10.1-rc.1+abc"), (0, 10, 1))
         self.assertEqual(_native._version_tuple("garbage"), ())
-        self.assertLess(_native._version_tuple("0.4.1"), _native.SB_MIN_VERSION)
+        self.assertLess(_native._version_tuple("0.5.0"), _native.SB_MIN_VERSION)
 
     def test_old_or_foreign_library_is_refused(self):
         class Fn:
@@ -185,9 +185,9 @@ class Engine(unittest.TestCase):
 
         with self.assertRaisesRegex(_native.NativeError, "C ABI 1"):
             _native._check_scarletbook(Lib(1, b"0.3.0"), "lib")
-        with self.assertRaisesRegex(_native.NativeError, re.escape("0.4.1, this pysacd needs 0.5.0")):
-            _native._check_scarletbook(Lib(2, b"0.4.1"), "lib")
-        _native._check_scarletbook(Lib(2, b"0.5.0"), "lib")
+        with self.assertRaisesRegex(_native.NativeError, re.escape("0.5.0, this pysacd needs 0.5.1")):
+            _native._check_scarletbook(Lib(2, b"0.5.0"), "lib")
+        _native._check_scarletbook(Lib(2, b"0.5.1"), "lib")
 
 
 if __name__ == "__main__":

@@ -93,6 +93,12 @@ class SACDError(Exception):
     """Raised when an image is not a readable Scarletbook disc."""
 
 
+# Which parser SACDImage.read_toc() uses, unless PYSACD_TOC_ENGINE says otherwise (#85):
+# "scarletbook" (scarletbook-rs, through the native engine) or "python" (pysacd's own, below).
+TOC_ENGINES = ("scarletbook", "python")
+DEFAULT_TOC_ENGINE = "scarletbook"
+
+
 @dataclass(frozen=True)
 class Timecode:
     minutes: int
@@ -383,7 +389,24 @@ class SACDImage:
 
     # ------------------------------------------------------------ parsing
 
-    def read_toc(self) -> Disc:
+    def read_toc(self, engine: str | None = None) -> Disc:
+        """Parse the TOC with `engine`: "scarletbook" (scarletbook-rs, through the native engine)
+        or "python" (pysacd's own parser below). The default is $PYSACD_TOC_ENGINE, else
+        DEFAULT_TOC_ENGINE (#85)."""
+        engine = engine or os.environ.get("PYSACD_TOC_ENGINE") or DEFAULT_TOC_ENGINE
+        if engine == "python":
+            return self.read_toc_python()
+        if engine != "scarletbook":
+            raise ValueError(f"unknown TOC engine {engine!r} (scarletbook or python)")
+        from . import _native, _sbtoc
+        try:
+            return _sbtoc.read_toc(self)
+        except _native.NativeError as e:
+            raise SACDError(f"the TOC needs the native engine, which isn't available ({e}); "
+                            "PYSACD_TOC_ENGINE=python uses pysacd's own parser") from e
+
+    def read_toc_python(self) -> Disc:
+        """pysacd's own TOC parser, the default before 0.3.0 (#85)."""
         mtoc = self.read_sectors(START_OF_MASTER_TOC, MASTER_TOC_LEN)
         disc = _parse_master_toc(mtoc)
 
@@ -639,10 +662,11 @@ def _parse_track_text(data: bytes, base: int, track_count: int, codec: str,
                 q = _skip_zeros(data, q + len(raw))
 
 
-def read_toc(source: str | os.PathLike | BinaryIO) -> Disc:
-    """Open an SACD ISO (path or binary file object) and return its parsed TOC."""
+def read_toc(source: str | os.PathLike | BinaryIO, engine: str | None = None) -> Disc:
+    """Open an SACD ISO (path or binary file object) and return its parsed TOC (see
+    SACDImage.read_toc for `engine`)."""
     with SACDImage(source) as img:
-        return img.read_toc()
+        return img.read_toc(engine)
 
 
 def track_range(area: Area, i: int, trimming: bool) -> tuple[int, int]:

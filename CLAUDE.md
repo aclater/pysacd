@@ -7,7 +7,10 @@ Instructions for coding agents working in this repository. Read
 
 A toolkit for SACD (Scarletbook) disc images. It has four parts:
 
-- a pure-Python TOC reader (`src/pysacd/toc.py`);
+- a TOC reader (`src/pysacd/toc.py`): the Disc, Area and Track objects, read
+  through scarletbook-rs by default (`src/pysacd/_sbtoc.py`), or by pysacd's own
+  parser with `PYSACD_TOC_ENGINE=python` (#85). Both must give the same objects:
+  `tests/test_toc_engines.py`, `tools/toc_compare.py`;
 - a multithreaded C engine (`csrc/`, built by `make`, loaded through ctypes)
   that writes DSF, DSDIFF, WAV and FLAC in one pass per area. It links the
   scarletbook-rs C library statically (pinned in `scarletbook.lock`), which is

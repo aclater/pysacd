@@ -79,7 +79,9 @@ def _area() -> bytes:
 
 def make_image(sector: int = 2048, offset: int = 0) -> bytes:
     img = bytearray((AREA_TOC + 2 * AREA_SIZE) * S)
-    img[510 * S:520 * S] = _master()
+    # the master TOC and its two copies, as on a disc (scarletbook compares them)
+    for lsn in (510, 520, 530):
+        img[lsn * S:(lsn + 10) * S] = _master()
     img[AREA_TOC * S:(AREA_TOC + AREA_SIZE) * S] = _area()
     img[(AREA_TOC + AREA_SIZE) * S:] = _area()
     if sector == 2048:
@@ -133,7 +135,9 @@ class SyntheticTOC(unittest.TestCase):
         img = bytearray(make_image())
         img[(AREA_TOC + AREA_SIZE) * S + 100] ^= 0xFF
         disc = read_toc(io.BytesIO(bytes(img)))
-        self.assertIn("differ", disc.warnings[0])
+        # pysacd's parser files it under the disc, scarletbook under the area (#85)
+        warnings = disc.warnings + [w for a in disc.areas for w in a.warnings]
+        self.assertTrue(any("differ" in w for w in warnings), warnings)
 
 
 @unittest.skipUnless(os.environ.get("PYSACD_TEST_ISO"), "PYSACD_TEST_ISO not set")

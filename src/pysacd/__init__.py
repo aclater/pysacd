@@ -1,4 +1,4 @@
-"""Pure-Python reader for SACD (Scarletbook) ISO images."""
+"""SACD (Scarletbook) ISO images from Python: TOC, extraction and conversion."""
 
 from .toc import (
     Area,

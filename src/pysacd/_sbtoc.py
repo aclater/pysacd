@@ -1,0 +1,426 @@
+"""The TOC read through scarletbook-rs (#85, phase 2): ctypes on the engine's sb_* functions.
+
+scarletbook-rs is linked into the native engine (docs/development.md, "The scarletbook
+library"), which exports its C ABI 2. This module opens an image with it and builds the same
+Disc, Area and Track objects as pysacd's own parser in toc.py, field for field, so nothing
+downstream (names, tags, cue, XML, -P text, JSON, fingerprints) can tell which one read the
+TOC. Where scarletbook hands back the stored bytes (catalogue numbers, language codes,
+manufacturer data), they are rendered exactly as toc.py renders them. Its warnings are
+diagnostic codes of the sacd-spec specification, with their area, track and LSN.
+
+Bindings follow scarletbook's README ("Using from Python (ctypes)") and scarletbook.h.
+"""
+
+from __future__ import annotations
+
+import ctypes as C
+import logging
+import os
+import threading
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .toc import Disc, SACDImage
+
+log = logging.getLogger("pysacd.toc")
+
+# SbStatus values used here
+OK, END, ABSENT = 0, 1, 2
+BUFFER_TOO_SMALL = -11
+NO_SUCH_AREA = -8
+MANUFACTURER_BYTES = 2040   # SB_MANUFACTURER_BYTES
+MAX_STRING = 1 << 20        # far beyond any TOC string; a bound on what a buggy length could ask for
+
+
+class SbDiscInfo(C.Structure):
+    _fields_ = [("sectors", C.c_uint64), ("sector_size", C.c_uint32), ("version_major", C.c_uint8),
+                ("version_minor", C.c_uint8), ("album_set_size", C.c_uint16),
+                ("album_sequence_number", C.c_uint16), ("hybrid", C.c_uint8),
+                ("manufacturer_sector", C.c_uint8), ("year", C.c_uint16), ("month", C.c_uint8),
+                ("day", C.c_uint8), ("area_count", C.c_uint32), ("warning_count", C.c_uint32)]
+
+
+class SbAreaInfo(C.Structure):
+    _fields_ = [(name, C.c_uint32) for name in (
+        "slot", "kind_channels", "toc_lsn", "toc_sectors", "channel_count", "area_config",
+        "sample_frequency_code", "frame_format", "max_byte_rate", "playtime_frames",
+        "audio_start_lsn", "audio_end_lsn", "track_count")]
+
+
+class SbTrackInfo(C.Structure):
+    _fields_ = [("number", C.c_uint32), ("start_lsn", C.c_uint32), ("length_sectors", C.c_uint32),
+                ("start_frame", C.c_uint32), ("duration_frames", C.c_uint32),
+                ("start_flags", C.c_uint8), ("duration_flags", C.c_uint8), ("has_genre", C.c_uint8),
+                ("genre_category", C.c_uint8), ("genre_index", C.c_uint8), ("reserved", C.c_uint8 * 3)]
+
+
+class SbWarning(C.Structure):
+    _fields_ = [("lsn", C.c_int64), ("slot", C.c_int32), ("track", C.c_uint32), ("code", C.c_char_p)]
+
+
+class SbGenre(C.Structure):
+    _fields_ = [("category", C.c_uint8), ("index", C.c_uint8)]
+
+
+class SbTextChannel(C.Structure):
+    _fields_ = [("language", C.c_uint8 * 2), ("charset", C.c_uint8), ("reserved", C.c_uint8)]
+
+
+class SbAreaDetails(C.Structure):
+    _fields_ = [(name, C.c_uint8) for name in (
+        "version_major", "version_minor", "max_available_channels", "mute_flags",
+        "track_attribute", "track_offset", "text_channel_count", "text_charset")]
+
+
+# Sizes stated in scarletbook.h: a mismatch means these mirrors are wrong for the library
+_SIZES = {SbDiscInfo: 32, SbAreaInfo: 52, SbTrackInfo: 28, SbGenre: 2, SbTextChannel: 4, SbAreaDetails: 8}
+
+# int64_t (*SbReadAtFn)(void *user, uint64_t offset, uint8_t *buf, size_t len)
+READ_AT = C.CFUNCTYPE(C.c_int64, C.c_void_p, C.c_uint64, C.POINTER(C.c_uint8), C.c_size_t)
+# void (*SbLogFn)(void *user, int32_t level, const char *message)
+LOG_FN = C.CFUNCTYPE(None, C.c_void_p, C.c_int32, C.c_char_p)
+
+# SB_LOG_* -> logging levels
+_LEVELS = {1: logging.ERROR, 2: logging.WARNING, 3: logging.INFO, 4: logging.DEBUG, 5: 5}
+
+# SbDiscString 0..15, in the order of toc._MASTER_TEXT_FIELDS
+_DISC_TEXT = (
+    "album_title", "album_artist", "album_publisher", "album_copyright",
+    "album_title_phonetic", "album_artist_phonetic", "album_publisher_phonetic", "album_copyright_phonetic",
+    "disc_title", "disc_artist", "disc_publisher", "disc_copyright",
+    "disc_title_phonetic", "disc_artist_phonetic", "disc_publisher_phonetic", "disc_copyright_phonetic",
+)
+ALBUM_CATALOG, DISC_CATALOG = 16, 17
+# SbTrackString 0..13: toc.TRACK_TEXT_TYPES' names in type order (0x01-0x07, 0x81-0x87); 14 is the ISRC
+_TRACK_TEXT = (
+    "title", "performer", "songwriter", "composer", "arranger", "message", "extra_message",
+    "title_phonetic", "performer_phonetic", "songwriter_phonetic", "composer_phonetic",
+    "arranger_phonetic", "message_phonetic", "extra_message_phonetic",
+)
+TRACK_ISRC = 14
+SLOT_NAMES = {0: "2ch", 1: "multichannel"}
+
+_bound: Any = None
+_bind_lock = threading.Lock()
+
+
+def _lib():
+    """The engine library, with the sb_* functions this module calls given their types."""
+    global _bound
+    with _bind_lock:
+        if _bound is not None:
+            return _bound
+        from . import _native
+        lib = _native._load()
+        for struct, size in _SIZES.items():
+            if C.sizeof(struct) != size:
+                raise _native.NativeError(f"{struct.__name__} is {C.sizeof(struct)} bytes, scarletbook.h says {size}")
+        H, S, P, U32, SIZE = C.c_void_p, C.c_int32, C.POINTER, C.c_uint32, C.c_size_t
+
+        def bind(name, restype, *argtypes):
+            f = getattr(lib, name)
+            f.restype, f.argtypes = restype, list(argtypes)
+
+        bind("sb_last_error_message", C.c_char_p)
+        bind("sb_status_name", C.c_char_p, C.c_int32)
+        bind("sb_disc_open_callbacks_at_with_log", S, READ_AT, C.c_uint64, H, LOG_FN, H, C.c_int32, P(H))
+        bind("sb_disc_free", None, H)
+        bind("sb_disc_info", S, H, P(SbDiscInfo))
+        bind("sb_disc_string", S, H, U32, C.c_char_p, SIZE, P(SIZE))
+        bind("sb_disc_area", S, H, U32, P(SbAreaInfo))
+        bind("sb_disc_warning", S, H, U32, P(SbWarning))
+        bind("sb_disc_genre", S, H, U32, U32, P(SbGenre))
+        bind("sb_disc_text_channel_count", S, H, P(U32))
+        bind("sb_disc_text_channel", S, H, U32, P(SbTextChannel))
+        bind("sb_disc_catalog_number_stored", S, H, U32, C.c_char_p, SIZE, P(SIZE))
+        bind("sb_disc_manufacturer", S, H, C.c_char_p, SIZE, P(SIZE))
+        bind("sb_area_details", S, H, U32, P(SbAreaDetails))
+        bind("sb_area_text_channel", S, H, U32, U32, P(SbTextChannel))
+        bind("sb_area_string", S, H, U32, U32, C.c_char_p, SIZE, P(SIZE))
+        bind("sb_track_info", S, H, U32, U32, P(SbTrackInfo))
+        bind("sb_track_string", S, H, U32, U32, U32, C.c_char_p, SIZE, P(SIZE))
+        _bound = lib
+        return lib
+
+
+class SbFailure(Exception):
+    def __init__(self, status: int, message: str):
+        super().__init__(message)
+        self.status = status
+
+
+def _check(lib, status: int, what: str) -> int:
+    if status < 0:
+        name = (lib.sb_status_name(status) or b"?").decode(errors="replace")
+        msg = (lib.sb_last_error_message() or b"").decode(errors="replace")
+        raise SbFailure(status, f"{what}: {name}: {msg}" if msg else f"{what}: {name}")
+    return status
+
+
+def _copy(lib, fn, *args, raw: bool = False) -> bytes | None:
+    """A copy-out string (scarletbook.h, "Strings"): None when absent, else its bytes."""
+    n = C.c_size_t()
+    status = fn(*args, None, 0, C.byref(n))
+    if status == ABSENT:
+        return None
+    if status != BUFFER_TOO_SMALL:
+        _check(lib, status, fn.__name__)
+    if n.value > MAX_STRING:
+        raise SbFailure(BUFFER_TOO_SMALL, f"{fn.__name__}: a string of {n.value} bytes")
+    buf = C.create_string_buffer(n.value + 1)
+    _check(lib, fn(*args, buf, len(buf), C.byref(n)), fn.__name__)
+    return buf.raw[:n.value]
+
+
+def _text(lib, fn, *args) -> str | None:
+    data = _copy(lib, fn, *args)
+    # UTF-8 from the library; an empty string is no string, as toc.py treats it
+    return data.decode("utf-8", errors="replace") or None if data is not None else None
+
+
+def _language(ch: SbTextChannel) -> str:
+    # toc._locales: the two bytes as latin-1, trailing NULs and spaces removed
+    return bytes(ch.language).decode("latin-1").rstrip("\0 ")
+
+
+def _fixed_str(raw: bytes) -> str:
+    # toc._fixed_str, on bytes already cut at the first NUL
+    return raw.split(b"\0", 1)[0].decode("latin-1").strip()
+
+
+def _warning_text(w: SbWarning) -> str:
+    code = (w.code or b"?").decode(errors="replace")
+    where = []
+    if w.slot >= 0:
+        where.append(f"{SLOT_NAMES.get(w.slot, w.slot)} area")
+    if w.track:
+        where.append(f"track {w.track}")
+    if w.lsn >= 0:
+        where.append(f"LSN {w.lsn}")
+    return f"{code} ({', '.join(where)})" if where else code
+
+
+def read_toc(img: SACDImage) -> Disc:
+    """Read img's TOC through scarletbook. Raises toc.SACDError when scarletbook rejects the image,
+    NativeError when the engine can't be loaded."""
+    from .toc import SACDError
+
+    lib = _lib()
+    fh = img._fh
+    pos = fh.tell()
+    size = fh.seek(0, os.SEEK_END)
+    fh.seek(pos)
+    lock = threading.Lock()
+    failure: list[str] = []
+
+    def read_at(_user, offset, buf, length):
+        # never raise into C (scarletbook.h: callbacks must not unwind)
+        try:
+            with lock:
+                fh.seek(offset)
+                data = fh.read(length)
+            n = min(len(data), length)
+            C.memmove(buf, data, n)
+            return n
+        except Exception as e:  # noqa: BLE001 - nothing may unwind into C; the failure is re-raised below
+            log.debug("TOC read of %d bytes at offset %d failed: %s", length, offset, e)
+            failure.append(str(e))
+            return -1
+
+    def on_log(_user, level, message):
+        try:
+            # at debug: what scarletbook warns about also comes back as the disc's warnings
+            log.log(min(_LEVELS.get(level, logging.DEBUG), logging.DEBUG), "scarletbook: %s",
+                    (message or b"").decode(errors="replace"))
+        except Exception:  # noqa: BLE001, S110 - a log line that can't be logged mustn't unwind into C
+            pass
+
+    callbacks = (READ_AT(read_at), LOG_FN(on_log))    # alive until the disc is freed
+    level = 4 if log.isEnabledFor(logging.DEBUG) else 0
+    disc = C.c_void_p()
+    try:
+        status = lib.sb_disc_open_callbacks_at_with_log(callbacks[0], size, None, callbacks[1], None, level,
+                                                        C.byref(disc))
+        if status < 0:
+            msg = (lib.sb_last_error_message() or b"").decode(errors="replace")
+            name = (lib.sb_status_name(status) or b"?").decode(errors="replace")
+            if failure:
+                raise OSError(f"reading the image failed: {failure[0]}")
+            raise SACDError(f"not a readable Scarletbook disc ({name}: {msg})" if msg else
+                            f"not a readable Scarletbook disc ({name})")
+        try:
+            return _build(lib, disc, img)
+        except SbFailure as e:
+            if failure:
+                raise OSError(f"reading the image failed: {failure[0]}") from e
+            raise SACDError(str(e)) from e
+    finally:
+        lib.sb_disc_free(disc)
+        fh.seek(pos)
+
+
+def _stored_timecodes(img: SACDImage, toc_lsn: int, toc_sectors: int, tracks: int):
+    """The area's timecodes as stored: (play time, [(start, duration)] per track), each the
+    (minutes, seconds, frames) bytes, or None where they can't be read.
+
+    A stopgap until scarletbook hands these out as stored (requested; see #85). scarletbook
+    gives frame counts, and a timecode like 255:255:255 (seconds and frames out of range,
+    which only hostile images have) prints differently from the same count normalised. -P,
+    cue, XML and DSDIFF markers write the stored bytes, as sacd_extract does. The bytes are
+    used only where their frame count equals scarletbook's (see _as_stored), so this reads
+    representation, never values: play time at offset 64 of the area TOC copy scarletbook
+    used, track times in its SACDTRL2 sector (start at 8 + 4i, duration at 1028 + 4i).
+    """
+    from .toc import SACDError
+
+    try:
+        data = img.read_sectors(toc_lsn, min(toc_sectors, 128))
+    except (OSError, SACDError):
+        return None, []
+    play = tuple(data[64:67]) if len(data) >= 67 else None
+    times: list = []
+    for p in range(2048, len(data) - 2047, 2048):
+        if data[p:p + 8] == b"SACDTRL2":
+            for i in range(min(tracks, 255)):
+                times.append((tuple(data[p + 8 + 4 * i:p + 11 + 4 * i]),
+                              tuple(data[p + 1028 + 4 * i:p + 1031 + 4 * i])))
+            break
+    return play, times
+
+
+def _timecode(frames: int):
+    from .toc import FRAME_RATE, Timecode
+    return Timecode(frames // (60 * FRAME_RATE), frames // FRAME_RATE % 60, frames % FRAME_RATE)
+
+
+def _as_stored(frames: int, stored):
+    """scarletbook's frame count, written as the disc stores it when that's the same count."""
+    from .toc import Timecode
+    if stored is not None and len(stored) == 3:
+        t = Timecode(*stored)
+        if t.total_frames == frames:
+            return t
+    return _timecode(frames)
+
+
+def _build(lib, disc, img: SACDImage) -> Disc:
+    from .toc import Area, Disc, Genre, Locale, Track
+
+    info = SbDiscInfo()
+    _check(lib, lib.sb_disc_info(disc, C.byref(info)), "sb_disc_info")
+
+    count = C.c_uint32()
+    _check(lib, lib.sb_disc_text_channel_count(disc, C.byref(count)), "sb_disc_text_channel_count")
+    locales = []
+    for i in range(min(count.value, 8)):
+        ch = SbTextChannel()
+        _check(lib, lib.sb_disc_text_channel(disc, i, C.byref(ch)), "sb_disc_text_channel")
+        locales.append(Locale(_language(ch), ch.charset))
+
+    text = {}
+    for i, name in enumerate(_DISC_TEXT):
+        s = _text(lib, lib.sb_disc_string, disc, i)
+        if s:
+            text[name] = s
+
+    def genres(which: int) -> list[Genre]:
+        out = []
+        for i in range(4):
+            g = SbGenre()
+            _check(lib, lib.sb_disc_genre(disc, which, i, C.byref(g)), "sb_disc_genre")
+            out.append(Genre(g.category, g.index))
+        return out
+
+    def catalog(field: int) -> str:
+        return _fixed_str(_copy(lib, lib.sb_disc_catalog_number_stored, disc, field) or b"")
+
+    manufacturer = b""
+    if info.manufacturer_sector:
+        manufacturer = _copy(lib, lib.sb_disc_manufacturer, disc) or b""
+
+    out = Disc(
+        version=(info.version_major, info.version_minor),
+        album_set_size=info.album_set_size,
+        album_sequence_number=info.album_sequence_number,
+        album_catalog_number=catalog(ALBUM_CATALOG),
+        album_genres=genres(0),
+        disc_catalog_number=catalog(DISC_CATALOG),
+        disc_genres=genres(1),
+        hybrid=bool(info.hybrid),
+        date=(info.year, info.month, info.day),
+        locales=locales,
+        text=text,
+        manufacturer_info=manufacturer,
+        areas=[],
+    )
+
+    by_slot = {}
+    for index in range(info.area_count):
+        a = SbAreaInfo()
+        _check(lib, lib.sb_disc_area(disc, index, C.byref(a)), "sb_disc_area")
+        d = SbAreaDetails()
+        _check(lib, lib.sb_area_details(disc, a.slot, C.byref(d)), "sb_area_details")
+        stored_play, stored_times = _stored_timecodes(img, a.toc_lsn, a.toc_sectors, a.track_count)
+        area_locales = []
+        for i in range(min(d.text_channel_count, 10)):
+            ch = SbTextChannel()
+            _check(lib, lib.sb_area_text_channel(disc, a.slot, i, C.byref(ch)), "sb_area_text_channel")
+            area_locales.append(Locale(_language(ch), ch.charset))
+        area = Area(
+            kind="TWOCHTOC" if a.kind_channels == 2 else "MULCHTOC",
+            version=(d.version_major, d.version_minor),
+            toc_start=a.toc_lsn,
+            toc_size=a.toc_sectors,
+            max_byte_rate=a.max_byte_rate,
+            sample_frequency_code=a.sample_frequency_code,
+            frame_format=a.frame_format & 0x0F,
+            channel_count=a.channel_count,
+            area_config=a.area_config,
+            max_available_channels=d.max_available_channels,
+            area_mute_flags=d.mute_flags,
+            track_attribute=d.track_attribute,
+            total_playtime=_as_stored(a.playtime_frames, stored_play),
+            track_offset=d.track_offset,
+            track_start=a.audio_start_lsn,
+            track_end=a.audio_end_lsn,
+            locales=area_locales,
+            description=_text(lib, lib.sb_area_string, disc, a.slot, 0),
+            copyright=_text(lib, lib.sb_area_string, disc, a.slot, 1),
+            description_phonetic=_text(lib, lib.sb_area_string, disc, a.slot, 2),
+            copyright_phonetic=_text(lib, lib.sb_area_string, disc, a.slot, 3),
+        )
+        for number in range(1, a.track_count + 1):
+            t = SbTrackInfo()
+            _check(lib, lib.sb_track_info(disc, a.slot, number, C.byref(t)), "sb_track_info")
+            track_text = {}
+            for i, name in enumerate(_TRACK_TEXT):
+                s = _text(lib, lib.sb_track_string, disc, a.slot, number, i)
+                if s:
+                    track_text[name] = s
+            isrc = None
+            if t.has_genre:     # the ISRCs and genres share the SACD_IGL sectors
+                raw_isrc = _copy(lib, lib.sb_track_string, disc, a.slot, number, TRACK_ISRC) or b""
+                # UTF-8 from the library; then toc.py's rendering (cut at a NUL, spaces trimmed)
+                isrc = raw_isrc.decode("utf-8", errors="replace").split("\0", 1)[0].strip() or None
+            area.tracks.append(Track(
+                number=t.number,
+                start_lsn=t.start_lsn,
+                length_lsn=t.length_sectors,
+                start=_as_stored(t.start_frame, stored_times[number - 1][0] if number <= len(stored_times) else None),
+                duration=_as_stored(t.duration_frames,
+                                    stored_times[number - 1][1] if number <= len(stored_times) else None),
+                flags=t.duration_flags,
+                isrc=isrc,
+                genre=Genre(t.genre_category, t.genre_index) if t.has_genre else None,
+                text=track_text,
+                start_flags=t.start_flags,
+            ))
+        by_slot[a.slot] = area
+        out.areas.append(area)
+
+    for i in range(info.warning_count):
+        w = SbWarning()
+        _check(lib, lib.sb_disc_warning(disc, i, C.byref(w)), "sb_disc_warning")
+        target = by_slot.get(w.slot)
+        (target.warnings if target is not None else out.warnings).append(_warning_text(w))
+    return out

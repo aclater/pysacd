@@ -1,4 +1,4 @@
 # The sdist builds the engine from source (setup.py runs make).
-include Makefile COPYING
-recursive-include csrc *.c *.h
+include Makefile COPYING scarletbook.lock tools/scarletbook.py
+recursive-include csrc *.c *.h *.map *.darwin
 recursive-include licenses *

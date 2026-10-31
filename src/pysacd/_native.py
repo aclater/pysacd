@@ -107,6 +107,7 @@ def _load():
         lib.sacdconv_has_flac.restype = ctypes.c_int
         lib.sacdconv_build_info.restype = ctypes.c_char_p
         _check_abi(lib, path)
+        _check_scarletbook(lib, path)
         _lib = lib
     return _lib
 
@@ -138,6 +139,53 @@ def _check_abi(lib, path) -> None:
                               f"(engine {got}, pysacd {want}); rebuild it (make clean all)")
 
 
+# The scarletbook-rs C library linked into the engine (#85): its C ABI version, and the oldest
+# release with every call pysacd uses (cancellation, progress, stored frames in one pass)
+SB_ABI = 2
+SB_MIN_VERSION = (0, 5, 0)
+
+
+def _version_tuple(text: str) -> tuple[int, ...]:
+    core = text.split("+", 1)[0].split("-", 1)[0]
+    try:
+        return tuple(int(x) for x in core.split("."))
+    except ValueError:
+        return ()
+
+
+def _check_scarletbook(lib, path) -> None:
+    """Refuse an engine linked with a scarletbook of another C ABI, or older than pysacd needs.
+    The build already checks the header's SB_ABI_VERSION; this checks the library itself, which
+    a SCARLETBOOK_DIR build may take from anywhere."""
+    try:
+        lib.sb_abi_version.restype = ctypes.c_uint32
+        lib.sb_abi_version.argtypes = []
+        lib.sb_version.restype = ctypes.c_char_p
+        lib.sb_version.argtypes = []
+        lib.sb_build_info.restype = ctypes.c_char_p
+        lib.sb_build_info.argtypes = []
+    except AttributeError:
+        raise NativeError(f"{path} has no scarletbook library linked in; rebuild it (make clean all)") from None
+    abi = lib.sb_abi_version()
+    if abi != SB_ABI:
+        raise NativeError(f"{path} is linked with scarletbook C ABI {abi}, this pysacd needs {SB_ABI}")
+    version = lib.sb_version().decode(errors="replace")
+    if _version_tuple(version) < SB_MIN_VERSION:
+        raise NativeError(f"{path} is linked with scarletbook {version}, this pysacd needs "
+                          f"{'.'.join(map(str, SB_MIN_VERSION))} or later")
+    log.debug("scarletbook: %s", lib.sb_build_info().decode(errors="replace"))
+
+
+def scarletbook_version() -> str:
+    """The version of the scarletbook-rs library linked into the engine."""
+    return _load().sb_version().decode(errors="replace")
+
+
+def scarletbook_build_info() -> str:
+    """How that library was built (version, target, features, compiler, commit), for bug reports."""
+    return _load().sb_build_info().decode(errors="replace")
+
+
 def has_flac() -> bool:
     return bool(_load().sacdconv_has_flac())
 
@@ -147,8 +195,9 @@ def library_path() -> str:
 
 
 def build_info() -> str:
-    """Compiler and features the engine was built with, for diagnostic logs."""
-    return _load().sacdconv_build_info().decode()
+    """Compiler and features the engine was built with, and the scarletbook release linked into
+    it, for diagnostic logs."""
+    return f"{_load().sacdconv_build_info().decode()}, scarletbook {scarletbook_version()}"
 
 
 @dataclass

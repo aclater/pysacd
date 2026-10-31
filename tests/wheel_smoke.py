@@ -6,7 +6,8 @@
 Builds a small synthetic plain-DSD stereo disc (no real disc data), then runs the
 installed console scripts on it: `pysacd toc`, `pysacd-extract -s` (DSF) and
 `pysacd convert -f flac`. It checks that the engine loads, has FLAC, and writes
-non-empty files. Uses only the installed package plus tests/sacdgen.py.
+non-empty files, and that the engine has the scarletbook release pinned in scarletbook.lock
+linked in. Uses only the installed package plus tests/sacdgen.py.
 """
 
 from __future__ import annotations
@@ -33,6 +34,17 @@ def run(*cmd: str, cwd: Path) -> None:
 def main() -> int:
     from pysacd import _native
     print("engine:", _native.build_info())
+    print("scarletbook:", _native.scarletbook_build_info())
+    # the wheel must carry the scarletbook release pinned (and attested) in scarletbook.lock (#85)
+    lock = Path(__file__).resolve().parent.parent / "scarletbook.lock"
+    if lock.is_file():
+        import json
+        pinned = json.loads(lock.read_text(encoding="utf-8"))
+        info = _native.scarletbook_build_info()
+        if f"version={pinned['version']} " not in info + " " or f"commit={pinned['commit']}" not in info:
+            print(f"the engine's scarletbook ({info}) is not the pinned {pinned['version']} "
+                  f"({pinned['commit']})", file=sys.stderr)
+            return 1
     if not _native.has_flac():
         print("the wheel's engine has no FLAC support", file=sys.stderr)
         return 1

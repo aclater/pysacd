@@ -41,6 +41,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [FLAC instead of DSF](performance.md#flac-instead-of-dsf)
   - [Hardening](performance.md#hardening)
   - [Through scarletbook-rs (0.3.0)](performance.md#through-scarletbook-rs-030)
+  - [The decoding pool (#94)](performance.md#the-decoding-pool-94)
   - [Reading a TOC: in-process against a subprocess](performance.md#reading-a-toc-in-process-against-a-subprocess)
 - **[Security](security.md)**: hostile discs, servers and text.
   - [Hostile text](security.md#hostile-text)

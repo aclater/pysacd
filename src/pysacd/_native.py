@@ -84,6 +84,12 @@ class _Area(ctypes.Structure):
         ("provisional", ctypes.c_int),
         ("refuted_from", ctypes.c_uint32),
         ("seek_min_gap", ctypes.c_int64),
+        # #93 workaround: the frame tested for DSD silence (in) and the result; missing frames
+        ("check_frame", ctypes.c_uint32),
+        ("check_silent", ctypes.c_int),
+        ("missing_count", ctypes.c_uint32),
+        ("missing_first", ctypes.c_uint32),
+        ("missing_last", ctypes.c_uint32),
     ]
 
 
@@ -120,7 +126,7 @@ def _load():
     return _lib
 
 
-ABI = 4    # SACDCONV_ABI in csrc/sacdconv.c
+ABI = 5    # SACDCONV_ABI in csrc/sacdconv.c
 
 
 def _layout(struct) -> list[int]:
@@ -243,6 +249,13 @@ class RunInfo:
     provisional: bool = False
     confirmed: bool = False
     refuted_from: int | None = None
+    # missing frames in the outputs' ranges: how many, the first and the last (None: none)
+    missing: int = 0
+    missing_first: int | None = None
+    missing_last: int | None = None
+    # #93 workaround: the area's next-to-last frame is DSD silence (True), isn't (False), or
+    # wasn't read or can't be tested (None: DST kept as stored)
+    before_last_silent: bool | None = None
 
 
 @dataclass
@@ -311,6 +324,9 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     a.image_sectors = image.total_sectors
     a.exact = int(exact)
     a.seek_min_gap = -1 if seek_min_gap is None else seek_min_gap
+    # #93 workaround: the frame before the area's last one is tested for DSD silence
+    a.check_frame = area.total_playtime.total_frames - 2 if area is not None and \
+        area.total_playtime.total_frames >= 2 else 0xFFFFFFFF
     a.pcm_rate = pcm_rate
     a.gain_db = gain_db
     a.threads = threads
@@ -371,6 +387,9 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
             s.dst_index = [(o.dst_offsets[i], o.dst_lengths[i]) for i in range(n)]
     if result and result[0] != 0:
         raise NativeError(a.error.decode(errors="replace"))
+    none = lambda v: None if v == 0xFFFFFFFF else v
     info = RunInfo(provisional=a.provisional > 0, confirmed=a.provisional == 2,
-                   refuted_from=None if a.refuted_from == 0xFFFFFFFF else a.refuted_from)
+                   refuted_from=none(a.refuted_from), missing=a.missing_count,
+                   missing_first=none(a.missing_first), missing_last=none(a.missing_last),
+                   before_last_silent=None if a.check_silent < 0 else bool(a.check_silent))
     return info

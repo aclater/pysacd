@@ -901,6 +901,21 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
             Path(s.path).unlink(missing_ok=True)
         raise
     rc = 0
+    # WORKAROUND (#93), for what was seen on early Sony discs (Master TOC 1.00, pressed
+    # 2000-2001; four discs of four titles): the area's last sector holds no audio sector header,
+    # so the area's last frame is missing and is filled with silence, while the frames before it
+    # are DSD silence. Only that exact shape is accepted: one missing frame, the area's last, and
+    # the frame before it DSD silence. It is warned about and doesn't fail the run. Any other
+    # missing frame still does. To be revisited if other discs show the pattern.
+    last = area.total_playtime.total_frames - 1 if area is not None else -1
+    last_frame_padded = (run.missing == 1 and run.missing_first == last and run.before_last_silent is True)
+    if last_frame_padded:
+        log.warning("workaround (#93): the area's last frame is not on the disc and was filled with silence; "
+                    "the frames before it are silence, as on early Sony discs whose last area sector holds no "
+                    "audio: not counted as a failure")
+        say("\n Warning: the area's last frame is not on the disc (its last sector holds no audio, as on early "
+            "Sony discs): filled with silence; the frames before it are silence too, so this is not a failure "
+            "(workaround, #93)")
     if run.refuted_from is not None:
         rc = 1
         print(f"WARNING: the start of the selected tracks was found provisionally, and on this image that turned "
@@ -927,7 +942,7 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
         os.replace(s.path, j.final)
         log.info("wrote track %s: %d frames, %d missing, %d DST errors", j.track, s.frames_written,
                  s.frames_missing, s.dst_errors)
-        if s.frames_missing or s.dst_errors:
+        if s.dst_errors or s.frames_missing and not (last_frame_padded and s.frames_missing == 1):
             rc = 1
             say(f"\n Warning: {j.final.name}: {s.frames_missing} missing frames, {s.dst_errors} DST decode errors")
     elapsed = time.strftime("%H hours:%M minutes:%S seconds", time.gmtime(time.time() - started))

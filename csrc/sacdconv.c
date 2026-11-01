@@ -428,6 +428,16 @@ static void *verify_main(void *arg)
     return NULL;
 }
 
+/* DSD silence, for the #93 workaround: at least a quarter of the frame's bytes are the idle
+   patterns 0x69 and 0x96 (random or musical DSD has about 1 in 128) */
+static int dsd_idle(const uint8_t *p, size_t n)
+{
+    size_t idle = 0;
+    for (size_t i = 0; i < n; i++)
+        idle += p[i] == 0x69 || p[i] == 0x96;
+    return n && idle * 4 >= n;
+}
+
 static void log_missing(sc_area_t *a, uint32_t from, uint32_t to)
 {
     char x[16], y[16];
@@ -588,12 +598,20 @@ static void *sb_reader_main(void *arg)
             int with_stored = !audio || e->need_stored;
             int is_dst = with_stored ? ri.kind == SB_FRAME_KIND_DST
                                      : fi.status == SB_FRAME_STATUS_DECODED || fi.status == SB_FRAME_STATUS_INVALID;
+            if (number == a->check_frame && !missing) {
+                /* #93 workaround: is the frame before the area's last one DSD silence? */
+                const uint8_t *p = audio ? dsd : !is_dst ? stored : NULL;
+                a->check_silent = p ? dsd_idle(p, audio ? e->frame_bytes : (size_t)ri.size) : -1;
+            }
             if (bad && range_wanted(e, number, number + 1)) {
                 char t[16];
                 sc_log(a, SC_WARNING, "DST frame at %s (frame %u) could not be decoded (rule %u); filled with 0x55",
                        tc_str(number, t), number, fi.dst_rule);
             }
             if (missing && range_wanted(e, number, number + 1)) {
+                if (a->missing_count++ == 0)
+                    a->missing_first = number;
+                a->missing_last = number;
                 if (miss_from == UINT32_MAX)
                     miss_from = number;
             } else if (miss_from != UINT32_MAX) {
@@ -1184,9 +1202,10 @@ static int writer_run(engine_t *e)
  * _load() refuses a library whose version, struct sizes or field offsets differ from its
  * ctypes mirrors. Bump SACDCONV_ABI whenever a struct or an exported signature changes.
  */
-#define SACDCONV_ABI 4     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
+#define SACDCONV_ABI 5     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
                               3: provisional range starts (exact, provisional, refuted_from);
-                              4: the old engine's scan range and ISO sector count removed */
+                              4: the old engine's scan range and ISO sector count removed;
+                              5: missing frames and the #93 silence check */
 
 #define OFF(T, f) (uint32_t)offsetof(T, f)
 static const uint32_t area_layout[] = {
@@ -1200,7 +1219,8 @@ static const uint32_t area_layout[] = {
     OFF(sc_area_t, read_ctx), OFF(sc_area_t, log_fn), OFF(sc_area_t, log_ctx), OFF(sc_area_t, log_level),
     OFF(sc_area_t, toc_lsn), OFF(sc_area_t, image_sectors), OFF(sc_area_t, sb_cancel),
     OFF(sc_area_t, exact), OFF(sc_area_t, provisional), OFF(sc_area_t, refuted_from),
-    OFF(sc_area_t, seek_min_gap),
+    OFF(sc_area_t, seek_min_gap), OFF(sc_area_t, check_frame), OFF(sc_area_t, check_silent),
+    OFF(sc_area_t, missing_count), OFF(sc_area_t, missing_first), OFF(sc_area_t, missing_last),
 };
 static const uint32_t output_layout[] = {
     sizeof(sc_output_t),
@@ -1362,6 +1382,9 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
     a->frames_done = a->sectors_done = 0;
     a->provisional = 0;
     a->refuted_from = UINT32_MAX;
+    a->check_silent = -1;
+    a->missing_count = 0;
+    a->missing_first = a->missing_last = UINT32_MAX;
     if (a->read_fn && (a->sector_size != LSN_SIZE || a->data_offset != 0)) {
         snprintf(a->error, sizeof(a->error), "a sector source must deliver plain 2048-byte sectors");
         return -1;

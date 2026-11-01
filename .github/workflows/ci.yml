@@ -54,6 +54,10 @@ jobs:
           make PORTABLE=1 CFLAGS="-O2 -Werror"
           make test-tools
 
+      - name: The engine keeps the CET shadow-stack mark
+        # x86-64 Linux: every object linked into it, scarletbook's included (0.5.2), is SHSTK-marked (#94)
+        run: python3 -I tools/check_cet.py src/pysacd/_sacdconv*.so
+
       - name: Tests
         if: matrix.python != '3.13'
         run: PYTHONPATH=src pytest -q tests

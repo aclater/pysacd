@@ -165,10 +165,11 @@ mean of 3 runs:
 CPU time rises by at most about 1%. The wall-time differences, from −3.5% to +3.5%, go both
 ways and are within run-to-run variation.
 
-Since the scarletbook-rs library is linked in (#85), the engine is no longer marked for CET
-(IBT and shadow stacks). Stable Rust doesn't mark its code, and a library is marked only when
-every object in it is. RELRO, `BIND_NOW` and the non-executable stack are unchanged. See
-[development](development.md#the-scarletbook-library).
+With scarletbook-rs 0.5.1 linked in (0.3.0, #85), the engine had no CET mark: that library's
+objects weren't marked, and a library is marked only when every object in it is. Since 0.5.2
+(#94) they carry the shadow-stack (SHSTK) mark, so the engine has it again; IBT stays unmarked
+(stable Rust's standard library has no `ENDBR64`). RELRO, `BIND_NOW` and the non-executable
+stack are unchanged. See [development](development.md#the-scarletbook-library).
 
 ## Through scarletbook-rs (0.3.0)
 

@@ -166,6 +166,7 @@ class Area:
     copyright_phonetic: str | None = None
     tracks: list[Track] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    slot: int = -1               # scarletbook's slot: 0 the stereo area, 1 the multichannel one
 
     @property
     def is_stereo(self) -> bool:

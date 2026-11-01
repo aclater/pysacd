@@ -18,7 +18,7 @@ typedef struct {
     int32_t         head_frame;         /* DSF nopad: file starts with the last */
     uint32_t        head_bytes;         /*   head_bytes/channel of this frame (-1: none) */
     uint32_t        tail_bytes;         /* DSF nopad: drop this many bytes/channel at the end */
-    const uint8_t  *header;             /* DSDIFF: written at offset 0 */
+    const uint8_t  *header;             /* DSF, DSDIFF: written at offset 0 (scarletbook's layout) */
     uint32_t        header_len;
     const uint8_t  *footer;             /* DSF: ID3 tag; DSDIFF: chunks after the data */
     uint32_t        footer_len;

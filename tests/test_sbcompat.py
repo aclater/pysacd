@@ -18,9 +18,10 @@ import tempfile
 import unittest
 from datetime import datetime
 
+import sacdgen
 from test_toc import make_image
 
-from pysacd import SACDImage, read_toc
+from pysacd import SACDImage, read_toc, sbwriter
 from pysacd import sbcompat as sb
 
 SACD_EXTRACT = os.environ.get("SACD_EXTRACT") or shutil.which("sacd_extract")
@@ -108,11 +109,24 @@ class Helpers(unittest.TestCase):
         tag = sb.id3_tag(disc, area, 0, 4)
         self.assertTrue(tag.startswith(b"ID3\x04\x00\x00") and b"TIT2" in tag and b"First" in tag)
         self.assertEqual(sb.id3_tag(disc, area, 0, 0), b"")
-        foot = sb.dsdiff_footer(disc, area, 0, dst=False, now=datetime(2026, 1, 2, 3, 4))
-        self.assertEqual(foot[:4], b"DIIN")
-        self.assertIn(b"ID3 ", foot)
-        hdr = sb.dsdiff_header(disc, area, dst=True, audio_data_size=100, frame_count=3, footer_size=len(foot))
-        self.assertEqual(len(hdr), sb.dsdiff_header_size(area, True))
+
+    def test_dsdiff_layout(self):
+        # pysacd's DSDIFF choices through scarletbook (pysacd.sbwriter, #94) on a generated disc
+        with tempfile.TemporaryDirectory() as tmp:
+            iso = os.path.join(tmp, "t.iso")
+            sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [bytes(2 * 4704)] * 4, [2, 2], dst=False)])
+            with SACDImage(iso) as img:
+                disc = img.read_toc()
+                area = disc.stereo
+                now = datetime(2026, 1, 2, 3, 4)
+                lay = sbwriter.dsdiff(img, disc, area, 0, 0, 2, id3_tags=[sb.id3_tag(disc, area, 0, 4, True)],
+                                      now=now, machine=sb.PYSACD_VERSION_INFO)
+                self.assertEqual(lay.trailer[:4], b"DIIN")
+                self.assertIn(b"ID3 ", lay.trailer)
+                self.assertEqual(lay.size, len(lay.header) + 2 * 2 * 4704 + len(lay.trailer))
+                dst = sbwriter.dsdiff(img, disc, area, 0, 0, 2, id3_tags=[], now=now,
+                                      machine=sb.PYSACD_VERSION_INFO, dst_lengths=[100, 101])
+                self.assertEqual(dst.size, len(dst.header) + 12 + 100 + 12 + 102 + len(dst.trailer))
 
 
 @unittest.skipUnless(HAVE_REAL, "sacd_extract binary or test ISOs not available")
@@ -160,14 +174,19 @@ class AgainstSacdExtract(unittest.TestCase):
                                 sb.music_filename(disc, area, 1, "[02-03]"), "dsf")
         self.assertEqual(self.files(d, "dsf"), [want])
 
-    def check_dff(self, disc, area, track_idx, path):
-        header, footer, dst, audio, frames, index = dff_split(path)
-        mine = sb.dsdiff_footer(disc, area, track_idx, dst=dst, frame_index=index, id3_mode=4,
-                                now=datetime(2026, 1, 1), machine=sb.SACD_RIPPER_VERSION_INFO)
-        self.assertEqual(mask_creating_machine(mine), mask_creating_machine(footer))
-        self.assertEqual(sb.dsdiff_header(disc, area, dst=dst, audio_data_size=audio, frame_count=frames,
-                                          footer_size=len(mine)), header)
-        self.assertEqual(sb.dsdiff_header_size(area, dst), len(header))
+    def check_dff(self, iso, disc, area, track_idx, path):
+        """scarletbook's layout with pysacd's choices (pysacd.sbwriter) against sacd_extract's file."""
+        header, footer, dst, _audio, _frames, index = dff_split(path)
+        t = area.tracks[track_idx]
+        first = t.start.total_frames
+        with SACDImage(iso) as img:
+            lay = sbwriter.dsdiff(img, disc, area, track_idx, first, first + t.duration.total_frames,
+                                  id3_tags=[sb.id3_tag(disc, area, track_idx, 4, True)], now=datetime(2026, 1, 1),
+                                  machine=sb.SACD_RIPPER_VERSION_INFO,
+                                  dst_lengths=[n for _o, n in index] if dst else None)
+        self.assertEqual(mask_creating_machine(lay.trailer), mask_creating_machine(footer))
+        self.assertEqual(lay.header, header)
+        self.assertEqual(lay.size, os.path.getsize(path))
 
     def test_dsdiff_tracks(self):
         for iso, disc, args, area, t in ((DSD_ISO, self.dsd, ("-p", "-t", "2"), self.dsd.stereo, 1),
@@ -179,7 +198,7 @@ class AgainstSacdExtract(unittest.TestCase):
                 want = sb.make_filename(sb.output_dir(disc, area, None),
                                         sb.music_filename(disc, area, t), "dff")
                 self.assertEqual(self.files(d, "dff"), [want])
-                self.check_dff(disc, area, t, os.path.join(d, want))
+                self.check_dff(iso, disc, area, t, os.path.join(d, want))
 
     def test_cue_and_xml(self):
         disc = self.dsd

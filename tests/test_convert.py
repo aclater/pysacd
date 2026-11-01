@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pysacd import SACDImage
+from pysacd import SACDImage, sbwriter
 from pysacd.convert import Options, naming_values, render
 from pysacd.musicbrainz import physical_discs
 from pysacd.toc import Area, Timecode, read_toc
@@ -63,11 +63,18 @@ class NativeExtract(unittest.TestCase):
         t1, t2 = self.area.tracks
         carry = 5 * FRAME % 4096
         s1 = self.spec(t1, self.dir / "1.dsf", "dsf")
-        s1.tail_bytes = carry
         s2 = self.spec(t2, self.dir / "2.dsf", "dsf")
-        s2.head_frame, s2.head_bytes = 4, carry
         with SACDImage(self.iso) as img:
+            # scarletbook plans the chain (#94): the same carry
+            c1, c2 = sbwriter.dsf_chain(img, self.area, [0, 5, 12])
+            self.assertEqual((c1.head_bytes, c1.tail_bytes, c2.head_bytes, c2.tail_bytes), (0, carry, carry, 0))
+            s1.tail_bytes = c1.tail_bytes
+            s2.head_frame, s2.head_bytes = 4, c2.head_bytes
+            for s, c in ((s1, c1), (s2, c2)):
+                lay = sbwriter.dsf(img, self.area, s.tc_start, s.tc_end, b"", c)
+                s.header = lay.header
             _native.run_area(img, self.iso, self.area, [s1, s2])
+            self.assertEqual(len((self.dir / "2.dsf").read_bytes()), lay.size)
         ch0 = lambda d: b"".join(d[o:o + 4096] for o in range(92, len(d), 8192))
         a, b = (self.dir / "1.dsf").read_bytes(), (self.dir / "2.dsf").read_bytes()
         self.assertEqual((len(a) - 92) % 8192, 0)
@@ -94,6 +101,7 @@ class NativeExtract(unittest.TestCase):
         out = self.dir / "2.dsf"
         with SACDImage(self.iso) as img:
             res = self.spec(self.area.tracks[1], out, "dsf")
+            res.header = sbwriter.dsf(img, self.area, res.tc_start, res.tc_end, b"").header
             _native.run_area(img, self.iso, self.area, [res])
         self.assertEqual((res.frames_written, res.frames_missing), (7, 0))
         d = out.read_bytes()

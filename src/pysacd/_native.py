@@ -149,9 +149,10 @@ def _check_abi(lib, path) -> None:
 
 # The scarletbook-rs C library linked into the engine (#85): its C ABI version, and the oldest
 # release with every call pysacd uses (0.5.0: cancellation, progress, stored frames in one pass;
-# 0.5.1: TOC timecodes as stored; 0.5.2: the whole TOC in one call, sb_disc_toc)
+# 0.5.1: TOC timecodes as stored; 0.5.2: the whole TOC in one call, sb_disc_toc; 0.5.4: the
+# output API's choices for sacd_extract's DSF and DSDIFF files, scarletbook-rs#169)
 SB_ABI = 2
-SB_MIN_VERSION = (0, 5, 2)
+SB_MIN_VERSION = (0, 5, 4)
 
 
 def _version_tuple(text: str) -> tuple[int, ...]:

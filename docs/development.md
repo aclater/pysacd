@@ -143,8 +143,14 @@ finds the area by its TOC's LSN, the one `toc.Area.toc_start` names, and reads t
 every output needs as one range (`sb_range_audio_open`). Two frames of context before it and
 one after are included, exactly as before, so that PCM output is sample-identical.
 
-- **Decoding in scarletbook's pool.** The range is decoded on a pool of `--threads` threads
-  (`sb_pool_new`, `sb_track_audio_set_pool`). The reader receives every position in order:
+- **Decoding in scarletbook's pool.** The range is decoded on a pool of one thread fewer than
+  `--threads` (the CPU count by default; at least one) (`sb_pool_new`,
+  `sb_track_audio_set_pool`). The reader thread does real work with every frame, staging and
+  batching it, and a pool of one thread per CPU plus the reader is one runnable thread more
+  than there are CPUs. scarletbook recommends CPUs − 1 for such a caller (scarletbook-rs#146),
+  and pysacd measured it as the best of N, N − 1, N − 2 and N − 4 (#94; see
+  [performance](performance.md#the-decoding-pool-94)). The engine logs the pool's size at
+  debug level. The reader receives every position in order:
   missing ones as 0x69 silence, invalid DST frames as 0x55, the fills pysacd always used. The
   workers lay out DSF and convert to PCM, and the writer is unchanged.
 - **Stored and decoded frames in one pass.** When a DSDIFF output keeps DST frames as stored

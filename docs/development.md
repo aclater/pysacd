@@ -171,7 +171,10 @@ one after are included, exactly as before, so that PCM output is sample-identica
   then read from the local copy: a PS3 is read once, and the copy needs no second engine.
 - **Logging.** scarletbook's log goes to the `pysacd.engine` logger: its errors as warnings, the
   rest at debug level. pysacd logs missing frames, invalid DST frames and malformed sectors
-  itself, from the frame statuses and `sb_track_audio_warning`.
+  itself, from the frame statuses and `sb_track_audio_warning`. The engine also reports the missing frames' count, first and last, and whether the
+  area's next-to-last frame is DSD silence, for a workaround (#93): when the only missing frame
+  is the area's last, after silence, `pysacd-extract` warns and exits 0. **This is a workaround** for what was seen on early Sony discs (Master TOC 1.00, pressed 2000–2001; four discs of four titles), whose last area sector holds no audio sector header. It may be revisited if other discs show the pattern. See
+  [sacd_extract](sacd_extract.md).
 - **Provisional starts for ranges far into an area** (`-t`, `convert -t`, `-k`). When an
   output's frames start far into the area, scarletbook starts provisionally
   (`SB_SEEK_POLICY_SPECULATIVE`, with its default gap of 2048 sectors): it finds the range's

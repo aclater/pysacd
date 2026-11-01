@@ -70,6 +70,14 @@ typedef struct {
     int             provisional;
     uint32_t        refuted_from;
     int64_t         seek_min_gap;       /* sectors (SB_SEEK_DEFAULT_MIN_GAP when negative) */
+    /* #93 workaround: check_frame (in) is the frame to test for DSD silence, check_silent (out)
+       1 silence, 0 not, -1 not read or not testable (DST kept as stored); missing frames in the
+       outputs' ranges (out): their count, the first and the last */
+    uint32_t        check_frame;
+    int             check_silent;
+    uint32_t        missing_count;
+    uint32_t        missing_first;
+    uint32_t        missing_last;
 } sc_area_t;
 
 int sacdconv_abi(void);

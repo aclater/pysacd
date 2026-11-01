@@ -9,6 +9,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased (0.4.0)
 
+- Workaround (#93): when an area's only missing frame is its last, and the frame before it is
+  DSD silence, `pysacd-extract` fills it with silence as before, warns, and exits 0 instead of 1. Silence means that, in every 384-bit window of every channel, the count of ones is within 2 of half.
+  Any other missing frame still fails. This is a workaround for what was seen on early Sony discs (Master TOC 1.00, pressed 2000–2001; four discs of four titles), whose last area sector holds no audio sector header. It may be revisited if other discs show the pattern.
+
 - DSF and DSDIFF files are laid out by scarletbook-rs 0.5.4's output API (#94). Every byte of
   them that isn't audio (the DSF header, the DSDIFF chunks before and after the sound data)
   now comes from scarletbook, with the writer's choices that give `sacd_extract`'s bytes

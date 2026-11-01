@@ -28,7 +28,10 @@ its `CLEANROOM.md`.
 - Nothing of pysacd's goes into it, and nothing from it is copied into pysacd.
 - Requirements pysacd finds are filed with scarletbook-rs as issues, never as patches.
 
-pysacd's own code is what turns the audio into files: the DSF, DSDIFF, WAV and FLAC writers,
+pysacd's own code is what turns the audio into files: the DSF, DSDIFF, WAV and FLAC writers
+(scarletbook 0.5.2 can lay out DSF and DSDIFF files too, but not yet byte for byte as
+`sacd_extract` does, so pysacd keeps its own: see
+[development](development.md#output-through-scarletbook-what-stays-pysacds)),
 DSD-to-PCM conversion, `sacd_extract`-compatible naming, cue sheets, XML and `-P` text,
 tagging and MusicBrainz, and the PS3 client.
 

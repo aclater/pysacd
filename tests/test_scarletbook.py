@@ -185,9 +185,9 @@ class Engine(unittest.TestCase):
 
         with self.assertRaisesRegex(_native.NativeError, "C ABI 1"):
             _native._check_scarletbook(Lib(1, b"0.3.0"), "lib")
-        with self.assertRaisesRegex(_native.NativeError, re.escape("0.5.0, this pysacd needs 0.5.1")):
-            _native._check_scarletbook(Lib(2, b"0.5.0"), "lib")
-        _native._check_scarletbook(Lib(2, b"0.5.1"), "lib")
+        with self.assertRaisesRegex(_native.NativeError, re.escape("0.5.1, this pysacd needs 0.5.2")):
+            _native._check_scarletbook(Lib(2, b"0.5.1"), "lib")
+        _native._check_scarletbook(Lib(2, b"0.5.2"), "lib")
 
 
 if __name__ == "__main__":

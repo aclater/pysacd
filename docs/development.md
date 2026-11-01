@@ -67,8 +67,9 @@ in the archive's `native-static-libs.txt`.
   about 2.4 MB on x86-64 Linux, and a wheel by about 1 MB.
 - **Checked twice.** `csrc/sacdconv.c` refuses at compile time a header whose `SB_ABI_VERSION`
   isn't 2. When the engine loads, `_native.py` refuses it if the linked library's
-  `sb_abi_version()` isn't 2 or its `sb_version()` is older than 0.5.1. 0.5.0 is the first
-  release with cancellation, progress, and stored and decoded frames in one pass, and 0.5.1
+  `sb_abi_version()` isn't 2 or its `sb_version()` is older than 0.5.2. 0.5.0 is the first
+  release with cancellation, progress, and stored and decoded frames in one pass, 0.5.2 the first
+  with the whole TOC in one call (`sb_disc_toc`), and 0.5.1
   the first with the TOC's timecodes as stored.
 - **Logged.** `_native.build_info()` (in `pysacd --version` and in log files) names the
   scarletbook version, and the debug log carries its full `sb_build_info()`.
@@ -99,13 +100,26 @@ the same way. Set `SCARLETBOOK_TARGET` when a compiler wrapper misreports its ta
 Its `read_sectors()` reads 2048-byte logical sectors whatever the image's sector size
 (`sb_disc_read_sectors`), and its `read_toc()` builds the Disc, Area and Track objects.
 
-- **ctypes, not C glue.** Each field is one call to the documented ABI (`sb_disc_info`,
-  `sb_disc_string`, `sb_track_info`, ...) on the engine library, following scarletbook's README.
-  Reading a TOC isn't a hot path; see [performance](performance.md#reading-a-toc-in-process-against-a-subprocess).
-- **One source for every kind of input.** The image is opened with `sb_disc_open_callbacks_at`,
-  reading through a Python file object: a path (opened here), a caller's file object and a PS3
-  server (`remote.RemoteDisc`) all go the same way. A failing read is an `OSError`, an image
-  scarletbook rejects a `SACDError`.
+- **The whole TOC in one call** (#94). `sb_disc_toc` (scarletbook 0.5.2) writes the disc, its
+  areas, tracks, text, genres, stored timecodes and warnings into one buffer in a fixed,
+  versioned little-endian layout, which `_sbtoc` unpacks with `struct`. It replaced about 100 to
+  160 per-field ctypes calls per disc (`sb_disc_string`, `sb_track_info`, ...), which made reading
+  a TOC 4.5 times slower than pysacd 0.2's parser (scarletbook-rs#132). The layout's magic,
+  major version, size and record sizes are checked, and so is every record and string against
+  its end: a layout pysacd can't read is a `SACDError`, never a wrong field. See
+  [performance](performance.md#reading-a-toc-in-process-against-a-subprocess).
+- **A path is opened by the library** (`sb_disc_open_file`, #94): no Python call per read, which
+  was most of what opening an image cost. A caller's file object and a PS3 server
+  (`remote.RemoteDisc`) are read through a Python callback (`sb_disc_open_callbacks_at`). If the
+  library can't read a path, it is opened in Python instead, so a missing or unreadable file
+  raises the `OSError` it always did. A failing read is an `OSError`, an image scarletbook
+  rejects a `SACDError`.
+- **Checked against the old reader.** `tools/toc_compare.py --old OLD_SRC --new NEW_SRC IMAGE...`
+  compares the repr of every Disc, Area and Track and the bytes of `toc --json` between two
+  source trees, with `--mutations N` on mutated copies too. The one-call reader matched the
+  per-field one of 0.3.0 on the sacd-spec conformance corpus (136 images), the hostile images of
+  `tests/sacdgen.py` (95), 3,000 TOC mutations, the 5 real test discs and a library of 291 ISOs
+  (271 of them SACDs), and the beets-pysacd fingerprints of all of them were unchanged.
 - **The same objects as pysacd 0.2.** Up to 0.2 pysacd had its own parser. Before it was
   removed, the two were compared field by field, on `toc --json` byte for byte, and on the
   beets-pysacd fingerprint (#87). They agreed on the sacd-spec conformance corpus, 3,000 TOC

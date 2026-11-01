@@ -253,7 +253,7 @@ class RunInfo:
     missing: int = 0
     missing_first: int | None = None
     missing_last: int | None = None
-    # #93 workaround: the area's next-to-last frame is DSD silence (True), isn't (False), or
+    # #93 workaround: the area's next-to-last frame is DSD silence (True; csrc dsd_silent), isn't (False), or
     # wasn't read or can't be tested (None: DST kept as stored)
     before_last_silent: bool | None = None
 

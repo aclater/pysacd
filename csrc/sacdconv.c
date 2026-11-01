@@ -428,14 +428,23 @@ static void *verify_main(void *arg)
     return NULL;
 }
 
-/* DSD silence, for the #93 workaround: at least a quarter of the frame's bytes are the idle
-   patterns 0x69 and 0x96 (random or musical DSD has about 1 in 128) */
-static int dsd_idle(const uint8_t *p, size_t n)
+/* DSD silence, for the #93 workaround: in every window of 384 bits of every channel, the
+   count of ones is within 2 of half (a DC level within about 1 % of full scale). Measured on
+   the four discs of #93: the frames before the missing one deviate by at most 1; sampled music
+   frames have a median of 24 to 27. `p` holds one frame, its channels interleaved by byte. */
+static int dsd_silent(const uint8_t *p, size_t n, int ch)
 {
-    size_t idle = 0;
-    for (size_t i = 0; i < n; i++)
-        idle += p[i] == 0x69 || p[i] == 0x96;
-    return n && idle * 4 >= n;
+    if (ch <= 0 || n != (size_t)ch * 4704)
+        return 0;
+    for (int c = 0; c < ch; c++)
+        for (size_t w = 0; w < 4704; w += 48) {
+            int ones = 0;
+            for (size_t j = w; j < w + 48; j++)
+                ones += __builtin_popcount(p[j * ch + c]);
+            if (ones < 190 || ones > 194)
+                return 0;
+        }
+    return 1;
 }
 
 static void log_missing(sc_area_t *a, uint32_t from, uint32_t to)
@@ -601,7 +610,7 @@ static void *sb_reader_main(void *arg)
             if (number == a->check_frame && !missing) {
                 /* #93 workaround: is the frame before the area's last one DSD silence? */
                 const uint8_t *p = audio ? dsd : !is_dst ? stored : NULL;
-                a->check_silent = p ? dsd_idle(p, audio ? e->frame_bytes : (size_t)ri.size) : -1;
+                a->check_silent = p ? dsd_silent(p, audio ? e->frame_bytes : (size_t)ri.size, e->channels) : -1;
             }
             if (bad && range_wanted(e, number, number + 1)) {
                 char t[16];

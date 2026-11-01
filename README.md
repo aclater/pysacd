@@ -72,8 +72,9 @@ Why it exists, in the author's words: [author's note](docs/author.md).
   - raw-sector (2064/2054-byte) images;
   - protection against hostile disc text;
   - logs you can diagnose a failure from.
-- **Faster than `sacd_extract`:** plain-DSD discs extract 2.5–3.6× faster, and DST
-  discs 2.4–2.6× (a faster DST decoder). See [performance](docs/performance.md).
+- **Faster than `sacd_extract`:** plain-DSD discs extract to DSF 3.6–4.0× faster, and DST
+  discs 2.5× (all threads; measured on 0.3.0's scarletbook engine). See
+  [performance](docs/performance.md#through-scarletbook-rs-030).
 
 ## Why you shouldn't use pysacd (yet)
 

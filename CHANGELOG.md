@@ -7,7 +7,9 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
-## Unreleased
+## 0.3.1 (2026-11-01)
+
+pysacd moves onto scarletbook-rs 0.5.2 (#94). Reading a TOC is 4.9 times faster than in 0.3.0, as fast as 0.2's own parser was; DST extraction to DSF is a little faster; on x86-64 Linux the engine is marked for CET shadow stacks again. Output is byte-identical to 0.3.0. The release candidate 0.3.1rc1 passed the clean-machine matrix, identical to 0.3.0's baseline: 10 Linux VMs and Windows 11 at 20/20 each, and 12 containers (7 at 20/20; 5 at 19/20, where the image has no pipx package, as with 0.3.0).
 
 - Docs and tools: `tools/output_compare.py` checks pysacd's DSF and DSDIFF files against
   scarletbook 0.5.2's output API (#94). The DSF header matches on every file it can describe.

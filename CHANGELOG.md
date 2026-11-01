@@ -9,6 +9,12 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- Docs and tools: `tools/output_compare.py` checks pysacd's DSF and DSDIFF files against
+  scarletbook 0.5.2's output API (#94). The DSF header matches on every file it can describe.
+  No DSDIFF file matches, mainly because of `sacd_extract`'s `ID3 ` chunks. pysacd keeps its own
+  writers, and the missing choices are filed upstream (scarletbook-rs#169). Output is
+  unchanged.
+
 - DST extraction to DSF is a little faster (#94): scarletbook's decoding pool now has one thread
   fewer than `--threads` (the CPU count by default), leaving the reader thread a CPU of its own,
   as scarletbook recommends (scarletbook-rs#146). It now takes 3.82 s against 3.96 s for the

@@ -522,7 +522,13 @@ static void *sb_reader_main(void *arg)
                 sb_fail(e, st, "opening the area's audio");
                 goto out;
             }
-            int threads = a->threads > 0 ? a->threads : 0;
+            /* One decoding thread fewer than the CPUs (or than --threads): this reader thread
+               does real work with every frame (staging, batching), and a full-size pool plus
+               the reader is one runnable thread more than CPUs (scarletbook-rs#146, #94). */
+            int threads = (a->threads > 0 ? a->threads : sc_ncpus()) - 1;
+            if (threads < 1)
+                threads = 1;
+            sc_log(a, SC_DEBUG, "decoding pool: %d threads", threads);
             if ((st = sb_pool_new((uint32_t)(threads > SB_MAX_POOL_THREADS ? SB_MAX_POOL_THREADS : threads), &pool)) < 0 ||
                 (st = sb_track_audio_set_pool(audio, pool)) < 0 ||
                 (e->need_stored && (st = sb_track_audio_keep_stored(audio)) < 0) ||

@@ -9,6 +9,11 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- DST extraction to DSF is a little faster (#94): scarletbook's decoding pool now has one thread
+  fewer than `--threads` (the CPU count by default), leaving the reader thread a CPU of its own,
+  as scarletbook recommends (scarletbook-rs#146). It now takes 3.82 s against 3.96 s for the
+  50-minute stereo DST disc, +12.5 % against 0.2.2 (it was +16.7 %). Output is unchanged.
+
 - Reading a TOC is 4.9 times faster (#94): 0.125 ms per disc against 0.618 ms in 0.3.0 (median
   of the 5 test discs), as fast as 0.2's own parser was. The TOC comes from scarletbook in one
   call (`sb_disc_toc`) instead of about a hundred, and a path is read by the library itself.

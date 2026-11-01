@@ -9,6 +9,12 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- Docs and tools: `tools/output_compare.py` checks pysacd's DSF and DSDIFF files against
+  scarletbook 0.5.2's output API (#94). The DSF header matches on every file it can describe.
+  No DSDIFF file matches, mainly because of `sacd_extract`'s `ID3 ` chunks. pysacd keeps its own
+  writers, and the missing choices are filed upstream (scarletbook-rs#169). Output is
+  unchanged.
+
 - Reading a TOC is 4.9 times faster (#94): 0.125 ms per disc against 0.618 ms in 0.3.0 (median
   of the 5 test discs), as fast as 0.2's own parser was. The TOC comes from scarletbook in one
   call (`sb_disc_toc`) instead of about a hundred, and a path is read by the library itself.

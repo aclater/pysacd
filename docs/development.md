@@ -190,6 +190,42 @@ one after are included, exactly as before, so that PCM output is sample-identica
     track of every hostile image (`seek_min_gap=0`, so every range is provisional): same bytes,
     or both fail, and none refuted. The harness's range modes do the same on real discs.
 
+### Output through scarletbook: what stays pysacd's
+
+scarletbook 0.5.2 can lay out DSF and DSDIFF files itself (`sb_output_layout_*`, `sb_tags_*`,
+`sb_dst_lengths_*`). The owner's rule for offloading is to adopt scarletbook where the output is
+byte-identical and no more than 15 % slower, and then delete pysacd's own code. pysacd's files
+must stay byte-identical to `sacd_extract`'s, so `tools/output_compare.py` checked every file
+pysacd 0.3.0 writes against the layout scarletbook gives, using the writer's choices nearest to
+pysacd's and passing pysacd's own tag, markers and comments as the caller's (#94).
+
+Files compared (5 real test discs; sacd-spec conformance corpus in brackets):
+
+| Output | Same as scarletbook's layout | What differs |
+|---|---|---|
+| DSF header, ID3v2.4 tag or none (`-s`, `-s -b`, `--id3tag 0`, multichannel) | **239 of 239** (919 of 919) | nothing |
+| DSF with an ID3v2.3 tag (`--id3tag 1` to `3`) | refused: 73 (238) | the raw tag must be ID3v2.4 |
+| DSF without padding (`-z`) | can't be described | ranges of whole frames only |
+| DSF tag from the TOC (`sb_tags_from_toc`) against `sacd_extract`'s | 0 of 73 (0 of 238) | `sacd_extract` writes `TYER` and `TDAT`, falls back to the album artist for `TPE1`, adds `TPE2` and a `TXXX` performer, and names the genre by its ID3v1 name; scarletbook writes `TDRL`, `COMM` and `TIPL`, in another order |
+| DSDIFF track files, DST kept or decoded, stereo and multichannel | 0 of 166 (0 of 677) | the `ID3 ` chunk after `COMT`; `EMID` (which scarletbook always writes in `DIIN`); `DITI` (the album title, not the track's); `CMPR`'s size with plain DSD (`sacd_extract` counts the pad byte) |
+| DSDIFF edited masters (`-e`, `-e -c`) | 0 of 10 (1 of 194) | the `ID3 ` chunks, one per track; `CMPR`'s size with plain DSD |
+
+The DSDIFF comparison already gives pysacd's own markers and comments as the caller's, with
+`DIIN`, `TEXT_PAD_COUNTED`, the `DSTI` offsets at the frame data and `LSCO` for unspecified
+layouts set as pysacd writes them. An edited master is compared as a file with `DIIN` and its
+program markers, because scarletbook's edited-master mode also writes `ABSS`, which
+`sacd_extract` doesn't. Two more differences show up only on hostile corpus images:
+- text outside ASCII, which `sacd_extract` writes as Latin-1 and scarletbook replaces;
+- unreadable frames in a DST file, which `sacd_extract` leaves out and scarletbook fills with
+  the DST equivalent of silence.
+
+
+**So the writers stay pysacd's.** The DSF header is the only part that matches everywhere it can
+be described. It can't be adopted with anything deleted, because `-z` files and v2.3 tags still
+need pysacd's header writer. Every DSDIFF file differs. The missing writer's choices were filed
+with scarletbook-rs as an integration requirement ([scarletbook-rs#169](https://github.com/aclater/scarletbook-rs/issues/169)). Once it can describe these
+files, the writers move onto it and pysacd's copies are deleted.
+
 **Checking the outputs.** `tools/extract_compare.py` runs `pysacd-extract` and `pysacd convert`
 in 21 modes with two pysacd source trees, and the `sacd_extract`-compatible modes with
 `sacd_extract` as a black box. The modes cover DSF, DSDIFF with DST kept or decoded, the edit

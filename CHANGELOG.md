@@ -7,7 +7,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
-## Unreleased (0.4.0)
+## 0.4.0 (2026-11-01)
+
+The release candidate 0.4.0rc1 passed the clean-machine matrix with no regression against
+0.3.1: 10 Linux VMs and Windows 11 at 20/20, and 12 containers matching the baseline.
 
 - Workaround (#93): when an area's only missing frame is its last, and the frame before it is
   DSD silence, `pysacd-extract` fills it with silence as before, warns, and exits 0 instead of 1. Silence means that, in every 384-bit window of every channel, the count of ones is within 2 of half.

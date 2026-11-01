@@ -198,11 +198,15 @@ pauses. The new tree must give the same files, names and bytes as the old one, a
 MIT OR Apache-2.0. pysacd uses them under MIT, which is compatible with GPL-2.0; Apache-2.0
 isn't. Their notices ship in every wheel and the sdist (`licenses/`).
 
-**Hardening.** Rust's stable compiler doesn't mark its code for CET, so on x86-64 Linux the
-engine no longer carries the IBT and shadow-stack property notes that `-fcf-protection` gave it
-(a library is marked only when every object in it is). The other hardening properties are
-unchanged: full RELRO, `BIND_NOW` and a non-executable stack. See
-[performance](performance.md#hardening).
+**Hardening.** Since scarletbook-rs 0.5.2, every object in its x86-64 Linux library carries the
+CET shadow-stack (SHSTK) property (scarletbook-rs#125), so the engine is SHSTK-marked again, as it
+was up to 0.2.2: a process running with shadow stacks can load it. 0.3.0, linked with 0.5.1, had
+no CET mark (a library is marked only when every object in it is). Indirect branch tracking (IBT)
+stays unmarked: stable Rust's standard library has no `ENDBR64`. `tools/check_cet.py` checks the
+mark with `readelf -n`, in CI on the engine and on the x86-64 manylinux wheel after auditwheel
+(#94). The musllinux engine stays unmarked: Alpine's startup objects (`crti.o`, `crtbeginS.o`)
+have no CET property, and musl never turns shadow stacks on, so the mark would change nothing. The other hardening properties are unchanged: full RELRO, `BIND_NOW` and a
+non-executable stack. See [performance](performance.md#hardening).
 
 ## Tests
 

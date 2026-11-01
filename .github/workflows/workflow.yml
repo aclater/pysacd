@@ -9,7 +9,7 @@ name: wheels (release)
 on:
   pull_request:
     paths: ["setup.py", "pyproject.toml", "MANIFEST.in", "Makefile", "csrc/**", "tests/wheel_smoke.py",
-            "scarletbook.lock", "tools/scarletbook.py", "licenses/**", ".github/workflows/workflow.yml"]
+            "scarletbook.lock", "tools/scarletbook.py", "tools/check_cet.py", "licenses/**", ".github/workflows/workflow.yml"]
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -99,6 +99,14 @@ jobs:
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: ""
           # A clean environment: install the wheel and convert a synthetic disc with it.
           CIBW_TEST_COMMAND: python {project}/tests/wheel_smoke.py
+
+      # scarletbook-rs 0.5.2's x86-64 Linux library carries the CET shadow-stack mark, so the
+      # engine does too; keep it so in the x86-64 glibc wheel, after auditwheel (#94). Not musl:
+      # Alpine's own startup objects (crti.o, crtbeginS.o) carry no CET mark, and musl never
+      # turns shadow stacks on, so a mark there would change nothing.
+      - name: The engine keeps the CET shadow-stack mark (x86-64 manylinux)
+        if: runner.os == 'Linux' && runner.arch == 'X64' && contains(matrix.build, 'manylinux')
+        run: python3 -I tools/check_cet.py wheelhouse/*.whl
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:

@@ -90,6 +90,57 @@ class Image(unittest.TestCase):
         with self.assertRaisesRegex(OSError, "connection reset"):
             img.read_sectors(0, 16)
 
+    def test_a_path_is_read_by_the_library_with_the_same_result(self):
+        # a path is opened by scarletbook itself, a file object through the callback: same TOC
+        plain = _image()
+        with tempfile.TemporaryDirectory() as d:
+            iso = Path(d) / "d.iso"
+            iso.write_bytes(plain)
+            with SACDImage(iso) as img:
+                self.assertIsNone(img._disc._fh)
+                self.assertEqual(img.read_sectors(500, 4), plain[500 * 2048:504 * 2048])
+                by_path = img.read_toc()
+            self.assertEqual(by_path, read_toc(io.BytesIO(plain)))
+            iso.write_bytes(bytes(600 * 2048))
+            with self.assertRaisesRegex(SACDError, "not a readable Scarletbook disc"):
+                SACDImage(iso)
+
+    def test_toc_from_one_call_with_a_small_first_buffer(self):
+        # a layout larger than the first buffer is fetched again at its exact size
+        plain = _image()
+        want = read_toc(io.BytesIO(plain))
+        old = _sbtoc.TOC_FIRST
+        _sbtoc.TOC_FIRST = 64
+        try:
+            self.assertEqual(read_toc(io.BytesIO(plain)), want)
+        finally:
+            _sbtoc.TOC_FIRST = old
+
+    def test_a_bad_layout_is_refused(self):
+        with SACDImage(io.BytesIO(_image())) as img:
+            data = _sbtoc._toc_bytes(img._disc._lib, img._disc._disc)
+        self.assertEqual(data[:8], _sbtoc.TOC_MAGIC)
+        _sbtoc._Layout(data)
+        bad = {
+            "short": data[:40],
+            "magic": b"X" + data[1:],
+            "major": data[:8] + (2).to_bytes(2, "little") + data[10:],
+            "size": data[:12] + (len(data) + 1).to_bytes(4, "little") + data[16:],
+            "record size": data[:20] + (100).to_bytes(2, "little") + data[22:],
+        }
+        for name, b in bad.items():
+            with self.subTest(name), self.assertRaises(_sbtoc.SbFailure):
+                _sbtoc._Layout(b)
+        lay = _sbtoc._Layout(data)
+        with self.assertRaisesRegex(_sbtoc.SbFailure, "past the end"):
+            lay.record(len(data) - 4, 8)
+        # a string pointing past the end
+        d0 = lay.disc_offset + _sbtoc._DISC_STRINGS
+        broken = bytearray(data)
+        broken[d0:d0 + 8] = _sbtoc._STR.pack(len(data) - 2, 10)
+        with self.assertRaisesRegex(_sbtoc.SbFailure, "past the end"):
+            _sbtoc._Layout(bytes(broken)).string(d0)
+
     def test_closed_twice(self):
         img = SACDImage(io.BytesIO(_image()))
         img.close()
@@ -98,11 +149,17 @@ class Image(unittest.TestCase):
 
 class Helpers(unittest.TestCase):
     def test_warning_text(self):
-        w = _sbtoc.SbWarning(lsn=-1, slot=1, track=3, code=b"track-past-playtime")
-        self.assertEqual(_sbtoc._warning_text(w), "track-past-playtime (multichannel area, track 3)")
-        w = _sbtoc.SbWarning(lsn=600, slot=-1, track=0, code=b"audio-sector-malformed")
-        self.assertEqual(_sbtoc._warning_text(w), "audio-sector-malformed (LSN 600)")
-        self.assertEqual(_sbtoc._warning_text(_sbtoc.SbWarning(lsn=-1, slot=-1, track=0, code=b"x")), "x")
+        self.assertEqual(_sbtoc._warning_text("track-past-playtime", 1, 3, -1),
+                         "track-past-playtime (multichannel area, track 3)")
+        self.assertEqual(_sbtoc._warning_text("audio-sector-malformed", -1, 0, 600), "audio-sector-malformed (LSN 600)")
+        self.assertEqual(_sbtoc._warning_text("x", -1, 0, -1), "x")
+
+    def test_layout_struct_sizes_match_the_header(self):
+        # scarletbook.h, format 1.0: SbTocHeader 56, SbDiscInfo 32, SbAreaInfo 52, SbTrackInfo 28,
+        # SbTocWarning 24, SbTocStr 8
+        self.assertEqual([s.size for s in (_sbtoc._HEADER, _sbtoc._DISC_INFO, _sbtoc._AREA_INFO,
+                                           _sbtoc._TRACK_INFO, _sbtoc._WARNING, _sbtoc._STR)],
+                         [56, 32, 52, 28, 24, 8])
 
     def test_struct_sizes_match_the_header(self):
         for struct, size in _sbtoc._SIZES.items():

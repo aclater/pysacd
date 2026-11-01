@@ -9,6 +9,13 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- Reading a TOC is 4.9 times faster (#94): 0.125 ms per disc against 0.618 ms in 0.3.0 (median
+  of the 5 test discs), as fast as 0.2's own parser was. The TOC comes from scarletbook in one
+  call (`sb_disc_toc`) instead of about a hundred, and a path is read by the library itself.
+  The TOC is unchanged: every object and `toc --json` are identical to 0.3.0's on the
+  conformance corpus, 3,000 TOC mutations, the real test discs and a library of 291 ISOs, and
+  beets-pysacd fingerprints are unchanged. The engine now needs scarletbook 0.5.2.
+
 - The engine links scarletbook-rs 0.5.2 (#94). Output is unchanged. On x86-64 Linux the engine
   is again marked for CET shadow stacks (SHSTK), as it was up to 0.2.2, because scarletbook's
   library now is: a process running with shadow stacks can load it. CI checks the mark on the

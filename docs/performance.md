@@ -210,7 +210,7 @@ Against `sacd_extract` (a black-box build), the same discs, DSF of the stereo ar
 | DST | 8.08 s | 2.85 s | 3.27 s | 2.5× faster |
 
 The other two DST discs take 2.41 → 2.75 s and 4.25 → 4.90 s from 0.2.2 to 0.3.0 (+14%,
-+15%); reading a TOC takes 0.69 ms against 0.15 ms.
++15%); reading a TOC took 0.69 ms against 0.15 ms (since #94, about as fast as 0.2.2: see [below](#reading-a-toc-in-process-against-a-subprocess)).
 
 ## Reading a TOC: in-process against a subprocess
 
@@ -224,14 +224,18 @@ A DST disc, 200 reads × 3 rounds, median:
 The time saved is small next to what you get: a structured object, not text
 to parse.
 
-Since 0.3.0 the TOC is read through scarletbook-rs (#85). Measured on the 5 real test discs,
-each 200 reads, 3 rounds alternating the two engines, median per disc:
+Since 0.3.0 the TOC is read through scarletbook-rs (#85), and since #94 in one call
+(`sb_disc_toc`, scarletbook 0.5.2), with a path opened by the library itself. Measured on the 5
+real test discs under `benchlock`, each 200 reads, 3 rounds alternating the three builds, mean of
+the rounds' medians per disc:
 
-| TOC engine | Time per disc |
-|---|---|
-| pysacd 0.2's own parser (removed in 0.3.0) | 0.13 ms (0.09–0.24) |
-| scarletbook-rs, through ctypes (the default) | 0.59 ms (0.42–0.95) |
+| TOC reader | Median of the discs | Range |
+|---|---|---|
+| pysacd 0.2's own parser (removed in 0.3.0) | 0.128 ms | 0.117–0.184 ms |
+| 0.3.0: scarletbook, one ctypes call per field | 0.618 ms | 0.451–0.971 ms |
+| scarletbook, the whole TOC in one call (#94) | **0.125 ms** | 0.092–0.184 ms |
 
-scarletbook does more per disc: it checks all three master TOC copies and both copies of
-each area TOC, and pysacd makes about a hundred ctypes calls to copy the fields out. A
-TOC is read once per disc, so half a millisecond doesn't show in any command.
+The one-call reader is 4.9 times faster than 0.3.0's and as fast as 0.2's parser was, though
+scarletbook does more per disc: it checks all three master TOC copies and both copies of each
+area TOC. About a fifth of the time is opening the image; most of the rest is building the
+Python objects.

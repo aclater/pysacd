@@ -12,6 +12,10 @@ on:
     branches: [master]
     paths: [".github/workflows/**"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}  # a new push supersedes the old PR run; main runs finish
+
 permissions:
   contents: read
 

@@ -92,7 +92,8 @@ How it works:
     output keeps the DST frames as stored (edit master, `-p` without `-c`), scarletbook hands
     out each position's stored frame next to its decoded audio, from the same read.
   - **Worker pool** (`-j` or `--threads`, defaulting to the CPU count): converts DSD to PCM
-    and lays out DSF blocks. scarletbook's decoding pool has as many threads.
+    and lays out DSF blocks. scarletbook's decoding pool has one thread fewer, so the reader,
+    which works on every frame, has a CPU of its own (#94).
   - **Writer thread:** writes every overlapping output in order. That covers
     DSF, DSDIFF (DSD or DST passthrough), WAV and FLAC.
 

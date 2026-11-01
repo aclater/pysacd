@@ -12,8 +12,10 @@ carry it (scarletbook-rs#125), so the engine is marked again; this keeps it so. 
 tracking (IBT) isn't checked: Rust's standard library has no ENDBR64, so the engine can't be
 IBT-marked.
 
-Files for another platform or architecture (an aarch64, musl-free macOS or Windows wheel) fail:
-pass only x86-64 Linux ones. Standard library plus readelf only.
+Files for another platform or architecture fail: pass only x86-64 glibc ones (manylinux). A
+musllinux engine can't be marked: Alpine's startup objects (`crti.o`, `crtbeginS.o`), which every
+shared library links, carry no CET property, and musl never enables shadow stacks, so the mark
+would change nothing there. Standard library plus readelf only.
 """
 
 from __future__ import annotations

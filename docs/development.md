@@ -203,8 +203,9 @@ CET shadow-stack (SHSTK) property (scarletbook-rs#125), so the engine is SHSTK-m
 was up to 0.2.2: a process running with shadow stacks can load it. 0.3.0, linked with 0.5.1, had
 no CET mark (a library is marked only when every object in it is). Indirect branch tracking (IBT)
 stays unmarked: stable Rust's standard library has no `ENDBR64`. `tools/check_cet.py` checks the
-mark with `readelf -n`, in CI on the engine and on every x86-64 Linux wheel after auditwheel
-(#94). The other hardening properties are unchanged: full RELRO, `BIND_NOW` and a
+mark with `readelf -n`, in CI on the engine and on the x86-64 manylinux wheel after auditwheel
+(#94). The musllinux engine stays unmarked: Alpine's startup objects (`crti.o`, `crtbeginS.o`)
+have no CET property, and musl never turns shadow stacks on, so the mark would change nothing. The other hardening properties are unchanged: full RELRO, `BIND_NOW` and a
 non-executable stack. See [performance](performance.md#hardening).
 
 ## Tests

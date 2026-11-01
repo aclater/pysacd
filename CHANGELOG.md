@@ -12,7 +12,8 @@ behaviour, and a patch version only adds or fixes. Each release on
 - The engine links scarletbook-rs 0.5.2 (#94). Output is unchanged. On x86-64 Linux the engine
   is again marked for CET shadow stacks (SHSTK), as it was up to 0.2.2, because scarletbook's
   library now is: a process running with shadow stacks can load it. CI checks the mark on the
-  engine and on every x86-64 Linux wheel (`tools/check_cet.py`).
+  engine and on the x86-64 manylinux wheel (`tools/check_cet.py`). The musllinux wheel stays
+  unmarked, since musl never uses shadow stacks.
 
 - Docs: the author's note gets an update at the bottom for 0.3.0 (scarletbook-rs, sacdfs); the
   original text is kept as written.

@@ -842,29 +842,6 @@ static int out_fail(sc_output_t *o, const char *fmt, ...)
     return -1;
 }
 
-static int write_dsf_header(FILE *fp, sc_output_t *o, int channels, uint64_t bytes_per_ch, uint64_t data_bytes)
-{
-    static const int channel_type[] = {0, 1, 2, 3, 5, 6, 7};
-    uint8_t h[92] = {0};
-    memcpy(h, "DSD ", 4);
-    put_le(h + 4, 28, 8);
-    put_le(h + 12, 92 + data_bytes + o->footer_len, 8);
-    put_le(h + 20, o->footer_len ? 92 + data_bytes : 0, 8);
-    memcpy(h + 28, "fmt ", 4);
-    put_le(h + 32, 52, 8);
-    put_le(h + 40, 1, 4);
-    put_le(h + 44, 0, 4);
-    put_le(h + 48, channel_type[channels], 4);
-    put_le(h + 52, channels, 4);
-    put_le(h + 56, 2822400, 4);
-    put_le(h + 60, 1, 4);
-    put_le(h + 64, bytes_per_ch * 8, 8);
-    put_le(h + 72, DSF_BLOCK, 4);
-    memcpy(h + 80, "data", 4);
-    put_le(h + 84, 12 + data_bytes, 8);
-    return fseeko(fp, 0, SEEK_SET) == 0 && fwrite(h, sizeof(h), 1, fp) == 1 ? 0 : -1;
-}
-
 static int write_wav_header(FILE *fp, int channels, int rate, uint64_t data_bytes)
 {
     static const uint32_t masks[] = {0, 0x4, 0x3, 0x7, 0x33, 0x37, 0x3F};
@@ -934,7 +911,10 @@ static int out_open(engine_t *e, sc_output_t *o, out_state_t *st)
     case OUT_DSF:
         st->limit = (uint64_t)(o->tc_end - o->tc_start) * FRAME_BYTES_PER_CH +
                     (o->head_frame >= 0 ? o->head_bytes : 0) - o->tail_bytes;
-        return write_dsf_header(st->fp, o, e->channels, 0, 0) < 0 ? out_fail(o, "%s: write failed", o->path) : 0;
+        /* the header scarletbook laid out (pysacd.sbwriter): its sizes are the file's */
+        if (o->header_len && fwrite(o->header, o->header_len, 1, st->fp) != 1)
+            return out_fail(o, "%s: write failed", o->path);
+        return 0;
     case OUT_WAV:
         st->wbuf = malloc((size_t)e->opf * e->channels * 3);
         if (!st->wbuf)
@@ -1031,8 +1011,6 @@ static int out_close(engine_t *e, sc_output_t *o, out_state_t *st)
         }
         o->samples = st->dsf_bytes * 8;
         if (!rc && o->footer_len && fwrite(o->footer, o->footer_len, 1, st->fp) != 1)
-            rc = out_fail(o, "%s: write failed", o->path);
-        if (!rc && write_dsf_header(st->fp, o, ch, st->dsf_bytes, o->data_bytes) < 0)
             rc = out_fail(o, "%s: write failed", o->path);
         break;
     case OUT_WAV:

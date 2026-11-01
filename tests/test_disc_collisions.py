@@ -193,8 +193,8 @@ class ExtractDiscCollisions(DiscCollisions):
         two = self.iso("d2", disc_catalog="CS065233", set_size=2, sequence=2)
         ours, theirs = self.dir / "ours", self.dir / "theirs"
         ours.mkdir(), theirs.mkdir()
-        boot = ("import functools,sys;from pysacd import sbcompat as s, extract;"
-                "s.dsdiff_footer=functools.partial(s.dsdiff_footer,machine=s.SACD_RIPPER_VERSION_INFO);"
+        boot = ("import sys;from pysacd import sbcompat as s, extract;"
+                "s.PYSACD_VERSION_INFO=s.SACD_RIPPER_VERSION_INFO;"
                 "sys.exit(extract.main())")
         for args in (["-s"], ["-p"]):
             r = subprocess.run([sys.executable, "-c", boot, "--no-cfg", "--disc", "2/2", *args, "-i", str(one)],

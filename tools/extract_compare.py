@@ -59,6 +59,19 @@ MODES = {
     "convert-flac": ("convert", ["-f", "flac"]),
     "convert-wav-pauses": ("convert", ["-f", "wav", "--pauses"]),
     "convert-dsf-last-track": ("convert", ["-f", "dsf", "-t", "LAST"]),
+    # the writer's choices of #94, one by one: ID3 modes, -z on a selection, pauses in DSDIFF
+    "dsf-id3-0": ("extract+", ["-2", "-s", "--id3tag", "0"]),
+    "dsf-id3-1": ("extract+", ["-2", "-s", "--id3tag", "1"]),
+    "dsf-id3-2": ("extract+", ["-2", "-s", "--id3tag", "2"]),
+    "dsf-id3-3": ("extract+", ["-2", "-s", "--id3tag", "3"]),
+    "dsf-id3-5": ("extract+", ["-2", "-s", "--id3tag", "5"]),
+    "dsdiff-id3-0": ("extract+", ["-2", "-p", "--id3tag", "0"]),
+    "dsdiff-id3-3": ("extract+", ["-2", "-p", "--id3tag", "3"]),
+    "dsf-nopad-tracks": ("extract", ["-2", "-s", "-z", "-t", "2,3"]),
+    "dsf-nopad-pauses": ("extract", ["-2", "-s", "-z", "-b"]),
+    "mch-dsf-nopad": ("extract", ["-m", "-s", "-z"]),
+    "dsdiff-pauses": ("extract", ["-2", "-p", "-b"]),
+    "mch-edit-master": ("extract", ["-m", "-e"]),
 }
 
 

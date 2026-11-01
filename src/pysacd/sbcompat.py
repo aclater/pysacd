@@ -22,8 +22,6 @@ from __future__ import annotations
 
 import os
 import struct
-from collections.abc import Sequence
-from datetime import datetime
 
 from . import __version__, safetext
 from .toc import CATEGORIES, GENRES, START_OF_MASTER_TOC, Area, Disc, SACDImage
@@ -382,196 +380,17 @@ def _render_id3(disc: Disc, area: Area, track_idx: int, mode: int) -> bytes:
     return b"ID3" + bytes((4 if v24 else 3, 0, 0)) + _syncsafe(len(body)) + body
 
 
-def id3_tag(disc: Disc, area: Area, track_idx: int, mode: int = 4) -> bytes:
-    """The ID3 tag sacd_extract appends to a DSF (id3tag=mode in sacd_extract.cfg).
+def id3_tag(disc: Disc, area: Area, track_idx: int, mode: int = 4, dsdiff: bool = False) -> bytes:
+    """The ID3 tag sacd_extract makes from the TOC (id3tag=mode in sacd_extract.cfg): a DSF
+    file's metadata, or with `dsdiff` the data of a DSDIFF file's `ID3 ` chunk.
 
     0: none, 1: v2.3 UTF-16, 2: v2.3 UTF-16 minimal, 3: v2.3 ISO-8859-1,
-    4: v2.4 UTF-8 (default), 5: v2.4 UTF-8 minimal.
+    4: v2.4 UTF-8 (default), 5: v2.4 UTF-8 minimal. Unlike DSF, DSDIFF gets a tag (of empty
+    frames) with mode 0 too, as sacd_extract writes it.
     """
-    if mode == 0:
+    if mode == 0 and not dsdiff:
         return b""
     return _render_id3(disc, area, track_idx, mode)
-
-
-# ------------------------------------------------------------ DSDIFF (dsdiff.c)
-
-def _ceil_odd(x: int) -> int:
-    return x + 1 if x % 2 else x
-
-
-def _chunk_size(x: int) -> bytes:
-    return struct.pack(">Q", _ceil_odd(x))
-
-
-_CHANNEL_IDS = {2: (b"SLFT", b"SRGT"),
-                5: (b"MLFT", b"MRGT", b"C   ", b"LS  ", b"RS  "),
-                6: (b"MLFT", b"MRGT", b"C   ", b"LFE ", b"LS  ", b"RS  ")}
-_LS_CONFIG = {2: 0, 5: 3, 6: 4}
-
-
-def dsdiff_header_size(area: Area, dst: bool) -> int:
-    """Bytes before the first audio byte (DSD) or first DSTF chunk (DST)."""
-    ch = area.channel_count
-    n = 16 + 16 + 16 + 16 + 14 + 4 * ch + (28 if dst else 32) + 14
-    n += 12 + 18 if dst else 12
-    return _ceil_odd(n)
-
-
-def dsdiff_header(disc: Disc, area: Area, *, dst: bool, audio_data_size: int, frame_count: int,
-                  footer_size: int) -> bytes:
-    """FRM8 header up to the sound data; audio_data_size includes any odd-size pad byte."""
-    ch = area.channel_count
-    out = bytearray()
-    out += b"FRM8" + b"\0" * 8 + b"DSD "                      # size patched below
-    out += b"FVER" + _chunk_size(4) + struct.pack(">I", 0x01050000)
-    prop = len(out)
-    out += b"PROP" + b"\0" * 8 + b"SND "
-    out += b"FS  " + _chunk_size(4) + struct.pack(">I", SACD_SAMPLING_FREQUENCY)
-    ids = _CHANNEL_IDS.get(ch) or tuple(b"C%03d" % i for i in range(ch))
-    out += b"CHNL" + _chunk_size(2 + 4 * ch) + struct.pack(">H", ch) + b"".join(ids)
-    name = b"DST Encoded" if dst else b"not compressed"
-    cmpr = b"CMPR" + _chunk_size(5 + len(name)) + (b"DST " if dst else b"DSD ") + bytes((len(name),)) + name
-    out += cmpr.ljust(_ceil_odd(len(cmpr)), b"\0")
-    out += b"LSCO" + _chunk_size(2) + struct.pack(">H", _LS_CONFIG.get(ch, 65535))
-    out[prop + 4:prop + 12] = _chunk_size(len(out) - prop - 12)
-    if dst:
-        out += b"DST " + _chunk_size(audio_data_size + 18)
-        out += b"FRTE" + _chunk_size(6) + struct.pack(">IH", frame_count, FRAME_RATE)
-    else:
-        out += b"DSD " + _chunk_size(audio_data_size)
-    if len(out) % 2:
-        out += b"\0"
-    out[4:12] = _chunk_size(len(out) + footer_size + audio_data_size - 12)
-    return bytes(out)
-
-
-def _flags4(flag_byte: int) -> int:
-    """area_tracklist_time_t flags -> DSDIFF track_flags (tmf4, tmf1, tmf2, tmf3)."""
-    return ((flag_byte >> 6) & 1) | ((flag_byte >> 3) & 1) << 1 | ((flag_byte >> 4) & 1) << 2 | \
-           ((flag_byte >> 5) & 1) << 3
-
-
-class _Buf:
-    """A reusable, zero-initialised buffer: C's footer buffer is filled twice
-    (at create and at close) and padding bytes keep what the first pass left."""
-
-    def __init__(self):
-        self.b = bytearray()
-        self.pos = 0
-
-    def put(self, data: bytes) -> None:
-        end = self.pos + len(data)
-        if end > len(self.b):
-            self.b.extend(b"\0" * (end - len(self.b)))
-        self.b[self.pos:end] = data
-        self.pos = end
-
-    def skip(self, n: int) -> None:
-        self.pos += n
-        if self.pos > len(self.b):
-            self.b.extend(b"\0" * (self.pos - len(self.b)))
-
-
-def _marker(buf: _Buf, frames: int, mark_type: int, track_flags: int) -> None:
-    secs = frames // FRAME_RATE
-    rem = secs % 3600
-    buf.put(b"MARK" + _chunk_size(22) + struct.pack(
-        ">HBBIiHHHI", secs // 3600, rem // 60, rem % 60,
-        (frames % FRAME_RATE) * SAMPLES_PER_FRAME * 64, 0, mark_type, 0, track_flags, 0))
-
-
-def _footer_pass(buf: _Buf, disc: Disc, area: Area, track_idx: int | None, dst: bool,
-                 frame_index: list[tuple[int, int]], id3_mode: int, now: datetime,
-                 machine: str) -> int:
-    buf.pos = 0
-    size = 0
-    edit_master = track_idx is None
-    idx0 = track_idx if track_idx is not None else 0   # the track, when not an edit master
-    if dst and frame_index:
-        buf.put(b"DSTI" + _chunk_size(12 * len(frame_index)))
-        for off, length in frame_index:
-            buf.put(struct.pack(">QI", off, length))
-        size = _ceil_odd(buf.pos)
-
-    start = size
-    buf.pos = start
-    buf.put(b"DIIN")
-    buf.skip(8)
-    if edit_master:
-        buf.put(b"EMID" + _chunk_size(0))
-        tracks = area.tracks
-        for i, t in enumerate(tracks):
-            abs_start = t.start.total_frames
-            abs_stop = abs_start + t.duration.total_frames
-            if i == 0:
-                _marker(buf, 0, 2, _flags4(t.start_flags))
-            _marker(buf, abs_start, 0, _flags4(t.start_flags))
-            if i == len(tracks) - 1 or tracks[i + 1].start.total_frames > abs_stop:
-                _marker(buf, abs_stop, 1, _flags4(t.flags))
-    else:
-        dur = area.tracks[idx0].duration
-        buf.put(b"MARK" + _chunk_size(22) + struct.pack(
-            ">HBBIiHHHI", dur.minutes // 60, dur.minutes % 60, dur.seconds,
-            dur.frames * SAMPLES_PER_FRAME * 64, 0, 4, 0, 0, 0))
-
-    tt = {} if edit_master else area.tracks[idx0].text
-    c = _b(tt["performer"]) if "performer" in tt else _first(
-        disc, "disc_artist", "disc_artist_phonetic", "album_artist", "album_artist_phonetic",
-        "disc_title", "disc_title_phonetic", "album_title", "album_title_phonetic")
-    for cid, s in ((b"DIAR", c), (b"DITI", _b(tt["title"]) if "title" in tt else _first(
-            disc, "album_title", "album_title_phonetic", "disc_title", "disc_title_phonetic"))):
-        if s is None:
-            continue
-        s = _latin1(s)
-        buf.put(cid + _chunk_size(4 + len(s)) + struct.pack(">I", len(s)) + s)
-        buf.skip(_ceil_odd(len(s)) - len(s))
-    em_end = buf.pos
-    buf.pos = start + 4
-    buf.put(_chunk_size(em_end - start - 12))
-    size += _ceil_odd(em_end - start)
-
-    # COMT: disc date + "creating machine"
-    start = size
-    buf.pos = start
-    buf.put(b"COMT")
-    buf.skip(8)
-    buf.put(struct.pack(">H", 2))
-    title = _first(disc, "disc_title", "album_title") or b"Unknown"
-    y, m, d = disc.date
-    for stamp, ref, text in (((y, m, d, 0, 0), 0, b"Material ripped from SACD: " + _latin1(title)),
-                             ((now.year, now.month - 1, now.day, now.hour, now.minute), 2,
-                              machine.encode("latin-1", "ignore"))):
-        buf.put(struct.pack(">HBBBBHHI", *stamp, 3, ref, len(text)) + text)
-        buf.skip(_ceil_odd(14 + len(text)) - 14 - len(text))
-    end = buf.pos
-    buf.pos = start + 4
-    buf.put(_chunk_size(end - start - 12))
-    size += _ceil_odd(end - start)
-
-    for idx in (range(len(area.tracks)) if edit_master else (idx0,)):
-        tag = _render_id3(disc, area, idx, id3_mode)
-        buf.pos = size
-        buf.put(b"ID3 " + _chunk_size(len(tag)) + tag)
-        size += _ceil_odd(12 + len(tag))
-    return size
-
-
-def dsdiff_footer(disc: Disc, area: Area, track_idx: int | None, *, dst: bool,
-                  frame_index: Sequence[tuple[int, int]] = (), id3_mode: int = 4,
-                  now: datetime | None = None, machine: str = PYSACD_VERSION_INFO) -> bytes:
-    """Chunks after the sound data: DSTI (DST), DIIN, COMT and ID3.
-
-    track_idx=None writes the edit-master variant (all-track markers, one ID3
-    chunk per track). frame_index holds (absolute file offset of DSTF data,
-    length) per DST frame. Unlike DSF, id3_mode 0 still writes an (empty) tag,
-    as sacd_extract does.
-    """
-    now = now or datetime.now()
-    buf = _Buf()
-    # First pass as at file creation (no frames yet), then the real one.
-    _footer_pass(buf, disc, area, track_idx, dst, [], id3_mode, now, machine)
-    size = _footer_pass(buf, disc, area, track_idx, dst, list(frame_index), id3_mode, now, machine)
-    return bytes(buf.b[:size].ljust(size, b"\0"))
 
 
 # ------------------------------------------------------------ CUE (cuesheet.c)

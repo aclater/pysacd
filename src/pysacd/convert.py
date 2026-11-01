@@ -11,7 +11,7 @@ import unicodedata
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
-from . import _native, musicbrainz, safeio, safetext, tagging
+from . import _native, musicbrainz, safeio, safetext, sbwriter, tagging
 from .toc import FRAME_RATE, Area, Disc, SACDImage, Track, track_range
 
 CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pysacd" / "config.toml"
@@ -406,7 +406,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     embed = cover if opts.cover else None
     fmt = opts.format
     specs, todo = [], []
-    skipped = 0
+    skipped = failed_layouts = 0
     for t, tags, path in plan:
         if path.exists() and not opts.overwrite:
             _log(f"  {t.number:2d} exists, skipped: {path.name}")
@@ -416,14 +416,20 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
         first, end = track_range(area, area.tracks.index(t), trimming=not opts.pauses)
         spec = _native.OutputSpec(fmt, tmp, first, end, flac_level=opts.flac_level)
         if fmt == "dsf":
-            spec.footer = tagging.id3_bytes(tags, embed, opts.id3_version)
+            try:
+                lay = sbwriter.dsf(img, area, first, end, tagging.id3_bytes(tags, embed, opts.id3_version))
+            except sbwriter.OutputError as e:
+                _log(f"  {t.number:2d} not written: {path.name}: {safetext.for_terminal(str(e))}")
+                failed_layouts += 1
+                continue
+            spec.header, spec.footer = lay.header, lay.trailer
         elif fmt == "flac":
             spec.flac_padding = tagging.flac_metadata_size(tags, embed)
         specs.append(spec)
         todo.append((t, tags, path, spec))
     if not specs:
         _log(f"{label}: nothing to do, {_skipped(skipped)}")
-        return 0
+        return failed_layouts
 
     start = time.monotonic()
     try:
@@ -434,7 +440,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
             Path(spec.path).unlink(missing_ok=True)
         if isinstance(e, _native.NativeError):
             _log(f"\n{label}: FAILED: {e}")
-            return len(specs)
+            return len(specs) + failed_layouts
         raise
     _log("")
     if run.refuted_from is not None:
@@ -442,7 +448,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
              f"turned out wrong: frames before {run.refuted_from} may differ from an exact read. Run again "
              "with --exact.")
 
-    failures = 1 if run.refuted_from is not None else 0
+    failures = failed_layouts + (1 if run.refuted_from is not None else 0)
     for t, tags, path, spec in todo:
         try:
             if fmt != "dsf":

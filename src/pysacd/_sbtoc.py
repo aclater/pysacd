@@ -507,6 +507,7 @@ def _build(lib, disc) -> Disc:
                 text=track_text,
                 start_flags=start_flags,
             ))
+        area.slot = slot
         by_slot[slot] = area
         out.areas.append(area)
 

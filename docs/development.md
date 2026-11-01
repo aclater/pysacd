@@ -67,10 +67,11 @@ in the archive's `native-static-libs.txt`.
   about 2.4 MB on x86-64 Linux, and a wheel by about 1 MB.
 - **Checked twice.** `csrc/sacdconv.c` refuses at compile time a header whose `SB_ABI_VERSION`
   isn't 2. When the engine loads, `_native.py` refuses it if the linked library's
-  `sb_abi_version()` isn't 2 or its `sb_version()` is older than 0.5.2. 0.5.0 is the first
-  release with cancellation, progress, and stored and decoded frames in one pass, 0.5.2 the first
-  with the whole TOC in one call (`sb_disc_toc`), and 0.5.1
-  the first with the TOC's timecodes as stored.
+  `sb_abi_version()` isn't 2 or its `sb_version()` is older than 0.5.4. 0.5.0 is the first
+  release with cancellation, progress, and stored and decoded frames in one pass, 0.5.1
+  the first with the TOC's timecodes as stored, 0.5.2 the first with the whole TOC in one call
+  (`sb_disc_toc`), and 0.5.4 the first whose output API can lay out `sacd_extract`'s DSF and
+  DSDIFF files byte for byte (scarletbook-rs#169).
 - **Logged.** `_native.build_info()` (in `pysacd --version` and in log files) names the
   scarletbook version, and the debug log carries its full `sb_build_info()`.
 
@@ -196,48 +197,61 @@ one after are included, exactly as before, so that PCM output is sample-identica
     track of every hostile image (`seek_min_gap=0`, so every range is provisional): same bytes,
     or both fail, and none refuted. The harness's range modes do the same on real discs.
 
-### Output through scarletbook: what stays pysacd's
+### Output through scarletbook
 
-scarletbook 0.5.2 can lay out DSF and DSDIFF files itself (`sb_output_layout_*`, `sb_tags_*`,
-`sb_dst_lengths_*`). The owner's rule for offloading is to adopt scarletbook where the output is
-byte-identical and no more than 15 % slower, and then delete pysacd's own code. pysacd's files
-must stay byte-identical to `sacd_extract`'s, so `tools/output_compare.py` checked every file
-pysacd 0.3.0 writes against the layout scarletbook gives, using the writer's choices nearest to
-pysacd's and passing pysacd's own tag, markers and comments as the caller's (#94).
+Since 0.4.0, every byte of a DSF or DSDIFF file that isn't audio comes from scarletbook's output
+API (#94): `src/pysacd/sbwriter.py` asks scarletbook 0.5.4 for each file's layout from the TOC
+(`sb_output_layout_new`, `sb_output_layout_new_dst`, `sb_output_dsf_chain_plan`) and the engine
+writes its header and trailer around the audio it streams. pysacd's own DSF header writer and
+DSDIFF chunk writer are deleted. The owner's rule for offloading is to adopt scarletbook where
+the output is byte-identical and no more than 15 % slower, and then delete pysacd's own code;
+both hold (see [performance](performance.md)).
 
-Files compared (5 real test discs; sacd-spec conformance corpus in brackets):
-
-| Output | Same as scarletbook's layout | What differs |
-|---|---|---|
-| DSF header, ID3v2.4 tag or none (`-s`, `-s -b`, `--id3tag 0`, multichannel) | **239 of 239** (919 of 919) | nothing |
-| DSF with an ID3v2.3 tag (`--id3tag 1` to `3`) | refused: 73 (238) | the raw tag must be ID3v2.4 |
-| DSF without padding (`-z`) | can't be described | ranges of whole frames only |
-| DSF tag from the TOC (`sb_tags_from_toc`) against `sacd_extract`'s | 0 of 73 (0 of 238) | `sacd_extract` writes `TYER` and `TDAT`, falls back to the album artist for `TPE1`, adds `TPE2` and a `TXXX` performer, and names the genre by its ID3v1 name; scarletbook writes `TDRL`, `COMM` and `TIPL`, in another order |
-| DSDIFF track files, DST kept or decoded, stereo and multichannel | 0 of 166 (0 of 677) | the `ID3 ` chunk after `COMT`; `EMID` (which scarletbook always writes in `DIIN`); `DITI` (the album title, not the track's); `CMPR`'s size with plain DSD (`sacd_extract` counts the pad byte) |
-| DSDIFF edited masters (`-e`, `-e -c`) | 0 of 10 (1 of 194) | the `ID3 ` chunks, one per track; `CMPR`'s size with plain DSD |
-
-The DSDIFF comparison already gives pysacd's own markers and comments as the caller's, with
-`DIIN`, `TEXT_PAD_COUNTED`, the `DSTI` offsets at the frame data and `LSCO` for unspecified
-layouts set as pysacd writes them. An edited master is compared as a file with `DIIN` and its
-program markers, because scarletbook's edited-master mode also writes `ABSS`, which
-`sacd_extract` doesn't. Two more differences show up only on hostile corpus images:
-- text outside ASCII, which `sacd_extract` writes as Latin-1 and scarletbook replaces;
-- unreadable frames in a DST file, which `sacd_extract` leaves out and scarletbook fills with
-  the DST equivalent of silence.
-
-
-**So the writers stay pysacd's.** The DSF header is the only part that matches everywhere it can
-be described. It can't be adopted with anything deleted, because `-z` files and v2.3 tags still
-need pysacd's header writer. Every DSDIFF file differs. The missing writer's choices were filed
-with scarletbook-rs as an integration requirement ([scarletbook-rs#169](https://github.com/aclater/scarletbook-rs/issues/169)). Once it can describe these
-files, the writers move onto it and pysacd's copies are deleted.
+- **The writer's choices** that give `sacd_extract`'s bytes, all in scarletbook 0.5.4
+  (scarletbook-rs#169):
+  - DSF: the tag is passed as the raw tag, ID3v2.4 or v2.3 (`sb_output_options_set_raw_tag`),
+    or none; an area of unspecified layout gets `sacd_extract`'s channel type by channel count.
+  - DSF without padding (`-z`): the selected tracks whose ranges meet end to end form one
+    chain (`sb_output_dsf_chain_plan`, options 37 and 38). Every file but the area's last track
+    ends on a whole block, and the bytes left over open the next file. When the last selected
+    track isn't the area's last, the chain runs one frame past it, so that its file ends
+    unpadded too, as `sacd_extract`'s does.
+  - DSDIFF: `DIIN` with `DIAR` and `DITI`, their pad byte counted; `DSTI` offsets at the frame
+    data; `LSCO` 65 535 for an unspecified layout; local chunks in `sacd_extract`'s order. A
+    track file has no `EMID` (option 33) and takes `DIAR` and `DITI` from its track, or else
+    from the album (option 34); an edited master keeps an empty `EMID`. Departures D1 (`CMPR`
+    of plain DSD counts its pad byte) and D2 (text as ISO 8859-1) are named: they make files
+    that don't conform to DSDIFF, and `sacd_extract` writes them.
+- **What stays pysacd's is content, not layout:** the ID3 tag `sacd_extract` makes from the TOC
+  (`sbcompat.id3_tag`), which goes in as a DSF file's raw tag and as a DSDIFF file's `ID3 `
+  caller chunks (padded to even length, with the pad counted, as `sacd_extract` counts it), and
+  `sacd_extract`'s markers and `COMT` comments, passed as the caller's own. scarletbook's own
+  tag from the TOC (`sb_tags_from_toc`) is another tag: `sacd_extract` writes `TYER` and
+  `TDAT`, a `TXXX` performer and ID3v1 genre names.
+- **DST files are finished after the run.** Their frames' lengths are known only once they
+  are read, so the engine writes a header of the right length, then the frames, and
+  `extract.finish_dff` loads the lengths (`sb_dst_lengths_load`) and writes scarletbook's
+  header and trailer.
+- **Checked.** After each DSF and plain DSD DSDIFF file, its size must be the layout's; a DST
+  file's frames must fill the layout's sound data exactly. A file that fails the check is
+  deleted and the run exits with 255.
+- **What scarletbook refuses isn't written.** A file of a hostile or damaged TOC that
+  scarletbook won't lay out (an empty track, a range past the area or its capacity, an
+  impossible date, an unsupported channel count) is reported, not written, and the run exits
+  with 255. pysacd 0.3 wrote such files from the TOC as it stood. No real disc in the tests has
+  one.
+- **Unreadable frames in a DST file.** `sacd_extract` leaves them out of the file. The layout is
+  then made for the frames the file holds, so the file is as before, except that a marker past
+  them (the index marker at a track's end, or an edited master's later markers) can't be
+  written: it is left out. This happens only on a damaged image.
 
 **Checking the outputs.** `tools/extract_compare.py` runs `pysacd-extract` and `pysacd convert`
-in 21 modes with two pysacd source trees, and the `sacd_extract`-compatible modes with
+in 35 modes with two pysacd source trees, and the `sacd_extract`-compatible modes with
 `sacd_extract` as a black box. The modes cover DSF, DSDIFF with DST kept or decoded, the edit
 master alone and with DSF (one pass), cue and XML, pauses, no padding, single tracks, the ISO copy alone and with DSF,
-concatenation, multichannel, `-P`, FLAC, WAV at 176.4 kHz, and `convert` with and without
-pauses. The new tree must give the same files, names and bytes as the old one, and must match
+concatenation, multichannel, `-P`, FLAC, WAV at 176.4 kHz, `convert` with and without
+pauses, and the writer's choices of #94 one by one (ID3 modes 0 to 5, `-z` on a selection and
+with pauses, DSDIFF with pauses, a multichannel edited master). The new tree must give the same files, names and bytes as the old one, and must match
 `sacd_extract` file by file wherever the old one did. `--no-values` reports counts only.
 
 **Moving to another scarletbook release:**

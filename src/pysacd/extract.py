@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import __version__, _native, remote, safeio, safetext, sbcompat
+from . import __version__, _native, remote, safeio, safetext, sbcompat, sbwriter
 from . import log as pslog
 from .rootcheck import warn_root
 from .toc import START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage, track_range
@@ -76,6 +76,7 @@ class Opts:
     flac_level: int = 5
     threads: int = 0
     exact: bool = False                 # --exact: no provisional range starts (#85)
+    refused: int = 0                    # files scarletbook couldn't lay out (#94)
     musicbrainz: bool = False
     mb_release: str | None = None
     mb_contact: str | None = None
@@ -333,6 +334,7 @@ class Job:
     dst: bool = False         # DSDIFF carrying DST frames
     tags: dict | None = None  # FLAC/WAV: written after encoding
     cover: tuple | None = None
+    size: int | None = None   # DSF, DSDIFF DSD: the file's size in scarletbook's layout
 
 
 def _tags_for(disc, area, idx, o: Opts, match, cover):
@@ -356,7 +358,10 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
         path = Path(sbcompat.unique_filename(str(out_dir), album_filename, "dff"))
         end = area.total_playtime.total_frames
         say(f"\n Exporting DFF edit master output in file: {path}")
-        jobs.append(_dff_job(disc, area, None, path, 0, end, dff_dst, o))
+        try:
+            jobs.append(_dff_job(img, disc, area, None, path, 0, end, dff_dst, o))
+        except sbwriter.OutputError as e:
+            _refused(o, path, str(e))
 
     if not (o.output_dsf or o.output_dsdiff or o.pcm):
         return jobs
@@ -386,7 +391,10 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
                 continue
             groups.append(([i], sbcompat.music_filename(disc, area, i, "", o.performer_flag)))
 
-    carry = 0                      # DSF nopad: bytes/channel carried into the next file
+    chains: dict = {}
+    chains_refused: dict = {}
+    if kind == "dsf" and o.dsf_nopad and not o.concatenate:
+        chains, chains_refused = _dsf_chains(img, area, groups, o)
     seen: set[str] = set()         # --templates: names equal case-folded/NFC get " (2)" (#47)
     prev_end = None
     for idx, (tracks, name) in enumerate(groups):
@@ -399,63 +407,134 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
             path = unique_path(_template_path(disc, area, first, ext, o, match), seen)
         tmp = safeio.temp_name(path)
 
+        if idx in chains_refused:
+            _refused(o, path, chains_refused[idx])
+            continue
         if kind == "dff":
-            jobs.append(_dff_job(disc, area, first, path, start, end, dff_dst, o))
+            try:
+                jobs.append(_dff_job(img, disc, area, first, path, start, end, dff_dst, o))
+            except sbwriter.OutputError as e:
+                _refused(o, path, str(e))
             continue
 
         spec = _native.OutputSpec(kind, tmp, start, end, flac_level=o.flac_level)
         tags = _tags_for(disc, area, first, o, match, cover) if (o.musicbrainz or o.pcm) else None
         if kind == "dsf":
-            if o.dsf_nopad and not o.concatenate:
-                if carry and prev_end is not None and first > 0:
-                    spec.head_frame, spec.head_bytes = prev_end - 1, carry
-                total = (end - start) * FRAME_BYTES + spec.head_bytes
-                last_of_area = last == ntracks - 1
-                carry = 0 if last_of_area else total % DSF_BLOCK
-                spec.tail_bytes = carry
-            prev_end = end
             if o.musicbrainz:
                 assert tags is not None
-                spec.footer = tagging.id3_bytes(tags, cover, 3 if o.id3_mode < 4 else 4)
+                tag = tagging.id3_bytes(tags, cover, 3 if o.id3_mode < 4 else 4)
             else:
-                spec.footer = sbcompat.id3_tag(disc, area, first, o.id3_mode)
+                tag = sbcompat.id3_tag(disc, area, first, o.id3_mode)
+            chain = chains.get(idx)
+            if chain is not None:
+                # the carried bytes come from the previous file's last frame (_dsf_chains)
+                spec.head_frame = prev_end - 1 if chain.head_bytes and prev_end is not None else -1
+                spec.head_bytes, spec.tail_bytes = chain.head_bytes, chain.tail_bytes
+            prev_end = end
+            try:
+                lay = sbwriter.dsf(img, area, start, end, tag, chain)
+            except sbwriter.OutputError as e:
+                _refused(o, path, str(e))
+                continue
+            spec.header, spec.footer = lay.header, lay.trailer
         elif kind == "flac":
             assert tags is not None     # PCM outputs always carry tags
             spec.flac_padding = tagging.flac_metadata_size(tags, cover)
-        jobs.append(Job(spec, path, kind, first, tags=tags, cover=cover))
+        jobs.append(Job(spec, path, kind, first, tags=tags, cover=cover, size=lay.size if kind == "dsf" else None))
     return jobs
 
 
-def _dff_job(disc, area, track, path: Path, start, end, dst: bool, o: Opts) -> Job:
+def _dsf_chains(img, area: Area, groups, o: Opts) -> tuple[dict, dict]:
+    """-z: the gapless chains of the selected tracks, as scarletbook plans them (#94).
+
+    Selected tracks whose ranges meet end to end form one chain: each file but the area's last
+    track ends on a whole DSF block, and the bytes left over open the next file, as
+    sacd_extract writes them. sacd_extract also carries the bytes left over into the next file
+    it writes when its range doesn't start where the previous one ended (a gap between tracks,
+    or a track not selected). A chain can't hold that, so the next file's chain starts with a
+    range of k frames before it, never written, chosen to leave the same bytes over: the
+    layout's header and size are then the file's, and the engine writes the carried bytes from
+    the previous file's last frame, as before."""
+    ntracks = len(area.tracks)
+    playtime = area.total_playtime.total_frames
+    ranges = [(track_range(area, t[0], o.trimming)[0], track_range(area, t[-1], o.trimming)[1], t[-1])
+              for t, _name in groups]
+    out: dict = {}
+    refused: dict = {}
+    run: list[int] = []
+    carry = 0
+    for idx, (start, end, last) in enumerate(ranges):
+        run.append(idx)
+        nxt = ranges[idx + 1] if idx + 1 < len(ranges) else None
+        if nxt is not None and nxt[0] == end and last < ntracks - 1:
+            continue
+        bounds = [ranges[run[0]][0]] + [ranges[k][1] for k in run]
+        lead = 0
+        if carry:
+            # k frames leave k * 4704 % 4096 bytes over; 4704 = 608 mod 4096, and carries are
+            # multiples of 32, so one k below 128 gives each
+            lead = next((k for k in range(1, 128) if k * sbwriter.FRAME_BYTES_PER_CH % 4096 == carry), 0)
+            bounds.insert(0, bounds[0] - lead)
+        if last < ntracks - 1 and end < playtime:
+            bounds.append(end + 1)      # not the area's last track: its file ends unpadded too
+        log.debug("DSF chain of %d files: frames %s", len(run), bounds)
+        try:
+            if bounds[0] < 0 or (carry and not lead):
+                raise sbwriter.OutputError(f"DSF chain: can't carry {carry} bytes into frame {bounds[0] + lead}")
+            files = sbwriter.dsf_chain(img, area, bounds)[1 if lead else 0:]
+            if lead and files[0].head_bytes != carry:
+                raise sbwriter.OutputError(f"DSF chain: carries {files[0].head_bytes} bytes, not {carry}")
+            for k, f in zip(run, files, strict=False):
+                out[k] = f
+            carry = out[run[-1]].tail_bytes
+        except sbwriter.OutputError as e:
+            refused.update((k, str(e)) for k in run)
+            carry = 0
+        run = []
+    return out, refused
+
+
+def _refused(o: Opts, path: Path, why: str) -> None:
+    """A file scarletbook can't lay out (a hostile or damaged TOC: an empty track, a range past
+    the area, an impossible date): it isn't written, and the run exits with 255 (#94)."""
+    o.refused += 1
+    log.warning("%s: not written: %s", safetext.for_terminal(path.name), why)
+    say(f"\n Warning: {safetext.for_terminal(path.name)}: not written: {safetext.for_terminal(why)}")
+
+
+def _dff_job(img, disc, area, track, path: Path, start, end, dst: bool, o: Opts) -> Job:
     tmp = safeio.temp_name(path)
-    hsize = sbcompat.dsdiff_header_size(area, dst)
     if dst:
-        # sizes and the frame index are only known afterwards; finished in finish_dff()
-        header = sbcompat.dsdiff_header(disc, area, dst=True, audio_data_size=0, frame_count=0, footer_size=0)
-        spec = _native.OutputSpec("dff-dst", tmp, start, end, header=header)
+        # the frames' lengths are known only afterwards: finish_dff() writes the real header and
+        # trailer; this header only reserves the place (its length doesn't depend on them)
+        lay = _dff_layout(img, disc, area, track, start, end, o, [1] * (end - start))
+        spec = _native.OutputSpec("dff-dst", tmp, start, end, header=lay.header)
     else:
-        data = (end - start) * FRAME_BYTES * area.channel_count
-        footer = sbcompat.dsdiff_footer(disc, area, track, dst=False, frame_index=[], id3_mode=o.id3_mode,
-                                        now=datetime.datetime.now())
-        header = sbcompat.dsdiff_header(disc, area, dst=False, audio_data_size=data,
-                                        frame_count=end - start, footer_size=len(footer))
-        spec = _native.OutputSpec("dff", tmp, start, end, header=header, footer=footer)
-    assert len(spec.header) == hsize
-    return Job(spec, path, "dff-em" if track is None else "dff", track, dst)
+        lay = _dff_layout(img, disc, area, track, start, end, o, None)
+        spec = _native.OutputSpec("dff", tmp, start, end, header=lay.header, footer=lay.trailer)
+    return Job(spec, path, "dff-em" if track is None else "dff", track, dst, size=None if dst else lay.size)
 
 
-def finish_dff(disc, area, job: Job, o: Opts) -> None:
-    """Complete a DST DSDIFF: frame index footer, then the real header."""
+def _dff_layout(img, disc, area, track, start, end, o: Opts, dst_lengths):
+    tracks = range(len(area.tracks)) if track is None else (track,)
+    return sbwriter.dsdiff(img, disc, area, track, start, end,
+                           id3_tags=[sbcompat.id3_tag(disc, area, i, o.id3_mode, dsdiff=True) for i in tracks],
+                           now=datetime.datetime.now(), machine=sbcompat.PYSACD_VERSION_INFO,
+                           dst_lengths=dst_lengths)
+
+
+def finish_dff(img, disc, area, job: Job, o: Opts) -> None:
+    """Complete a DST DSDIFF: its header and trailer, laid out for the frames it holds."""
     s = job.spec
-    footer = sbcompat.dsdiff_footer(disc, area, job.track, dst=True, frame_index=s.dst_index,
-                                    id3_mode=o.id3_mode, now=datetime.datetime.now())
-    header = sbcompat.dsdiff_header(disc, area, dst=True, audio_data_size=s.data_bytes,
-                                    frame_count=len(s.dst_index), footer_size=len(footer))
+    lay = _dff_layout(img, disc, area, job.track, s.tc_start, s.tc_end, o, [n for _off, n in s.dst_index])
+    if len(lay.header) != len(s.header) or lay.size != len(lay.header) + s.data_bytes + len(lay.trailer):
+        raise _native.NativeError(f"{s.path}: scarletbook's layout ({lay.size} bytes) doesn't fit the "
+                                  f"{s.data_bytes} bytes of DST frames written")
     with open(s.path, "r+b") as f:
         f.seek(0, os.SEEK_END)
-        f.write(footer)
+        f.write(lay.trailer)
         f.seek(0)
-        f.write(header)
+        f.write(lay.header)
 
 
 def _template_path(disc, area, idx, ext, o: Opts, match) -> Path:
@@ -794,6 +873,8 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
             iso_path = None     # the image is copied during the first pass only
     if iso_path:
         rc |= _execute(img, disc, None, [], o, iso_path)
+    if o.refused:
+        rc = 255        # as when the engine refuses a run
     say("\nProgram terminates!")
     return rc
 
@@ -828,7 +909,18 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
     for j in jobs:
         s = j.spec
         if j.dst:
-            finish_dff(disc, area, j, o)
+            try:
+                finish_dff(img, disc, area, j, o)
+            except sbwriter.OutputError as e:
+                Path(s.path).unlink(missing_ok=True)
+                _refused(o, j.final, str(e))
+                rc = 1
+                continue
+        elif j.size is not None and (got := os.path.getsize(s.path)) != j.size:
+            Path(s.path).unlink(missing_ok=True)
+            _refused(o, j.final, f"{got} bytes written, scarletbook's layout has {j.size}")
+            rc = 1
+            continue
         if j.kind in ("flac", "wav"):
             assert j.tags is not None
             tagging.write_tags(str(s.path), j.kind, j.tags, j.cover, 4 if o.id3_mode >= 4 else 3)

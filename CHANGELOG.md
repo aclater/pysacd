@@ -7,6 +7,25 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
+## Unreleased (0.4.0)
+
+- DSF and DSDIFF files are laid out by scarletbook-rs 0.5.4's output API (#94). Every byte of
+  them that isn't audio (the DSF header, the DSDIFF chunks before and after the sound data)
+  now comes from scarletbook, with the writer's choices that give `sacd_extract`'s bytes
+  (scarletbook-rs#169), and pysacd's own DSF and DSDIFF writers are deleted. `sacd_extract`'s
+  ID3 tags, markers and comments stay pysacd's, as content. Output is byte-identical to 0.3.1
+  in every mode on the real test discs, `-z` included. Speed is unchanged within the runs'
+  spread (+0.2 % for DST to DSF; docs/performance.md). The engine now needs scarletbook 0.5.4.
+- A file scarletbook won't lay out from a hostile or damaged TOC (an empty track, a range past
+  the area, an impossible date) is reported and not written, and the run exits with 255.
+  0.3.1 wrote it from the TOC as it stood. In a DSDIFF file that keeps DST, a marker past the
+  frames the file holds (when unreadable frames are left out) is left out too
+  (docs/sacd_extract.md).
+- Tools: `tools/extract_compare.py` has 12 more modes, the writer's choices one by one (ID3
+  modes, `-z` on a selection and with pauses, DSDIFF with pauses, a multichannel edited
+  master). `tools/output_compare.py`, which compared pysacd's files with scarletbook's layouts,
+  is removed: the layouts are now the files'.
+
 ## 0.3.1 (2026-11-01)
 
 pysacd moves onto scarletbook-rs 0.5.2 (#94). Reading a TOC is 4.9 times faster than in 0.3.0, as fast as 0.2's own parser was; DST extraction to DSF is a little faster; on x86-64 Linux the engine is marked for CET shadow stacks again. Output is byte-identical to 0.3.0. The release candidate 0.3.1rc1 passed the clean-machine matrix, identical to 0.3.0's baseline: 10 Linux VMs and Windows 11 at 20/20 each, and 12 containers (7 at 20/20; 5 at 19/20, where the image has no pipx package, as with 0.3.0).

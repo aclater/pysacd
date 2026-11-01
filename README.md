@@ -61,7 +61,7 @@ Why it exists, in the author's words: [author's note](docs/author.md).
 - **Byte-for-byte compatible** with `sacd_extract`, apart from a few
   [deliberate exceptions](docs/sacd_extract.md#compatibility-policy).
 - **Clean by construction.** No Philips/ISO reference code, ever. The SACD
-  engine (TOC, sectors, DST decoding) is
+  engine (TOC, sectors, DST decoding, and the layout of DSF and DSDIFF files) is
   [scarletbook-rs](https://github.com/aclater/scarletbook-rs), a clean-room
   library written only from published specifications. See
   [clean room and licences](docs/clean-room.md).

@@ -38,12 +38,12 @@ exported signature changes.
 
 ## The scarletbook library
 
-pysacd is moving its SACD engine (TOC parsing, sector formats, demultiplexing, DST decoding) onto
-scarletbook-rs, a clean-room Rust library, through its C interface (ABI 2). The plan and the
-reasons are in issue #85. The library is linked in, checked and exported. The TOC is read
-through it (see [below](#the-toc-through-scarletbook)), and so is the audio
-([below](#the-audio-through-scarletbook)). `csrc/demux.c` and `csrc/dstdec.c` are no longer
-used by the engine; they go in the next step.
+pysacd's SACD engine (sector formats, TOC parsing, demultiplexing, DST decoding) is
+scarletbook-rs, a clean-room Rust library, used through its C interface (ABI 2) since 0.3.0. The
+plan and the reasons are in issue #85. The TOC is read through it (see
+[below](#the-toc-through-scarletbook)), and so is the audio
+([below](#the-audio-through-scarletbook)). pysacd's own TOC parser, sector demultiplexer and DST
+decoder were removed with it; they are in the history up to v0.2.2.
 
 **What is linked.** `scarletbook.lock` pins one scarletbook release: its version, C ABI, commit,
 and the SHA-256 of `scarletbook-ffi-<version>-<target>.tar.gz` for every target it is built for.
@@ -95,20 +95,24 @@ the same way. Set `SCARLETBOOK_TARGET` when a compiler wrapper misreports its ta
 
 ### The TOC through scarletbook
 
-`SACDImage.read_toc()` reads the TOC with scarletbook by default (`src/pysacd/_sbtoc.py`).
-`engine="python"`, or `PYSACD_TOC_ENGINE=python`, uses pysacd's own parser instead.
+`toc.SACDImage` opens an image with scarletbook (`_sbtoc.SbImage`, `src/pysacd/_sbtoc.py`).
+Its `read_sectors()` reads 2048-byte logical sectors whatever the image's sector size
+(`sb_disc_read_sectors`), and its `read_toc()` builds the Disc, Area and Track objects.
 
 - **ctypes, not C glue.** Each field is one call to the documented ABI (`sb_disc_info`,
   `sb_disc_string`, `sb_track_info`, ...) on the engine library, following scarletbook's README.
   Reading a TOC isn't a hot path; see [performance](performance.md#reading-a-toc-in-process-against-a-subprocess).
 - **One source for every kind of input.** The image is opened with `sb_disc_open_callbacks_at`,
-  reading through the `SACDImage`'s file object: a path, a caller's file object and a PS3 server
-  (`remote.RemoteDisc`) all go the same way. The sector layout is still detected by
-  `SACDImage`, which also reads the audio for the engine for now.
-- **The same objects.** Where scarletbook gives bytes as stored (catalogue numbers, language
-  codes, manufacturer data), `_sbtoc` renders them exactly as `toc.py` does. Its text strings
-  (UTF-8) were already identical. Its warnings are the specification's codes (see
-  [the Python library](library.md#which-parser-reads-the-toc)).
+  reading through a Python file object: a path (opened here), a caller's file object and a PS3
+  server (`remote.RemoteDisc`) all go the same way. A failing read is an `OSError`, an image
+  scarletbook rejects a `SACDError`.
+- **The same objects as pysacd 0.2.** Up to 0.2 pysacd had its own parser. Before it was
+  removed, the two were compared field by field, on `toc --json` byte for byte, and on the
+  beets-pysacd fingerprint (#87). They agreed on the sacd-spec conformance corpus, 3,000 TOC
+  mutations, real discs and a library of 142 ISOs. Where scarletbook gives bytes as stored
+  (catalogue numbers, language codes, manufacturer data, ISRCs), `_sbtoc` renders them as that
+  parser did. The warnings are the specification's codes (see
+  [the Python library](library.md#the-parser)).
 - **Timecodes as stored.** scarletbook gives play times and track times as frame counts, and,
   since 0.5.1, as stored (`sb_area_playtime_stored`, `sb_track_timecodes_stored`; requested by
   pysacd, [scarletbook-rs#127](https://github.com/aclater/scarletbook-rs/issues/127)). A
@@ -116,13 +120,6 @@ the same way. Set `SCARLETBOOK_TARGET` when a compiler wrapper misreports its ta
   `-P`, cue, XML and DSDIFF markers, as `sacd_extract` and pysacd 0.2 write it. Where
   scarletbook cut a track to the area's play time, its cut count is used, as pysacd's parser
   did.
-
-**Checking the two agree.** `tests/test_toc_engines.py` compares the two engines on the
-hostile corpus (`tests/sacdgen.py`), on synthetic discs in every character set, and on 150
-seeded mutations of a valid TOC (`PYSACD_TOC_MUTATIONS` for more). `tools/toc_compare.py`
-does the same for any images or directories. It compares every field of the objects,
-`pysacd toc --json` byte for byte (warnings left out), and the beets-pysacd fingerprint.
-`--no-values` names the differing fields without their contents, for private discs.
 
 ### The audio through scarletbook
 
@@ -222,19 +219,26 @@ is byte-identical.
 the TOC reader and the `ps3sim` handler. It runs 300 cases per target by default;
 `PYSACD_FUZZ=5000` runs more. A failure names the seed that reproduces it.
 
-The C engine's parsers (the sector demuxer and the DST decoder) have libFuzzer
-harnesses in `fuzz/`. They need clang:
+The engine has a libFuzzer harness in `fuzz/`, `fuzz_engine`. It needs clang. Each input is a
+disc image: the harness opens it with scarletbook and runs `sacdconv_area_run()` on each area,
+as the commands do:
+- the whole area, capped at 600 frames, to DSF, DSDIFF and, for a DST area, DSDIFF with the
+  stored frames, in one pass;
+- the last track to WAV, through a sector source and with a provisional start.
+
+scarletbook's own parsing is fuzzed in its repository; this covers pysacd's code around it.
 
 ```sh
 make fuzz test-tools
 PYTHONPATH=src:tests python3 fuzz/make_seeds.py build/fuzz-seeds
-build/fuzz_dst_frame -jobs=8 -workers=8 -max_total_time=600 build/fuzz-corpus/dst_frame build/fuzz-seeds/dst_frame
-build/fuzz_demux     -jobs=8 -workers=8 -max_total_time=600 build/fuzz-corpus/demux     build/fuzz-seeds/demux
+build/fuzz_engine -max_len=4194304 -jobs=8 -workers=8 -max_total_time=600 build/fuzz-corpus/engine build/fuzz-seeds/engine
 ```
 
-A crashing input goes, minimised, into `fuzz/regressions/<harness>/` along with
-its fix. `tests/test_fuzz_engine.py` replays those inputs and the synthetic seeds
-with any C compiler, under the sanitizers in CI.
+The seeds are pysacd's hostile corpus (`tests/sacdgen.py`) and DST discs built by the test
+encoder. A crashing input goes, minimised, into `fuzz/regressions/fuzz_engine/` along with its
+fix. `tests/test_fuzz_engine.py` builds the same harness without libFuzzer (`make
+fuzz-replay`, any C compiler) and replays those inputs and the seeds, under the sanitizers
+in CI.
 
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
@@ -247,8 +251,8 @@ Every pull request runs:
   `-Werror` (FLAC included).
 - **The tests under AddressSanitizer and UndefinedBehaviorSanitizer**, and again under
   **ThreadSanitizer**.
-- **libFuzzer** on the demuxer and the DST decoder, 2 minutes each, when
-  `csrc/` or `fuzz/` changes. A weekly run lasts 30 minutes and keeps its
+- **libFuzzer** on the engine (`fuzz_engine`), 2 minutes, when `csrc/`, `fuzz/`, the
+  hostile corpus or the scarletbook pin changes. A weekly run lasts 30 minutes and keeps its
   corpus cached.
 - **The comparison tests** against a `sacd_extract` built from a pinned
   upstream commit inside the runner. Its code never enters the repository.

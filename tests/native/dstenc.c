@@ -1,7 +1,7 @@
 /*
  * Test-only DST encoder core and synthetic DSD64 source for pysacd's tests.
  *
- * Written from docs/dst-bitstream.md (sections 3 and 6): it runs the
+ * Written from docs/dst-bitstream.md as of v0.2.2 (sections 3 and 6; see docs/clean-room.md): it runs the
  * decoder's prediction model forwards and arithmetic-codes the symbols.
  * Frame headers (segmentation, mapping, filters, ptables) are written by
  * tests/dstenc.py, which drives this code through ctypes. Built by

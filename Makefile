@@ -110,8 +110,6 @@ SB_LIBS = $(shell cat $(SCARLETBOOK_DIR)/native-static-libs.txt)
 SB_STRIP = $(if $(filter -g -g%,$(CFLAGS)),,-Wl,-S)
 override CFLAGS += -I$(SCARLETBOOK_DIR)/include
 
-# demux.c and dstdec.c are no longer part of the engine (scarletbook reads the audio, #85); the
-# fuzz harnesses below still build them until they are removed.
 SRC := $(addprefix csrc/,sacdconv.c dsp.c)
 # BUILD and LIB can be overridden: the wheel build (setup.py) uses a private directory.
 BUILD ?= build
@@ -149,18 +147,30 @@ build/dstenc.so: tests/native/dstenc.c
 	@mkdir -p $(dir $@)
 	$(CC) -O2 $(ARCH) $(PIC) $(SHARED) -std=gnu17 -Wall -o $@ $< -lm
 
-# libFuzzer harnesses for the code that parses untrusted disc data (#36): clang only.
-#   make fuzz && build/fuzz_dst_frame -max_total_time=300 build/fuzz-corpus/dst_frame build/fuzz-seeds/dst_frame
+# libFuzzer harness for pysacd's engine on hostile disc images (#36, #85): clang only.
+#   make fuzz && build/fuzz_engine -max_total_time=300 build/fuzz-corpus/engine build/fuzz-seeds/engine
+# scarletbook-rs, which parses the images, is linked as released (it is fuzzed in its own
+# repository); the engine's own code is instrumented. No libFLAC: FLAC output isn't fuzzed.
 FUZZ_CC    ?= clang
 FUZZ_FLAGS := -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined \
-              -fno-sanitize-recover=undefined -std=gnu17
-FUZZ_SRC   := csrc/demux.c csrc/dstdec.c
+              -fno-sanitize-recover=undefined -std=gnu17 -pthread -DSC_DISPATCH
+FUZZ_SRC   := csrc/sacdconv.c csrc/dsp.c
+# The same harness without libFuzzer, for any compiler: tests/test_fuzz_engine.py replays the
+# regression inputs and seeds with it (REPLAY_FLAGS: the sanitizer CI job's flags)
+REPLAY_FLAGS ?= -O1 -g
 
-fuzz: build/fuzz_dst_frame build/fuzz_demux
+fuzz: build/fuzz_engine
 
-build/fuzz_%: fuzz/fuzz_%.c $(FUZZ_SRC) $(wildcard csrc/*.h)
+build/fuzz_engine: fuzz/fuzz_engine.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
 	@mkdir -p $(dir $@)
-	$(FUZZ_CC) $(FUZZ_FLAGS) -o $@ $< $(FUZZ_SRC) -lm
+	$(FUZZ_CC) $(FUZZ_FLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ $< $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) -lm
+
+fuzz-replay: build/replay_engine
+
+build/replay_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
+	@mkdir -p $(dir $@)
+	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread -DSC_DISPATCH -I$(SCARLETBOOK_DIR)/include -o $@ \
+	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) -lm
 
 # `make clean` keeps the downloaded scarletbook library (build/scarletbook); distclean removes it too.
 clean:
@@ -170,4 +180,4 @@ clean:
 distclean: clean
 	rm -rf build
 
-.PHONY: all clean distclean test-tools fuzz
+.PHONY: all clean distclean test-tools fuzz fuzz-replay

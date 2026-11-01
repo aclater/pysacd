@@ -15,7 +15,6 @@ from pathlib import Path
 from .toc import Area, SACDImage, area_frame_capacity
 
 FORMATS = {"dsf": 0, "flac": 1, "wav": 2, "dff": 3, "dff-dst": 4}
-SCAN_SLACK = 128    # sectors read around the needed range (frame context + boundary frames)
 
 
 class _Output(ctypes.Structure):
@@ -60,14 +59,11 @@ class _Area(ctypes.Structure):
         ("iso_path", ctypes.c_char_p),
         ("sector_size", ctypes.c_int),
         ("data_offset", ctypes.c_int),
-        ("scan_lsn_start", ctypes.c_uint32),
-        ("scan_lsn_end", ctypes.c_uint32),
         ("channels", ctypes.c_int),
         ("pcm_rate", ctypes.c_int),
         ("gain_db", ctypes.c_double),
         ("threads", ctypes.c_int),
         ("iso_out_path", ctypes.c_char_p),
-        ("iso_sectors", ctypes.c_uint32),
         ("cancel", ctypes.c_int),
         ("frames_done", ctypes.c_uint64),
         ("frames_total", ctypes.c_uint64),
@@ -124,7 +120,7 @@ def _load():
     return _lib
 
 
-ABI = 3    # SACDCONV_ABI in csrc/sacdconv.c
+ABI = 4    # SACDCONV_ABI in csrc/sacdconv.c
 
 
 def _layout(struct) -> list[int]:
@@ -256,31 +252,6 @@ class Progress:
     sectors_total: int
 
 
-def _scan_range(area: Area, specs: list[OutputSpec]) -> tuple[int, int]:
-    """LSN range covering every frame the outputs need."""
-    tracks = area.tracks
-    lo_tc = min(min(s.tc_start, s.head_frame if s.head_frame >= 0 else s.tc_start) for s in specs)
-    hi_tc = max(s.tc_end for s in specs)
-    lo = area.track_start
-    hi = area.track_end
-    # Track LSNs and timecodes come from the TOC: use them to narrow the scan only when they're
-    # consistent (inside the area's audio and in order, as on every real disc). Otherwise scan
-    # the whole area rather than miss frames or hand the engine a range outside it (#17).
-    lsns = [t.start_lsn for t in tracks]
-    starts = [t.start.total_frames for t in tracks]
-    if not (all(area.track_start <= x <= area.track_end for x in lsns)
-            and lsns == sorted(lsns) and starts == sorted(starts)):
-        log.debug("track LSNs or timecodes inconsistent: scanning the whole area")
-        return area.track_start, area.track_end
-    for i, t in enumerate(tracks):
-        if t.start.total_frames <= lo_tc:
-            lo = t.start_lsn if i else area.track_start
-        nxt = tracks[i + 1] if i + 1 < len(tracks) else None
-        if nxt and nxt.start.total_frames >= hi_tc and hi == area.track_end:
-            hi = nxt.start_lsn
-    return max(area.track_start, lo - SCAN_SLACK), min(area.track_end, hi + SCAN_SLACK)
-
-
 def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, specs: list[OutputSpec],
              pcm_rate: int = 88200, gain_db: float = 0.0, threads: int = 0,
              iso_out: str | os.PathLike | None = None,
@@ -332,12 +303,6 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
             raise NativeError(f"the outputs need frames up to {max(s.tc_end for s in specs)}, but the area's "
                               f"audio in this image (LSN {area.track_start}-{area.track_end}, "
                               f"{image.total_sectors} sectors) holds at most {capacity}")
-        a.scan_lsn_start, a.scan_lsn_end = _scan_range(area, specs)
-        # The range comes from the TOC, which may be hostile: a sector source must only ever be
-        # asked for sectors that exist (#11). A file needs no check: pread stops at its end.
-        if source is not None and not 0 <= a.scan_lsn_start <= a.scan_lsn_end < image.total_sectors:
-            raise NativeError(f"area LSN {a.scan_lsn_start}-{a.scan_lsn_end} lies outside the image "
-                              f"({image.total_sectors} sectors)")
         a.channels = area.channel_count
         a.toc_lsn = area.toc_start      # which area scarletbook reads: the one whose TOC this is
     else:
@@ -350,7 +315,6 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     a.threads = threads
     if iso_out is not None:
         a.iso_out_path = os.fsencode(iso_out)
-        a.iso_sectors = image.total_sectors
 
     # Callbacks run on engine threads; they must never raise into C.
     def on_log(_ctx, level, msg):

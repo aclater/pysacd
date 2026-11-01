@@ -198,6 +198,19 @@ two builds, mean of 3 runs, with Python start-up included:
   share, the time to read the area up to the track.
 - **Ctrl-C** stops a DST to FLAC run in 0.07 s, the same as 0.2.2.
 
+Against `sacd_extract` (a black-box build), the same discs, DSF of the stereo area
+(`-2 -s`), all threads, alternating, mean of 3 runs. Two of the five test discs are images
+`sacd_extract` can't read, so three are compared:
+
+| Disc | `sacd_extract` | pysacd 0.2.2 | pysacd 0.3.0 | 0.3.0 against `sacd_extract` |
+|---|---|---|---|---|
+| plain DSD | 3.44 s | 0.97 s | 0.87 s | 4.0× faster |
+| plain DSD | 2.10 s | 0.56 s | 0.58 s | 3.6× faster |
+| DST | 8.08 s | 2.85 s | 3.27 s | 2.5× faster |
+
+The other two DST discs take 2.41 → 2.75 s and 4.25 → 4.90 s from 0.2.2 to 0.3.0 (+14%,
++15%); reading a TOC takes 0.69 ms against 0.15 ms.
+
 ## Reading a TOC: in-process against a subprocess
 
 A DST disc, 200 reads × 3 rounds, median:
@@ -215,7 +228,7 @@ each 200 reads, 3 rounds alternating the two engines, median per disc:
 
 | TOC engine | Time per disc |
 |---|---|
-| pysacd's own parser (`PYSACD_TOC_ENGINE=python`) | 0.13 ms (0.09–0.24) |
+| pysacd 0.2's own parser (removed in 0.3.0) | 0.13 ms (0.09–0.24) |
 | scarletbook-rs, through ctypes (the default) | 0.59 ms (0.42–0.95) |
 
 scarletbook does more per disc: it checks all three master TOC copies and both copies of

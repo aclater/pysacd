@@ -1,12 +1,14 @@
-"""The TOC read through scarletbook-rs (#85, phase 2): ctypes on the engine's sb_* functions.
+"""Disc images through scarletbook-rs (#85): ctypes on the engine's sb_* functions.
 
 scarletbook-rs is linked into the native engine (docs/development.md, "The scarletbook
-library"), which exports its C ABI 2. This module opens an image with it and builds the same
-Disc, Area and Track objects as pysacd's own parser in toc.py, field for field, so nothing
-downstream (names, tags, cue, XML, -P text, JSON, fingerprints) can tell which one read the
-TOC. Where scarletbook hands back the stored bytes (catalogue numbers, language codes,
-manufacturer data), they are rendered exactly as toc.py renders them. Its warnings are
-diagnostic codes of the sacd-spec specification, with their area, track and LSN.
+library"), which exports its C ABI 2. SbImage opens an image with it, reads its 2048-byte
+logical sectors whatever its sector size, and builds toc.py's Disc, Area and Track objects.
+Those are the objects pysacd's own parser built up to 0.2, field for field (it was compared
+on the conformance corpus, real discs and a library before it was removed), so names, tags,
+cue, XML, -P text, JSON and beets-pysacd fingerprints are unchanged. Where scarletbook hands
+back stored bytes (catalogue numbers, language codes, manufacturer data, ISRCs, timecodes),
+they are rendered as that parser rendered them. Warnings are the sacd-spec specification's
+diagnostic codes, with their area, track and LSN.
 
 Bindings follow scarletbook's README ("Using from Python (ctypes)") and scarletbook.h.
 """
@@ -20,7 +22,7 @@ import threading
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .toc import Disc, SACDImage
+    from .toc import Disc
 
 log = logging.getLogger("pysacd.toc")
 
@@ -88,7 +90,7 @@ LOG_FN = C.CFUNCTYPE(None, C.c_void_p, C.c_int32, C.c_char_p)
 # SB_LOG_* -> logging levels
 _LEVELS = {1: logging.ERROR, 2: logging.WARNING, 3: logging.INFO, 4: logging.DEBUG, 5: 5}
 
-# SbDiscString 0..15, in the order of toc._MASTER_TEXT_FIELDS
+# SbDiscString 0..15: the keys of Disc.text
 _DISC_TEXT = (
     "album_title", "album_artist", "album_publisher", "album_copyright",
     "album_title_phonetic", "album_artist_phonetic", "album_publisher_phonetic", "album_copyright_phonetic",
@@ -131,6 +133,7 @@ def _lib():
         bind("sb_disc_open_callbacks_at_with_log", S, READ_AT, C.c_uint64, H, LOG_FN, H, C.c_int32, P(H))
         bind("sb_disc_free", None, H)
         bind("sb_disc_info", S, H, P(SbDiscInfo))
+        bind("sb_disc_read_sectors", S, H, C.c_uint64, U32, C.c_char_p, SIZE)
         bind("sb_disc_string", S, H, U32, C.c_char_p, SIZE, P(SIZE))
         bind("sb_disc_area", S, H, U32, P(SbAreaInfo))
         bind("sb_disc_warning", S, H, U32, P(SbWarning))
@@ -181,17 +184,17 @@ def _copy(lib, fn, *args, raw: bool = False) -> bytes | None:
 
 def _text(lib, fn, *args) -> str | None:
     data = _copy(lib, fn, *args)
-    # UTF-8 from the library; an empty string is no string, as toc.py treats it
+    # UTF-8 from the library; an empty string is no string
     return data.decode("utf-8", errors="replace") or None if data is not None else None
 
 
 def _language(ch: SbTextChannel) -> str:
-    # toc._locales: the two bytes as latin-1, trailing NULs and spaces removed
+    # the two bytes as latin-1, trailing NULs and spaces removed (pysacd 0.2's rendering)
     return bytes(ch.language).decode("latin-1").rstrip("\0 ")
 
 
 def _fixed_str(raw: bytes) -> str:
-    # toc._fixed_str, on bytes already cut at the first NUL
+    # bytes already cut at the first NUL: latin-1, whitespace trimmed (pysacd 0.2's rendering)
     return raw.split(b"\0", 1)[0].decode("latin-1").strip()
 
 
@@ -207,63 +210,114 @@ def _warning_text(w: SbWarning) -> str:
     return f"{code} ({', '.join(where)})" if where else code
 
 
-def read_toc(img: SACDImage) -> Disc:
-    """Read img's TOC through scarletbook. Raises toc.SACDError when scarletbook rejects the image,
-    NativeError when the engine can't be loaded."""
-    from .toc import SACDError
+class SbImage:
+    """An image opened with scarletbook, read through a Python file object (a path is opened
+    here): toc.SACDImage's engine. Raises toc.SACDError when scarletbook rejects the image,
+    OSError when reading it fails, NativeError when the engine can't be loaded."""
 
-    lib = _lib()
-    fh = img._fh
-    pos = fh.tell()
-    size = fh.seek(0, os.SEEK_END)
-    fh.seek(pos)
-    lock = threading.Lock()
-    failure: list[str] = []
+    def __init__(self, source):
+        from . import _native
+        from .toc import SACDError
 
-    def read_at(_user, offset, buf, length):
-        # never raise into C (scarletbook.h: callbacks must not unwind)
+        self._disc = C.c_void_p()
+        self._owns = False
         try:
-            with lock:
-                fh.seek(offset)
-                data = fh.read(length)
-            n = min(len(data), length)
-            C.memmove(buf, data, n)
-            return n
-        except Exception as e:  # noqa: BLE001 - nothing may unwind into C; the failure is re-raised below
-            log.debug("TOC read of %d bytes at offset %d failed: %s", length, offset, e)
-            failure.append(str(e))
-            return -1
+            self._lib = lib = _lib()
+        except _native.NativeError as e:
+            raise SACDError(f"reading a disc image needs pysacd's native engine, which isn't available ({e})") from e
+        if isinstance(source, (str, os.PathLike)):
+            self._fh = open(source, "rb")  # noqa: SIM115 - closed by close()
+            self._owns = True
+        else:
+            self._fh, self._owns = source, False
+        self._lock = threading.Lock()
+        self._failure: list[str] = []
+        fh, lock, failure = self._fh, self._lock, self._failure
 
-    def on_log(_user, level, message):
+        def read_at(_user, offset, buf, length):
+            # never raise into C (scarletbook.h: callbacks must not unwind)
+            try:
+                with lock:
+                    fh.seek(offset)
+                    data = fh.read(length)
+                n = min(len(data), length)
+                C.memmove(buf, data, n)
+                return n
+            except Exception as e:  # noqa: BLE001 - nothing may unwind into C; the failure is re-raised below
+                log.debug("read of %d bytes at offset %d failed: %s", length, offset, e)
+                failure.append(str(e))
+                return -1
+
+        def on_log(_user, level, message):
+            try:
+                # at debug: what scarletbook warns about also comes back as the disc's warnings
+                log.log(min(_LEVELS.get(level, logging.DEBUG), logging.DEBUG), "scarletbook: %s",
+                        (message or b"").decode(errors="replace"))
+            except Exception:  # noqa: BLE001, S110 - a log line that can't be logged mustn't unwind into C
+                pass
+
+        self._callbacks = (READ_AT(read_at), LOG_FN(on_log))    # alive until the disc is freed
         try:
-            # at debug: what scarletbook warns about also comes back as the disc's warnings
-            log.log(min(_LEVELS.get(level, logging.DEBUG), logging.DEBUG), "scarletbook: %s",
-                    (message or b"").decode(errors="replace"))
-        except Exception:  # noqa: BLE001, S110 - a log line that can't be logged mustn't unwind into C
-            pass
+            pos = fh.tell()
+            size = fh.seek(0, os.SEEK_END)
+            fh.seek(pos)
+            level = 4 if log.isEnabledFor(logging.DEBUG) else 0
+            status = lib.sb_disc_open_callbacks_at_with_log(self._callbacks[0], size, None, self._callbacks[1],
+                                                            None, level, C.byref(self._disc))
+            if status < 0:
+                self._raise_io()
+                msg = (lib.sb_last_error_message() or b"").decode(errors="replace")
+                name = (lib.sb_status_name(status) or b"?").decode(errors="replace")
+                raise SACDError(f"not a readable Scarletbook disc ({name}: {msg})" if msg else
+                                f"not a readable Scarletbook disc ({name})")
+            info = SbDiscInfo()
+            _check(lib, lib.sb_disc_info(self._disc, C.byref(info)), "sb_disc_info")
+            self.sector_size, self.sectors = info.sector_size, info.sectors
+        except BaseException:
+            self.close()
+            raise
 
-    callbacks = (READ_AT(read_at), LOG_FN(on_log))    # alive until the disc is freed
-    level = 4 if log.isEnabledFor(logging.DEBUG) else 0
-    disc = C.c_void_p()
-    try:
-        status = lib.sb_disc_open_callbacks_at_with_log(callbacks[0], size, None, callbacks[1], None, level,
-                                                        C.byref(disc))
+    def _raise_io(self) -> None:
+        if self._failure:
+            msg = self._failure[0]
+            self._failure.clear()
+            raise OSError(f"reading the image failed: {msg}")
+
+    def read_sectors(self, lsn: int, count: int) -> bytes:
+        """count 2048-byte logical sectors from lsn, whatever the image's sector size."""
+        from .toc import SECTOR_SIZE, SACDError
+
+        if lsn < 0 or count < 0 or lsn + count > self.sectors:
+            raise SACDError(f"short read at LSN {lsn} (+{count}): the image has {self.sectors} sectors")
+        buf = C.create_string_buffer(count * SECTOR_SIZE)
+        status = self._lib.sb_disc_read_sectors(self._disc, lsn, count, buf, len(buf))
         if status < 0:
-            msg = (lib.sb_last_error_message() or b"").decode(errors="replace")
-            name = (lib.sb_status_name(status) or b"?").decode(errors="replace")
-            if failure:
-                raise OSError(f"reading the image failed: {failure[0]}")
-            raise SACDError(f"not a readable Scarletbook disc ({name}: {msg})" if msg else
-                            f"not a readable Scarletbook disc ({name})")
+            self._raise_io()
+            _check_toc(self._lib, status, f"reading LSN {lsn} (+{count})")
+        return buf.raw
+
+    def toc(self) -> Disc:
         try:
-            return _build(lib, disc)
+            return _build(self._lib, self._disc)
         except SbFailure as e:
-            if failure:
-                raise OSError(f"reading the image failed: {failure[0]}") from e
+            from .toc import SACDError
+            self._raise_io()
             raise SACDError(str(e)) from e
-    finally:
-        lib.sb_disc_free(disc)
-        fh.seek(pos)
+
+    def close(self) -> None:
+        if getattr(self, "_disc", None):
+            self._lib.sb_disc_free(self._disc)
+            self._disc = C.c_void_p()
+        if getattr(self, "_owns", False) and not self._fh.closed:
+            self._fh.close()
+
+
+def _check_toc(lib, status: int, what: str) -> None:
+    from .toc import SACDError
+    try:
+        _check(lib, status, what)
+    except SbFailure as e:
+        raise SACDError(str(e)) from e
 
 
 def _timecode(frames: int):
@@ -385,7 +439,7 @@ def _build(lib, disc) -> Disc:
             isrc = None
             if t.has_genre:     # the ISRCs and genres share the SACD_IGL sectors
                 raw_isrc = _copy(lib, lib.sb_track_string, disc, a.slot, number, TRACK_ISRC) or b""
-                # UTF-8 from the library; then toc.py's rendering (cut at a NUL, spaces trimmed)
+                # UTF-8 from the library; then cut at a NUL, spaces trimmed (pysacd 0.2's rendering)
                 isrc = raw_isrc.decode("utf-8", errors="replace").split("\0", 1)[0].strip() or None
             area.tracks.append(Track(
                 number=t.number,

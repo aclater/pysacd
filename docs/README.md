@@ -18,7 +18,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
 - **[Converting with `pysacd convert`](converting.md)**: naming templates, tags, MusicBrainz, gapless PCM.
   - [Submitting ISRCs to MusicBrainz](converting.md#submitting-isrcs-to-musicbrainz)
 - **[The Python library](library.md)**: the Python API, what's parsed, image formats.
-  - [Which parser reads the TOC](library.md#which-parser-reads-the-toc)
+  - [The parser](library.md#the-parser)
   - [What's parsed](library.md#whats-parsed)
   - [Image formats](library.md#image-formats)
 - **[SACD Ripper network protocol (PS3 server)](ps3-protocol.md)**: reading from a PS3: usage, the wire protocol and the PS3's quirks.
@@ -55,20 +55,11 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Fuzzing](security.md#fuzzing)
 - **[Clean room and licences](clean-room.md)**: where the code came from, licences, acknowledgements.
   - [No Philips/ISO reference code, anywhere](clean-room.md#no-philipsiso-reference-code-anywhere)
-  - [How DST decoding was built](clean-room.md#how-dst-decoding-was-built)
+  - [The SACD engine: scarletbook-rs](clean-room.md#the-sacd-engine-scarletbook-rs)
+  - [Up to 0.2: pysacd's own DST decoder](clean-room.md#up-to-02-pysacds-own-dst-decoder)
   - [sacd_extract only as a black box](clean-room.md#sacd_extract-only-as-a-black-box)
   - [Licences](clean-room.md#licences)
-  - [scarletbook-rs](clean-room.md#scarletbook-rs)
   - [Acknowledgements](clean-room.md#acknowledgements)
-- **[DST frame format and decoding process](dst-bitstream.md)**: the clean-room DST specification.
-  - [1. Scope and provenance](dst-bitstream.md#1-scope-and-provenance)
-  - [2. Frame syntax](dst-bitstream.md#2-frame-syntax)
-  - [3. Decoding process (DST_coded = 1)](dst-bitstream.md#3-decoding-process-dst_coded--1)
-  - [4. Constants and limits](dst-bitstream.md#4-constants-and-limits)
-  - [5. Error and validity rules (reference decoder)](dst-bitstream.md#5-error-and-validity-rules-reference-decoder)
-  - [6. Encoder notes](dst-bitstream.md#6-encoder-notes)
-  - [7. Differences from FFmpeg's decoder (what `csrc/dstdec.c` must change)](dst-bitstream.md#7-differences-from-ffmpegs-decoder-what-csrcdstdecc-must-change)
-  - [8. Open questions and uncertainties](dst-bitstream.md#8-open-questions-and-uncertainties)
 
 ## Contributing
 

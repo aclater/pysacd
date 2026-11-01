@@ -19,5 +19,4 @@ linked in statically (#85), in every wheel and every build from source:
 pysacd takes the dual-licensed code under MIT because MIT is compatible with GPL-2.0, and
 Apache-2.0 is not compatible with GPL-2.0 (only with GPL-3.0).
 
-`csrc/dstdec.c` is LGPL-2.1-or-later, from FFmpeg; its header says so.
 pysacd itself is GPL-2.0-or-later ([COPYING](../COPYING)).

@@ -42,11 +42,12 @@ Blu-ray player running SACD Ripper or AutoScript are especially useful (#10).
 ## Rules that keep the project clean
 
 - **Clean room for DST.** Never read, copy or adapt the Philips/ISO reference DST
-  decoder or anything derived from it, such as sacd-ripper's `libdstdec`. DST work is
-  done from [the specification](docs/dst-bitstream.md) and FFmpeg's LGPL code only. See
+  decoder or anything derived from it, such as sacd-ripper's `libdstdec`. DST decoding
+  is [scarletbook-rs](https://github.com/aclater/scarletbook-rs)'s, a separate clean room:
+  changes it needs go to it as issues, never as code. See
   [clean room and licences](docs/clean-room.md).
-- **Licences.** New code is GPL-2.0-or-later. `csrc/dstdec.c` stays LGPL-2.1-or-later.
-  Add no dependency or code under incompatible terms.
+- **Licences.** Code is GPL-2.0-or-later. Add no dependency or code under incompatible
+  terms.
 - **Untrusted input.** Disc images, network data, disc text and MusicBrainz data are
   hostile: bound every length, and send any text that is written or printed through
   `pysacd.safetext` (see [security](docs/security.md)).

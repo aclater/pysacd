@@ -14,8 +14,8 @@ behaviour, and a patch version only adds or fixes. Each release on
   now comes from scarletbook, with the writer's choices that give `sacd_extract`'s bytes
   (scarletbook-rs#169), and pysacd's own DSF and DSDIFF writers are deleted. `sacd_extract`'s
   ID3 tags, markers and comments stay pysacd's, as content. Output is byte-identical to 0.3.1
-  in every mode on the real test discs, `-z` included; speed is unchanged (see
-  docs/performance.md). The engine now needs scarletbook 0.5.4.
+  in every mode on the real test discs, `-z` included. Speed is unchanged within the runs'
+  spread (+0.2 % for DST to DSF; docs/performance.md). The engine now needs scarletbook 0.5.4.
 - A file scarletbook won't lay out from a hostile or damaged TOC (an empty track, a range past
   the area, an impossible date) is reported and not written, and the run exits with 255.
   0.3.1 wrote it from the TOC as it stood. In a DSDIFF file that keeps DST, a marker past the

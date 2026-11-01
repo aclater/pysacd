@@ -434,3 +434,7 @@ To release:
    (the PyPI publisher is constrained to it). On GitHub, the `pypi` environment
    only accepts `v*` tags, so nothing but a release tag can publish. No API token
    is stored anywhere.
+
+## CI speed
+
+A pull request's checks finish in about 3 min, and a new push cancels the superseded run (`concurrency`; master runs are never cancelled). The test matrix caches pip downloads. Every required check runs on every pull request: none is path-filtered at the workflow level, because a skipped required check stays pending and blocks the merge. Keep new jobs short, and put slow, rarely-failing ones on master, tags or a schedule.

@@ -9,6 +9,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+## 0.3.0 (2026-11-01)
+
+pysacd now reads and decodes SACD images through [scarletbook-rs](https://github.com/aclater/scarletbook-rs), linked into the engine from a verified release; pysacd's own TOC parser, demultiplexer and DST decoder are removed (#85). Output is byte-identical to 0.2.2 on the corpus and the real test discs, and beets-pysacd disc fingerprints are unchanged. DSF extraction stays 2.5× (DST) to 3.6–4.0× (plain DSD) faster than `sacd_extract`; DST extraction is up to 15 % slower than 0.2.2's own decoder, which is reported upstream (scarletbook-rs#146). See [performance](docs/performance.md).
+
 - pysacd's own SACD engine is gone (#85, phase 4): its TOC parser (and `PYSACD_TOC_ENGINE`),
   sector demultiplexer and DST decoder, with the DST specification that served them. All of
   it is in the history up to v0.2.2. scarletbook-rs reads and decodes everything, and

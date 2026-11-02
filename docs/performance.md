@@ -322,6 +322,6 @@ the run to win for DST: reading the image through a memory mapping
 ([mmap(2)](https://man7.org/linux/man-pages/man2/mmap.2.html)), writing through shared mappings
 of preallocated files ([fallocate(2)](https://man7.org/linux/man-pages/man2/fallocate.2.html)),
 fusing the DSF bit reversal into the copy with SIMD
-([Bit Twiddling Hacks](https://graphics.stanford.edu/~seander/bithacks.html)), and pinning
+(S. E. Anderson, "Bit Twiddling Hacks", Stanford University), and pinning
 threads to cores ([sched_setaffinity(2)](https://man7.org/linux/man-pages/man2/sched_setaffinity.2.html)).
 They may matter for plain DSD, which is bound by memory bandwidth rather than decoding.

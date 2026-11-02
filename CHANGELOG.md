@@ -7,7 +7,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
-## Unreleased
+## 0.4.1 (2026-11-02)
+
+The release candidate 0.4.1rc1 installed and passed its tests on clean machines, matching 0.4.0
+(a Fedora 44 VM and Debian 13 at 20/20, UBI 10 at 19/20 as before).
 
 - Faster DST decoding (#109): the engine links scarletbook-rs 0.5.5, whose DST decoder runs an
   AVX2/BMI2 build of itself, chosen at run time, on x86-64 CPUs that have those features. DST

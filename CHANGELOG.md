@@ -7,6 +7,16 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
+## Unreleased
+
+- The engine links scarletbook-rs 0.5.6 (digests checked against the release's `.sha256` files and
+  attestations; the CET shadow-stack mark is kept). Output is byte-identical in every mode on
+  the five real test discs (175 runs). 0.5.6's faster plain-DSD-to-DSF and DSD-to-PCM paths
+  are not on pysacd's path, so extraction does not speed up: plain-DSD stereo to DSF 1.82 s
+  (0.5.5: 1.76 s), DST stereo to DSF 2.88 s (2.78 s), DST 6-channel to DSF 9.40 s (9.30 s),
+  all threads, medians of 3, within the runs' spread (docs/performance.md). The engine still
+  accepts scarletbook 0.5.4.
+
 ## 0.4.1 (2026-11-02)
 
 The release candidate 0.4.1rc1 installed and passed its tests on clean machines, matching 0.4.0

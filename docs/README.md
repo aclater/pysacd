@@ -45,6 +45,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Reading a TOC: in-process against a subprocess](performance.md#reading-a-toc-in-process-against-a-subprocess)
   - [DSF and DSDIFF through scarletbook's output API (#94)](performance.md#dsf-and-dsdiff-through-scarletbooks-output-api-94)
   - [Where DST time goes (#109)](performance.md#where-dst-time-goes-109)
+  - [scarletbook-rs 0.5.6](performance.md#scarletbook-rs-056)
 - **[Security](security.md)**: hostile discs, servers and text.
   - [Hostile text](security.md#hostile-text)
   - [Threat model](security.md#threat-model)

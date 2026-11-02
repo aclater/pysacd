@@ -7,7 +7,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
-## Unreleased
+## 0.4.2 (2026-11-02)
+
+The release candidate 0.4.2rc1 passed its clean-machine smoke test (Fedora 44 and Debian 13 at
+20/20, UBI 10 at 19/20 as before).
 
 - Faster plain-DSD extraction to DSF (#114): the engine fills each DSF file from scarletbook's
   layout (`sb_output_layout_fill`, scarletbook 0.5.6's AVX2 fill), audio included, and reads

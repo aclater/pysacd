@@ -101,6 +101,7 @@ The [documentation index](docs/README.md) lists every document and its sections.
 | [Development](docs/development.md) | building, tests, CI; contributor rules in [CLAUDE.md](CLAUDE.md) |
 | [Contributing](CONTRIBUTING.md) | reporting bugs, the pull-request process, project rules |
 | [Changelog](CHANGELOG.md) | what changed in each release |
+| [Releases by major version](https://github.com/aclater/sacd/blob/main/RELEASES.md) | what each minor version brought, across the SACD projects |
 
 ## License
 

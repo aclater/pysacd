@@ -7,6 +7,15 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
+## Unreleased
+
+- Faster DST decoding (#109): the engine links scarletbook-rs 0.5.5, whose DST decoder runs an
+  AVX2/BMI2 build of itself, chosen at run time, on x86-64 CPUs that have those features. DST
+  stereo to DSF on all threads of a 16-core machine takes 2.34 s instead of 2.79 s (−16 %, 68
+  CPU-s instead of 82), within 4 % of scarletbook's own `bench decode`; one thread −12 %;
+  multichannel unchanged. Output is byte-identical in every mode (docs/performance.md). The
+  engine still accepts scarletbook 0.5.4.
+
 ## 0.4.0 (2026-11-01)
 
 The release candidate 0.4.0rc1 passed the clean-machine matrix with no regression against

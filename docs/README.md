@@ -47,6 +47,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Where DST time goes (#109)](performance.md#where-dst-time-goes-109)
   - [scarletbook-rs 0.5.6](performance.md#scarletbook-rs-056)
   - [DSF audio through scarletbook's layout (#114)](performance.md#dsf-audio-through-scarletbooks-layout-114)
+  - [scarletbook-rs 0.5.7](performance.md#scarletbook-rs-057)
 - **[Security](security.md)**: hostile discs, servers and text.
   - [Hostile text](security.md#hostile-text)
   - [Threat model](security.md#threat-model)

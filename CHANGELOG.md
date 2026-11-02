@@ -7,6 +7,17 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
+## Unreleased
+
+- The engine links scarletbook-rs 0.5.7 (digests checked against the release's `.sha256` files and
+  attestations; the CET shadow-stack mark is kept). 0.5.7 wins back 0.5.6's one-thread stereo DST
+  regression (scarletbook-rs#241), frees a raw image's TOC read buffer once opened (#228) and
+  reads areas without a per-sector copy (#230). Output is byte-identical to master (0.4.2, on
+  0.5.6) in every mode on the five real test discs (175 runs, 0 differences). Wall s, medians
+  of 3, alternating, output to `/dev/shm`: DST stereo to DSF on one thread 32.94 (0.4.2: 33.50),
+  on all threads 2.51 (2.57), DST 6-channel to DSF on all threads 9.24 (9.34), plain DSD to DSF
+  on all threads 1.13 (1.16), mostly within the runs' spread (docs/performance.md).
+
 ## 0.4.2 (2026-11-02)
 
 The release candidate 0.4.2rc1 passed its clean-machine smoke test (Fedora 44 and Debian 13 at

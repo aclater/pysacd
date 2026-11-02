@@ -1,17 +1,17 @@
 {
   "comment": "The scarletbook-rs C library pysacd links statically (#85). Every build checks the downloaded archive against these SHA-256 digests; CI also checks each one's signed build provenance (tools/scarletbook.py attest). To move to another release, see docs/development.md, 'The scarletbook engine'.",
   "repository": "aclater/scarletbook-rs",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "abi": 2,
-  "commit": "61aecd0f9bcd35d3b6ae1d2d69b644297624a846",
+  "commit": "99f1efb51b0aa259c9e1af91d31e1a8b999905e3",
   "signer_workflow": ".github/workflows/release.yml",
   "assets": {
-    "aarch64-apple-darwin": "0348888df038d072e17e8d2ef067c040db1cb4ae924fe7975413bad249535b48",
-    "aarch64-unknown-linux-gnu": "13ef1717f63251fe52d7ac76ea7b4781c270507ec1cc60a58b458320eaf7592f",
-    "aarch64-unknown-linux-musl": "ec1f0344baee6796eed253ff9448d28695b6c526d243501f26da8741e601ee63",
-    "x86_64-apple-darwin": "20978bbed069e867e8886d6f1fa1e608b290a0f9d29d5aac2994c46770ca3908",
-    "x86_64-pc-windows-gnu": "39809a4437a730a46d729172daf6314fbc2b13e19dd16da4dd4cc1d4d4d812ef",
-    "x86_64-unknown-linux-gnu": "5e18b0f2afd61e0550ead5e30ac5e173d7c384e961d57e53200266f63b525c56",
-    "x86_64-unknown-linux-musl": "4b4f1f0136cf3a2905ecf444463f6d50b027810cb5561514c53f68d590fb1048"
+    "aarch64-apple-darwin": "d82dc6e176aea911105df907a92c7f38f8a25a0230d0ca4550581c1981a90894",
+    "aarch64-unknown-linux-gnu": "34e147d1117d8a3b7009c67b4deca50c5097eb2daeaeeca729ffdb15170511c6",
+    "aarch64-unknown-linux-musl": "38640f8bc121d670098050ae716abdaaff6a0149b5f666460c6de88ba9c425f4",
+    "x86_64-apple-darwin": "ed03a93fbc9cfae8fcbc39fcff47e6cd7495e5507918da76e62605a8cc2787d8",
+    "x86_64-pc-windows-gnu": "afcf4494fb2696d3391aa31d16c8d839bb7d2d9039df4bd9bfae5067e69f293d",
+    "x86_64-unknown-linux-gnu": "b647e8ce59dac3b0a9aa572b3aa14fee08965cd91aa91dcf7fa72a5f2eefaf93",
+    "x86_64-unknown-linux-musl": "60b3649d7647d2e6e7c0c6f8f0ef106057305cde2829bea5e27627ac61a1cf1d"
   }
 }

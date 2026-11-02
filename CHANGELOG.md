@@ -9,6 +9,14 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- Faster plain-DSD extraction to DSF (#114): the engine fills each DSF file from scarletbook's
+  layout (`sb_output_layout_fill`, scarletbook 0.5.6's AVX2 fill), audio included, and reads
+  decoded frames straight into its batches. pysacd's own DSF block layout is deleted. Plain-DSD
+  stereo to DSF on local NVMe takes 0.73 s instead of 1.54 s (2.1×); to `/dev/shm` 0.85 s
+  instead of 0.93 s, bound by the kernel's copies; DST unchanged (−1.5 %). Output is
+  byte-identical in every mode on the five real test discs (docs/performance.md). Engine ABI 6:
+  `sc_output_t` carries the DSF layout, and `head_bytes` and `tail_bytes` are gone;
+  `sbwriter.dsf` returns the layout itself (`DsfLayout`), which `OutputSpec.layout` takes.
 - The engine links scarletbook-rs 0.5.6 (digests checked against the release's `.sha256` files and
   attestations; the CET shadow-stack mark is kept). Output is byte-identical in every mode on
   the five real test discs (175 runs). 0.5.6's faster plain-DSD-to-DSF and DSD-to-PCM paths

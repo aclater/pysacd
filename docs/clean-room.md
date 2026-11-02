@@ -30,8 +30,8 @@ its `CLEANROOM.md`.
 
 pysacd's own code is what turns the audio into files: the engine that streams the audio into
 DSF, DSDIFF, WAV and FLAC files and the WAV and FLAC writers (since 0.4.0 every byte of a DSF or
-DSDIFF file that isn't audio is laid out by scarletbook's output API: see
-[development](development.md#output-through-scarletbook)), `sacd_extract`'s ID3 tags, markers
+DSDIFF file that isn't audio is laid out by scarletbook's output API, and since #114 the audio of
+a DSF file too: see [development](development.md#output-through-scarletbook)), `sacd_extract`'s ID3 tags, markers
 and comments as content, DSD-to-PCM conversion, `sacd_extract`-compatible naming, cue sheets, XML and `-P` text,
 tagging and MusicBrainz, and the PS3 client.
 

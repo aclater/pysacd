@@ -209,7 +209,14 @@ Since 0.4.0, every byte of a DSF or DSDIFF file that isn't audio comes from scar
 API (#94): `src/pysacd/sbwriter.py` asks scarletbook 0.5.4 for each file's layout from the TOC
 (`sb_output_layout_new`, `sb_output_layout_new_dst`, `sb_output_dsf_chain_plan`) and the engine
 writes its header and trailer around the audio it streams. pysacd's own DSF header writer and
-DSDIFF chunk writer are deleted. The owner's rule for offloading is to adopt scarletbook where
+DSDIFF chunk writer are deleted. Since #114 the audio of a DSF file is scarletbook's too: the
+engine keeps each DSF file's layout (`_native.OutputSpec.layout`, an `SbOutputLayout`) and its
+writer thread fills the whole file from it, in order, with the decoded frames each batch holds
+(`sb_output_layout_positions`, `sb_output_layout_fill`): channel separation, bit order, the
+4096-byte blocks, the zero padding and a `-z` chain's carried and left-over bytes. pysacd's
+own DSF block layout (bit reversal, planar copy, block buffers) is deleted. For `-z` across a
+gap, the previous file's last frame stands in for the position before the file
+(`OutputSpec.head_frame`), which gives the carry `sacd_extract` writes. The owner's rule for offloading is to adopt scarletbook where
 the output is byte-identical and no more than 15 % slower, and then delete pysacd's own code;
 both hold (see [performance](performance.md)).
 

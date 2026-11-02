@@ -68,11 +68,9 @@ class NativeExtract(unittest.TestCase):
             # scarletbook plans the chain (#94): the same carry
             c1, c2 = sbwriter.dsf_chain(img, self.area, [0, 5, 12])
             self.assertEqual((c1.head_bytes, c1.tail_bytes, c2.head_bytes, c2.tail_bytes), (0, carry, carry, 0))
-            s1.tail_bytes = c1.tail_bytes
-            s2.head_frame, s2.head_bytes = 4, c2.head_bytes
+            s2.head_frame = 4
             for s, c in ((s1, c1), (s2, c2)):
-                lay = sbwriter.dsf(img, self.area, s.tc_start, s.tc_end, b"", c)
-                s.header = lay.header
+                s.layout = lay = sbwriter.dsf(img, self.area, s.tc_start, s.tc_end, b"", c)
             _native.run_area(img, self.iso, self.area, [s1, s2])
             self.assertEqual(len((self.dir / "2.dsf").read_bytes()), lay.size)
         ch0 = lambda d: b"".join(d[o:o + 4096] for o in range(92, len(d), 8192))
@@ -101,7 +99,7 @@ class NativeExtract(unittest.TestCase):
         out = self.dir / "2.dsf"
         with SACDImage(self.iso) as img:
             res = self.spec(self.area.tracks[1], out, "dsf")
-            res.header = sbwriter.dsf(img, self.area, res.tc_start, res.tc_end, b"").header
+            res.layout = sbwriter.dsf(img, self.area, res.tc_start, res.tc_end, b"")
             _native.run_area(img, self.iso, self.area, [res])
         self.assertEqual((res.frames_written, res.frames_missing), (7, 0))
         d = out.read_bytes()
@@ -129,7 +127,8 @@ class NativeExtract(unittest.TestCase):
         t = self.area.tracks[1]
         t.duration = Timecode(0, 0, t.duration.total_frames + 3)
         with SACDImage(self.iso) as img:
-            res = self.spec(t, self.dir / "x.dsf", "dsf")
+            # (WAV: scarletbook lays out no DSF file past the area's timeline, #114)
+            res = self.spec(t, self.dir / "x.wav", "wav")
             _native.run_area(img, self.iso, self.area, [res])
         # written includes the 3 silence frames substituted for the missing ones
         self.assertEqual((res.frames_written, res.frames_missing), (10, 3))

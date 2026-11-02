@@ -429,14 +429,13 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
             if chain is not None:
                 # the carried bytes come from the previous file's last frame (_dsf_chains)
                 spec.head_frame = prev_end - 1 if chain.head_bytes and prev_end is not None else -1
-                spec.head_bytes, spec.tail_bytes = chain.head_bytes, chain.tail_bytes
             prev_end = end
             try:
                 lay = sbwriter.dsf(img, area, start, end, tag, chain)
             except sbwriter.OutputError as e:
                 _refused(o, path, str(e))
                 continue
-            spec.header, spec.footer = lay.header, lay.trailer
+            spec.layout = lay
         elif kind == "flac":
             assert tags is not None     # PCM outputs always carry tags
             spec.flac_padding = tagging.flac_metadata_size(tags, cover)
@@ -453,8 +452,8 @@ def _dsf_chains(img, area: Area, groups, o: Opts) -> tuple[dict, dict]:
     it writes when its range doesn't start where the previous one ended (a gap between tracks,
     or a track not selected). A chain can't hold that, so the next file's chain starts with a
     range of k frames before it, never written, chosen to leave the same bytes over: the
-    layout's header and size are then the file's, and the engine writes the carried bytes from
-    the previous file's last frame, as before."""
+    layout's header and size are then the file's, and the engine fills the file with the previous
+    file's last frame standing in for the lead range's last (OutputSpec.head_frame, #114)."""
     ntracks = len(area.tracks)
     playtime = area.total_playtime.total_frames
     ranges = [(track_range(area, t[0], o.trimming)[0], track_range(area, t[-1], o.trimming)[1], t[-1])

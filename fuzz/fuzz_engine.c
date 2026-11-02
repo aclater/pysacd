@@ -4,8 +4,8 @@
  *
  * scarletbook-rs parses the image (TOC, sectors, frames, DST) and is fuzzed in its own
  * repository; what this harness exercises is pysacd's side: the reader thread's staging of
- * scarletbook's positions, batches with PCM context, the workers (DSF layout, DSD to PCM), the
- * writers (DSF with and without padding, DSDIFF DSD, DSDIFF DST passthrough, WAV) and a sector
+ * scarletbook's positions, batches with PCM context, the workers (DSD to PCM), the writers
+ * (DSF filled from scarletbook's layout, DSDIFF DSD, DSDIFF DST passthrough, WAV) and a sector
  * source. For each area scarletbook reports, the harness writes:
  *
  *   - the whole area to DSF, DSDIFF (decoded) and, for a DST area, DSDIFF with the frames as
@@ -58,16 +58,29 @@ static void run_area(const char *image, SbDisc *disc, const SbDiscInfo *di, cons
     out_path(dst, sizeof dst, "d.dff");
     out_path(wav, sizeof wav, "t.wav");
 
-    /* the whole area (capped), one pass, from the image file */
+    /* the whole area (capped), one pass, from the image file; the DSF file through its layout
+       (a channel type for an area of unspecified layout, as pysacd gives), when scarletbook
+       makes one */
+    static const int64_t channel_type[] = {0, 1, 2, 3, 5, 6, 7};
+    SbOutputOptions *opts = NULL;
+    SbOutputLayout *layout = NULL;
+    if (sb_output_options_new(&opts) == SB_STATUS_OK &&
+        sb_output_options_set(opts, SB_OUTPUT_OPTION_DSF_UNSPECIFIED_CHANNEL_TYPE,
+                              channel_type[ai->channel_count]) == SB_STATUS_OK)
+        sb_output_layout_new(disc, ai->slot, 0, end, SB_OUTPUT_FORMAT_DSF, opts, &layout);
+    sb_output_options_free(opts);
     sc_output_t outs[3];
+    int nouts = 0;
     memset(outs, 0, sizeof outs);
-    outs[0] = (sc_output_t){.format = 0, .path = dsf, .tc_start = 0, .tc_end = end, .head_frame = -1};
-    outs[1] = (sc_output_t){.format = 3, .path = dff, .tc_start = 0, .tc_end = end, .head_frame = -1};
+    if (layout)
+        outs[nouts++] = (sc_output_t){.format = 0, .path = dsf, .tc_start = 0, .tc_end = end, .head_frame = -1,
+                                      .layout = layout};
+    outs[nouts++] = (sc_output_t){.format = 3, .path = dff, .tc_start = 0, .tc_end = end, .head_frame = -1};
     static uint64_t offs[MAX_FRAMES];
     static uint32_t lens[MAX_FRAMES];
-    outs[2] = (sc_output_t){.format = 4, .path = dst, .tc_start = 0, .tc_end = end, .head_frame = -1,
-                            .dst_offsets = offs, .dst_lengths = lens, .dst_cap = MAX_FRAMES};
-    int nouts = ai->frame_format == 0 ? 3 : 2;
+    if (ai->frame_format == 0)
+        outs[nouts++] = (sc_output_t){.format = 4, .path = dst, .tc_start = 0, .tc_end = end, .head_frame = -1,
+                                      .dst_offsets = offs, .dst_lengths = lens, .dst_cap = MAX_FRAMES};
     sc_area_t a;
     memset(&a, 0, sizeof a);
     a.iso_path = image;
@@ -79,6 +92,7 @@ static void run_area(const char *image, SbDisc *disc, const SbDiscInfo *di, cons
     a.exact = 1;
     a.seek_min_gap = -1;
     sacdconv_area_run(&a, outs, nouts);
+    sb_output_layout_free(layout);
 
     /* the last track to WAV, provisionally, through a sector source */
     if (ai->track_count) {

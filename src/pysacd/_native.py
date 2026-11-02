@@ -11,6 +11,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from .toc import Area, SACDImage, area_frame_capacity
 
@@ -25,8 +26,7 @@ class _Output(ctypes.Structure):
         ("tc_start", ctypes.c_uint32),
         ("tc_end", ctypes.c_uint32),
         ("head_frame", ctypes.c_int32),
-        ("head_bytes", ctypes.c_uint32),
-        ("tail_bytes", ctypes.c_uint32),
+        ("layout", ctypes.c_void_p),
         ("header", ctypes.c_char_p),
         ("header_len", ctypes.c_uint32),
         ("footer", ctypes.c_char_p),
@@ -126,7 +126,7 @@ def _load():
     return _lib
 
 
-ABI = 5    # SACDCONV_ABI in csrc/sacdconv.c
+ABI = 6    # SACDCONV_ABI in csrc/sacdconv.c
 
 
 def _layout(struct) -> list[int]:
@@ -223,11 +223,10 @@ class OutputSpec:
     path: str | os.PathLike
     tc_start: int
     tc_end: int
-    head_frame: int = -1          # DSF nopad: carry-in from this frame's tail
-    head_bytes: int = 0
-    tail_bytes: int = 0           # DSF nopad: bytes/channel left for the next file
+    head_frame: int = -1          # DSF -z: this frame's content stands in for frame tc_start - 1
+    layout: Any = None            # DSF: scarletbook's layout of the file (sbwriter.dsf; default: no tag)
     header: bytes = b""           # DSDIFF header
-    footer: bytes = b""           # DSF ID3 tag / DSDIFF trailing chunks
+    footer: bytes = b""           # DSDIFF trailing chunks
     flac_level: int = 5
     flac_padding: int = 0
     # results
@@ -293,7 +292,16 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
         o.format = FORMATS[s.format]
         o.path = os.fsencode(s.path)
         o.tc_start, o.tc_end = s.tc_start, s.tc_end
-        o.head_frame, o.head_bytes, o.tail_bytes = s.head_frame, s.head_bytes, s.tail_bytes
+        o.head_frame = s.head_frame
+        if s.format == "dsf":
+            if s.layout is None:
+                from . import sbwriter
+                assert area is not None, "outputs need an area"
+                try:
+                    s.layout = sbwriter.dsf(image, area, s.tc_start, s.tc_end, b"")
+                except sbwriter.OutputError as e:
+                    raise NativeError(f"{s.path}: {e}") from None
+            o.layout = s.layout.handle
         o.header, o.header_len = s.header, len(s.header)
         o.footer, o.footer_len = s.footer, len(s.footer)
         o.flac_level, o.flac_padding = s.flac_level, s.flac_padding
@@ -359,8 +367,7 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
         a.read_fn = callbacks[1]
     for s in specs:
         log.debug("output %s %s: frames %d-%d%s", s.format, s.path, s.tc_start, s.tc_end,
-                  f", nopad head {s.head_bytes}@{s.head_frame} tail {s.tail_bytes}" if s.head_frame >= 0 or s.tail_bytes
-                  else "")
+                  f", -z head frame {s.head_frame}" if s.head_frame >= 0 else "")
 
     result = []
     t = threading.Thread(target=lambda: result.append(lib.sacdconv_area_run(ctypes.byref(a), outs, len(specs))),

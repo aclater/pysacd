@@ -71,7 +71,9 @@ in the archive's `native-static-libs.txt`.
   release with cancellation, progress, and stored and decoded frames in one pass, 0.5.1
   the first with the TOC's timecodes as stored, 0.5.2 the first with the whole TOC in one call
   (`sb_disc_toc`), and 0.5.4 the first whose output API can lay out `sacd_extract`'s DSF and
-  DSDIFF files byte for byte (scarletbook-rs#169).
+  DSDIFF files byte for byte (scarletbook-rs#169). The pin is 0.5.5, whose DST decoder chooses an AVX2/BMI2 build of
+  itself at run time on x86-64 (#109; [performance](performance.md#where-dst-time-goes-109)); 0.5.4
+  still works, more slowly.
 - **Logged.** `_native.build_info()` (in `pysacd --version` and in log files) names the
   scarletbook version, and the debug log carries its full `sb_build_info()`.
 

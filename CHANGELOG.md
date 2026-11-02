@@ -7,7 +7,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
-## Unreleased
+## 0.4.3 (2026-11-02)
+
+The release candidate 0.4.3rc1, installed from PyPI, passed `tests/wheel_smoke.py` on clean
+Fedora 44, UBI 10 and Debian 13 containers.
 
 - The engine links scarletbook-rs 0.5.7 (digests checked against the release's `.sha256` files and
   attestations; the CET shadow-stack mark is kept). 0.5.7 wins back 0.5.6's one-thread stereo DST

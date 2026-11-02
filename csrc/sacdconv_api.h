@@ -15,12 +15,13 @@ typedef struct {
     int             format;
     const char     *path;
     uint32_t        tc_start, tc_end;   /* frames [tc_start, tc_end) */
-    int32_t         head_frame;         /* DSF nopad: file starts with the last */
-    uint32_t        head_bytes;         /*   head_bytes/channel of this frame (-1: none) */
-    uint32_t        tail_bytes;         /* DSF nopad: drop this many bytes/channel at the end */
-    const uint8_t  *header;             /* DSF, DSDIFF: written at offset 0 (scarletbook's layout) */
+    int32_t         head_frame;         /* DSF -z: this frame's content stands in for position
+                                           tc_start - 1, whose bytes the file carries in (-1: none) */
+    void           *layout;             /* DSF: scarletbook's SbOutputLayout of the file, which
+                                           gives every byte (#114); the caller frees it */
+    const uint8_t  *header;             /* DSDIFF: written at offset 0 (scarletbook's layout) */
     uint32_t        header_len;
-    const uint8_t  *footer;             /* DSF: ID3 tag; DSDIFF: chunks after the data */
+    const uint8_t  *footer;             /* DSDIFF: chunks after the data */
     uint32_t        footer_len;
     uint64_t       *dst_offsets;        /* DSDIFF DST: frame index (absolute offsets) */
     uint32_t       *dst_lengths;

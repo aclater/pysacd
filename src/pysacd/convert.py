@@ -422,7 +422,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
                 _log(f"  {t.number:2d} not written: {path.name}: {safetext.for_terminal(str(e))}")
                 failed_layouts += 1
                 continue
-            spec.header, spec.footer = lay.header, lay.trailer
+            spec.layout = lay
         elif fmt == "flac":
             spec.flac_padding = tagging.flac_metadata_size(tags, embed)
         specs.append(spec)

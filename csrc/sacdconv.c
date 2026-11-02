@@ -9,12 +9,14 @@
  *                   ahead of the reader, which receives every position in
  *                   order (missing ones as 0x69 silence, invalid DST frames as
  *                   0x55) and groups them into batches of BATCH_FRAMES
- *   N workers       lay out DSF and convert DSD->PCM per batch; each batch
- *                   carries PRE/POST context frames so the PCM filters see
- *                   exactly what a continuous run would (gapless, and the
- *                   result does not depend on the thread count)
+ *   N workers       convert DSD->PCM per batch; each batch carries PRE/POST
+ *                   context frames so the PCM filters see exactly what a
+ *                   continuous run would (gapless, and the result does not
+ *                   depend on the thread count)
  *   writer thread   takes batches in order and writes every output that
- *                   overlaps them (DSF, DSDIFF DSD/DST, WAV, FLAC)
+ *                   overlaps them (DSF, DSDIFF DSD/DST, WAV, FLAC). A DSF
+ *                   file's bytes, audio included, are scarletbook's layout
+ *                   filled from the batch's frames (sb_output_layout_fill, #114)
  *
  * An ISO copy (a plain 2048-byte image) is written first, in one sequential
  * pass, and the audio then read from that local copy. Called from Python
@@ -61,8 +63,8 @@ _Static_assert(MAX_FRAME_SIZE >= SB_MAX_FRAME_BYTES, "a stage slot holds any sto
 #define POST_FRAMES    1               /* covers the filter group delay (< 1 frame) */
 #define SLOT_FRAMES    (PRE_FRAMES + BATCH_FRAMES + POST_FRAMES)
 #define READ_SECTORS   1024            /* 2 MiB reads */
-#define DSF_BLOCK      4096
 #define OUT_BUFFER     (1 << 20)
+#define FILL_CHUNK     (1 << 20)       /* DSF bytes per sb_output_layout_fill call */
 
 enum { OUT_DSF = 0, OUT_FLAC = 1, OUT_WAV = 2, OUT_DFF_DSD = 3, OUT_DFF_DST = 4 };
 
@@ -74,14 +76,13 @@ typedef struct batch {
     uint64_t  seq;
     uint32_t  tc0;              /* timecode of the first core frame */
     int       pre, n, post;     /* context before, core, context after */
-    int       need_dsd, need_pcm, need_planar;
+    int       need_dsd, need_pcm;
     int       decoded;          /* dsd already holds every frame, decoded by scarletbook */
     uint8_t  *raw;              /* raw frame data, concatenated */
     size_t    raw_cap;
     uint32_t  off[SLOT_FRAMES], len[SLOT_FRAMES];
     uint8_t   dst[SLOT_FRAMES], missing[SLOT_FRAMES], bad[SLOT_FRAMES];
     uint8_t  *dsd;              /* SLOT_FRAMES * channels * 4704 */
-    uint8_t  *planar;           /* DSF layout: per frame, per channel 4704 bit-reversed bytes */
     int32_t  *pcm;              /* BATCH_FRAMES * out_per_frame * channels */
     struct batch *next;
 } batch_t;
@@ -180,13 +181,14 @@ typedef struct {
     uint32_t len;               /* stored bytes in data (DSDIFF DST passthrough) */
     uint8_t  dst, missing, bad;
     uint8_t  data[MAX_FRAME_SIZE];
-    uint8_t  dsd[MAX_CHANNELS_SACD * FRAME_BYTES_PER_CH];  /* decoded (when the outputs need it) */
 } frame_t;
 
 typedef struct {
     engine_t *e;
     int       decoded;          /* the staged frames carry decoded DSD */
     frame_t  *stage;            /* frames waiting to be batched (SLOT_FRAMES) */
+    batch_t  *cur;              /* the batch being staged: decoded DSD goes straight into its dsd,
+                                   slot k of the stage at frame k */
     int       nstage;           /* frames staged */
     int       pre;              /* how many leading staged frames are context */
     uint32_t  next_tc;          /* next timecode expected in the stream */
@@ -194,9 +196,9 @@ typedef struct {
     uint64_t  seq;
 } reader_t;
 
-static int batch_overlaps(engine_t *e, uint32_t lo, uint32_t hi, int *need_dsd, int *need_pcm, int *need_planar)
+static int batch_overlaps(engine_t *e, uint32_t lo, uint32_t hi, int *need_dsd, int *need_pcm)
 {
-    *need_dsd = *need_pcm = *need_planar = 0;
+    *need_dsd = *need_pcm = 0;
     for (int i = 0; i < e->nouts; i++) {
         sc_output_t *o = &e->outs[i];
         int hit = o->tc_start < hi && o->tc_end > lo;
@@ -208,28 +210,29 @@ static int batch_overlaps(engine_t *e, uint32_t lo, uint32_t hi, int *need_dsd, 
             *need_dsd = 1;
         if (o->format == OUT_FLAC || o->format == OUT_WAV)
             *need_pcm = 1;
-        if (o->format == OUT_DSF)
-            *need_planar = 1;
     }
     return *need_dsd || *need_pcm;
 }
 
-/* Hand the staged frames (pre context + core [+ post context]) to the workers */
-static int emit_batch(reader_t *r, int ncore, int npost)
+/* A free batch, waiting for one; NULL when the run stops */
+static batch_t *take_batch(engine_t *e)
 {
-    engine_t *e = r->e;
-    batch_t *b;
-
     pthread_mutex_lock(&e->mu);
     while (!e->free_list && !stopping(e))
         pthread_cond_wait(&e->cv_free, &e->mu);
-    if (stopping(e)) {
-        pthread_mutex_unlock(&e->mu);
-        return -1;
-    }
-    b = e->free_list;
-    e->free_list = b->next;
+    batch_t *b = stopping(e) ? NULL : e->free_list;
+    if (b)
+        e->free_list = b->next;
     pthread_mutex_unlock(&e->mu);
+    return b;
+}
+
+/* Hand the staged frames (pre context + core [+ post context]) to the workers. Unless this is
+   the last batch, the next one is taken first and starts with the frames kept as its context. */
+static int emit_batch(reader_t *r, int ncore, int npost, int last)
+{
+    engine_t *e = r->e;
+    batch_t *b = r->cur, *nb = NULL;
 
     int nf = r->pre + ncore + npost;
     size_t need = 0;
@@ -254,8 +257,6 @@ static int emit_batch(reader_t *r, int ncore, int npost)
         b->dst[i] = f->dst;
         b->missing[i] = f->missing;
         b->bad[i] = f->bad;
-        if (r->decoded)
-            memcpy(b->dsd + (size_t)i * e->frame_bytes, f->dsd, e->frame_bytes);
         pos += f->len;
     }
     b->decoded = r->decoded;
@@ -264,10 +265,22 @@ static int emit_batch(reader_t *r, int ncore, int npost)
     b->pre = r->pre;
     b->n = ncore;
     b->post = npost;
-    batch_overlaps(e, b->tc0, b->tc0 + ncore, &b->need_dsd, &b->need_pcm, &b->need_planar);
+    batch_overlaps(e, b->tc0, b->tc0 + ncore, &b->need_dsd, &b->need_pcm);
     if (b->need_pcm)
         b->need_dsd = 1;
     b->next = NULL;
+
+    /* keep the last PRE core frames (+ the post frames) for the next batch */
+    int keep_from = r->pre + ncore - PRE_FRAMES;
+    if (keep_from < 0)
+        keep_from = 0;
+    int keep = nf - keep_from;
+    if (!last) {
+        if (!(nb = take_batch(e)))
+            return -1;
+        if (r->decoded)
+            memcpy(nb->dsd, b->dsd + (size_t)keep_from * e->frame_bytes, (size_t)keep * e->frame_bytes);
+    }
 
     pthread_mutex_lock(&e->mu);
     if (e->work_tail)
@@ -277,18 +290,29 @@ static int emit_batch(reader_t *r, int ncore, int npost)
     e->work_tail = b;
     pthread_cond_signal(&e->cv_work);
     pthread_mutex_unlock(&e->mu);
+    r->cur = nb;
 
-    /* keep the last PRE core frames (+ the post frames) for the next batch */
-    int keep_from = r->pre + ncore - PRE_FRAMES;
-    if (keep_from < 0)
-        keep_from = 0;
-    int keep = nf - keep_from;
-    for (int i = 0; i < keep; i++)
-        if (i != keep_from + i)
-            r->stage[i] = r->stage[keep_from + i];
+    for (int i = 0; i < keep; i++) {
+        frame_t *d = &r->stage[i], *f = &r->stage[keep_from + i];
+        if (d == f)
+            continue;
+        d->tc = f->tc;
+        d->len = f->len;
+        d->dst = f->dst;
+        d->missing = f->missing;
+        d->bad = f->bad;
+        if (f->len)
+            memcpy(d->data, f->data, f->len);
+    }
     r->nstage = keep;
     r->pre = keep - npost;
     return 0;
+}
+
+/* Where the decoded DSD of the next staged frame goes */
+static uint8_t *stage_dsd(reader_t *r)
+{
+    return r->cur->dsd + (size_t)r->nstage * r->e->frame_bytes;
 }
 
 /* Stage one position: its stored bytes (data, len) and, when decoding, its decoded DSD (dsd).
@@ -296,6 +320,7 @@ static int emit_batch(reader_t *r, int ncore, int npost)
 static int stage_frame(reader_t *r, uint32_t tc, const uint8_t *data, int len, int dst, int missing,
                        const uint8_t *dsd, int bad)
 {
+    uint8_t *slot = r->decoded ? stage_dsd(r) : NULL;
     frame_t *f = &r->stage[r->nstage++];
     f->tc = tc;
     f->len = missing ? 0 : (uint32_t)len;
@@ -305,15 +330,15 @@ static int stage_frame(reader_t *r, uint32_t tc, const uint8_t *data, int len, i
     /* the scarletbook reader reads straight into the next slot: nothing to copy then */
     if (!missing && len && data != f->data)
         memcpy(f->data, data, len);
-    if (r->decoded) {
+    if (slot) {
         if (!dsd)
-            memset(f->dsd, DSD_SILENCE, r->e->frame_bytes);
-        else if (dsd != f->dsd)
-            memcpy(f->dsd, dsd, r->e->frame_bytes);
+            memset(slot, DSD_SILENCE, r->e->frame_bytes);
+        else if (dsd != slot)
+            memcpy(slot, dsd, r->e->frame_bytes);
     }
     /* full batch plus its post context staged: emit */
     if (r->nstage == r->pre + BATCH_FRAMES + POST_FRAMES)
-        return emit_batch(r, BATCH_FRAMES, POST_FRAMES);
+        return emit_batch(r, BATCH_FRAMES, POST_FRAMES, 0);
     return 0;
 }
 
@@ -466,7 +491,7 @@ static void *sb_reader_main(void *arg)
     SbPool *pool = NULL;
     SbProgress *prog = NULL;
     SbCancel *token = NULL;
-    uint8_t *dsd = NULL, *stored = NULL;     /* the stage slot being read into */
+    uint8_t *dsd = NULL, *stored = NULL;     /* the slots the next frame is read into */
     uint32_t nwarn = 0, miss_from = UINT32_MAX;
     verifier_t ver = {0};       /* the background check of a provisional start */
     pthread_t ver_thread;
@@ -478,6 +503,8 @@ static void *sb_reader_main(void *arg)
         set_error(e, "out of memory");
         goto out;
     }
+    if (!(r.cur = take_batch(e)))
+        goto out;
     if ((st = sb_open(a, &src, &disc)) < 0) {
         sb_fail(e, st, "opening the image");
         goto out;
@@ -567,7 +594,7 @@ static void *sb_reader_main(void *arg)
             SbFrameInfo fi = {0};
             SbRawFrameInfo ri = {0};
             /* read into the stage's next slot (stage_frame then copies nothing) */
-            dsd = r.stage[r.nstage].dsd;
+            dsd = r.decoded ? stage_dsd(&r) : NULL;
             stored = r.stage[r.nstage].data;
             if (audio && e->need_stored)
                 st = sb_track_audio_read_with_stored(audio, disc, dsd, e->frame_bytes, &fi, stored,
@@ -679,7 +706,7 @@ static void *sb_reader_main(void *arg)
     if (fill_until(&r, r.want_hi) < 0)
         goto out;
     int ncore = r.nstage - r.pre;
-    if (ncore > 0 && emit_batch(&r, ncore, 0) < 0)
+    if (ncore > 0 && emit_batch(&r, ncore, 0, 1) < 0)
         goto out;
 
 out:
@@ -719,27 +746,10 @@ static inline uint32_t xorshift(uint32_t *s)
     return *s = x;
 }
 
-static const uint8_t *bit_reverse_table(void);
-
 static void process_batch(engine_t *e, batch_t *b, dsd2pcm_t *dsp, const uint8_t *silence)
 {
     int nf = b->pre + b->n + b->post;
     size_t fb = e->frame_bytes;
-
-    if (b->need_planar) {
-        /* DSF byte order: de-interleave and bit-reverse here, in parallel */
-        const uint8_t *rev = bit_reverse_table();
-        int ch = e->channels;
-        for (int i = b->pre; i < b->pre + b->n; i++) {
-            const uint8_t *src = b->dsd + i * fb;
-            uint8_t *dst = b->planar + i * fb;
-            for (int c = 0; c < ch; c++) {
-                uint8_t *d = dst + (size_t)c * FRAME_BYTES_PER_CH;
-                for (int k = 0; k < FRAME_BYTES_PER_CH; k++)
-                    d[k] = rev[src[(size_t)k * ch + c]];
-            }
-        }
-    }
 
     if (b->need_pcm) {
         int ch = e->channels, opf = e->opf;
@@ -821,23 +831,6 @@ static void *worker_main(void *arg)
 
 /* ------------------------------------------------------------ writers */
 
-static const uint8_t *bit_reverse_table(void)
-{
-    static uint8_t t[256];
-    static atomic_int ready;
-    if (!atomic_load(&ready)) {
-        for (int i = 0; i < 256; i++) {
-            uint8_t v = 0;
-            for (int b = 0; b < 8; b++)
-                if (i & (1 << b))
-                    v |= 0x80 >> b;
-            t[i] = v;
-        }
-        atomic_store(&ready, 1);
-    }
-    return t;
-}
-
 static void put_le(uint8_t *p, uint64_t v, int n)
 {
     for (int i = 0; i < n; i++)
@@ -847,11 +840,13 @@ static void put_le(uint8_t *p, uint64_t v, int n)
 typedef struct {
     FILE     *fp;
     int       opened, closed;
-    /* DSF */
-    uint8_t   blk[MAX_CHANNELS_SACD][DSF_BLOCK];
-    int       fill;
-    uint64_t  dsf_bytes;        /* real bytes per channel */
-    uint64_t  limit;            /* bytes per channel to write (nopad tail) */
+    /* DSF: scarletbook's layout of the file (#114) */
+    uint64_t  off;              /* the next byte of the file to write */
+    uint64_t  size;             /* the file's size */
+    uint64_t  sound_len;        /* its sound data's length */
+    uint8_t  *head;             /* -z: the content of head_frame, for position tc_start - 1 */
+    int       have_head;
+    uint8_t  *fbuf;             /* FILL_CHUNK bytes */
     /* WAV */
     uint8_t  *wbuf;
 #ifdef HAVE_FLAC
@@ -868,6 +863,8 @@ static int out_fail(sc_output_t *o, const char *fmt, ...)
     va_end(ap);
     return -1;
 }
+
+static int dsf_open(sc_output_t *o, out_state_t *st);
 
 static int write_wav_header(FILE *fp, int channels, int rate, uint64_t data_bytes)
 {
@@ -933,15 +930,13 @@ static int out_open(engine_t *e, sc_output_t *o, out_state_t *st)
 
     if (!(st->fp = sc_fopen_write(o->path)))
         return out_fail(o, "%s: %s", o->path, strerror(errno));
-    setvbuf(st->fp, NULL, _IOFBF, OUT_BUFFER);
+    if (o->format != OUT_DSF)
+        setvbuf(st->fp, NULL, _IOFBF, OUT_BUFFER);
     switch (o->format) {
     case OUT_DSF:
-        st->limit = (uint64_t)(o->tc_end - o->tc_start) * FRAME_BYTES_PER_CH +
-                    (o->head_frame >= 0 ? o->head_bytes : 0) - o->tail_bytes;
-        /* the header scarletbook laid out (pysacd.sbwriter): its sizes are the file's */
-        if (o->header_len && fwrite(o->header, o->header_len, 1, st->fp) != 1)
-            return out_fail(o, "%s: write failed", o->path);
-        return 0;
+        /* every byte comes from sb_output_layout_fill in chunks of FILL_CHUNK: written as they are */
+        setvbuf(st->fp, NULL, _IONBF, 0);
+        return dsf_open(o, st);
     case OUT_WAV:
         st->wbuf = malloc((size_t)e->opf * e->channels * 3);
         if (!st->wbuf)
@@ -954,34 +949,106 @@ static int out_open(engine_t *e, sc_output_t *o, out_state_t *st)
     }
 }
 
-static int dsf_flush(FILE *fp, out_state_t *st, sc_output_t *o, int ch)
+/* ------------------------------------------------------------ DSF through scarletbook (#114)
+
+   pysacd.sbwriter makes each DSF file's layout (sb_output_layout_new) with the writer's choices
+   that give sacd_extract's bytes; the writer thread fills the file from it, in order, with the
+   decoded positions each batch holds: header, sound data (channel separation, bit order, block
+   interleaving, zero padding, a -z chain's carried and left-over bytes) and trailer. */
+
+static int sb_out_fail(sc_output_t *o, SbStatus st, const char *what)
 {
-    for (int c = 0; c < ch; c++)
-        if (fwrite(st->blk[c], DSF_BLOCK, 1, fp) != 1)
-            return out_fail(o, "%s: write failed: %s", o->path, strerror(errno));
-    o->data_bytes += (uint64_t)DSF_BLOCK * ch;
-    st->fill = 0;
+    const char *msg = sb_last_error_message();
+    return out_fail(o, "%s: scarletbook %s: %s (status %d)", o->path, what, msg && *msg ? msg : "failed", (int)st);
+}
+
+static int dsf_open(sc_output_t *o, out_state_t *st)
+{
+    SbOutputLayoutInfo info;
+    SbOutputRegion r;
+    SbStatus s;
+    if (!o->layout)
+        return out_fail(o, "%s: no DSF layout", o->path);
+    if ((s = sb_output_layout_info(o->layout, &info)) < 0)
+        return sb_out_fail(o, s, "layout info");
+    if (info.format != SB_OUTPUT_FORMAT_DSF || info.input != SB_OUTPUT_INPUT_CONTENT ||
+        info.first != o->tc_start || info.end != o->tc_end)
+        return out_fail(o, "%s: the layout is not a DSF file of frames %u-%u", o->path, o->tc_start, o->tc_end);
+    st->size = info.size;
+    for (uint32_t k = 0; k < info.regions; k++) {
+        if ((s = sb_output_layout_region(o->layout, k, &r)) < 0)
+            return sb_out_fail(o, s, "layout region");
+        if (r.kind == SB_OUTPUT_REGION_KIND_SOUND_DATA)
+            st->sound_len += r.len;
+    }
+    if (!(st->fbuf = malloc(FILL_CHUNK)))
+        return out_fail(o, "out of memory");
     return 0;
 }
 
-/* Append bytes [from, to) of each channel of one frame (planar, DSF bit order) */
-static int dsf_put(engine_t *e, sc_output_t *o, out_state_t *st, const uint8_t *frame, int from, int to)
+/* The content of position p, from batch b or the -z head frame; NULL if neither holds it */
+static const uint8_t *dsf_position(engine_t *e, sc_output_t *o, out_state_t *st, batch_t *b, uint32_t p)
 {
-    int ch = e->channels;
-    uint64_t room = st->limit - st->dsf_bytes;
-    if ((uint64_t)(to - from) > room)
-        to = from + (int)room;
-    for (int i = from; i < to;) {
-        int n = to - i < DSF_BLOCK - st->fill ? to - i : DSF_BLOCK - st->fill;
-        for (int c = 0; c < ch; c++)
-            memcpy(st->blk[c] + st->fill, frame + (size_t)c * FRAME_BYTES_PER_CH + i, n);
-        st->fill += n;
-        i += n;
-        st->dsf_bytes += n;
-        if (st->fill == DSF_BLOCK && dsf_flush(st->fp, st, o, ch) < 0)
-            return -1;
+    if (o->head_frame >= 0 && p + 1 == o->tc_start)
+        return st->have_head ? st->head : NULL;
+    uint32_t lo = b->tc0 - (uint32_t)b->pre, hi = b->tc0 + (uint32_t)(b->n + b->post);
+    return p >= lo && p < hi ? b->dsd + (size_t)(p - lo) * e->frame_bytes : NULL;
+}
+
+/* Write the file's bytes [st->off, to) from batch b's positions */
+static int dsf_fill(engine_t *e, sc_output_t *o, out_state_t *st, batch_t *b, uint64_t to)
+{
+    SbPositionData pos[SLOT_FRAMES + 1];
+    while (st->off < to) {
+        size_t len = to - st->off < FILL_CHUNK ? (size_t)(to - st->off) : FILL_CHUNK, got = 0;
+        uint32_t first = 0, end = 0;
+        SbStatus s;
+        if ((s = sb_output_layout_positions(o->layout, st->off, len, &first, &end)) < 0)
+            return sb_out_fail(o, s, "layout positions");
+        if (end - first > SLOT_FRAMES + 1)
+            return out_fail(o, "%s: bytes %llu-%llu need %u positions", o->path,
+                            (unsigned long long)st->off, (unsigned long long)(st->off + len), end - first);
+        for (uint32_t p = first; p < end; p++) {
+            const uint8_t *c = dsf_position(e, o, st, b, p);
+            if (!c)
+                return out_fail(o, "%s: position %u is not at hand for bytes %llu-%llu", o->path, p,
+                                (unsigned long long)st->off, (unsigned long long)(st->off + len));
+            pos[p - first] = (SbPositionData){.content = c, .content_len = e->frame_bytes, .number = p};
+        }
+        if ((s = sb_output_layout_fill(o->layout, st->off, st->fbuf, len, pos, end - first, &got)) < 0)
+            return sb_out_fail(o, s, "layout fill");
+        if (got != len)
+            return out_fail(o, "%s: %zu of %zu bytes at %llu", o->path, got, len, (unsigned long long)st->off);
+        if (fwrite(st->fbuf, len, 1, st->fp) != 1)
+            return out_fail(o, "%s: write failed: %s", o->path, strerror(errno));
+        st->off += len;
     }
     return 0;
+}
+
+/* Write what batch b completes of the file: all of it once b reaches tc_end, else up to the
+   last byte whose positions end in b's core frames (found by bisection: the layout says which
+   positions a byte range needs, and the bytes past it need later frames) */
+static int dsf_write(engine_t *e, sc_output_t *o, out_state_t *st, batch_t *b)
+{
+    uint32_t hi = b->tc0 + (uint32_t)b->n;
+    uint64_t to = st->size;
+    if (hi < o->tc_end) {
+        uint64_t ok = st->off, bad = st->size;
+        while (bad - ok > 1) {
+            uint64_t mid = ok + (bad - ok) / 2;
+            uint32_t first = 0, end = 0;
+            SbStatus s = sb_output_layout_positions(o->layout, st->off, mid - st->off, &first, &end);
+            if (s < 0)
+                return sb_out_fail(o, s, "layout positions");
+            if (first == end || end <= hi)
+                ok = mid;
+            else
+                bad = mid;
+        }
+        to = ok;
+    }
+    return dsf_fill(e, o, st, b, to);
 }
 
 static int pcm_put(engine_t *e, sc_output_t *o, out_state_t *st, const int32_t *pcm, int count)
@@ -1031,14 +1098,11 @@ static int out_close(engine_t *e, sc_output_t *o, out_state_t *st)
     }
     switch (o->format) {
     case OUT_DSF:
-        if (st->fill) {
-            for (int c = 0; c < ch; c++)
-                memset(st->blk[c] + st->fill, 0, DSF_BLOCK - st->fill);    /* as sacd_extract */
-            rc = dsf_flush(st->fp, st, o, ch);
-        }
-        o->samples = st->dsf_bytes * 8;
-        if (!rc && o->footer_len && fwrite(o->footer, o->footer_len, 1, st->fp) != 1)
-            rc = out_fail(o, "%s: write failed", o->path);
+        if (st->off != st->size)
+            rc = o->error[0] ? -1 : out_fail(o, "%s: %llu of %llu bytes written", o->path,
+                                             (unsigned long long)st->off, (unsigned long long)st->size);
+        o->data_bytes = st->sound_len;
+        o->samples = (uint64_t)o->frames_written * FRAME_BYTES_PER_CH * 8;
         break;
     case OUT_WAV:
         if (write_wav_header(st->fp, ch, e->a->pcm_rate, o->data_bytes) < 0)
@@ -1071,6 +1135,9 @@ static int out_close(engine_t *e, sc_output_t *o, out_state_t *st)
     st->fp = NULL;
     free(st->wbuf);
     st->wbuf = NULL;
+    free(st->fbuf);
+    free(st->head);
+    st->fbuf = st->head = NULL;
     sc_log(e->a, rc ? SC_ERROR : (o->frames_missing || o->dst_errors) ? SC_WARNING : SC_DEBUG,
            "%s %s: %u frames, %u missing, %u DST errors, %llu data bytes%s%s",
            rc ? "failed" : "wrote", o->path, o->frames_written, o->frames_missing, o->dst_errors,
@@ -1092,10 +1159,11 @@ static int write_output(engine_t *e, sc_output_t *o, out_state_t *st, batch_t *b
     if (!st->opened && out_open(e, o, st) < 0)
         return -1;
 
-    if (head) {   /* DSF nopad carry-in: tail of an earlier frame */
-        const uint8_t *f = b->planar + (size_t)(b->pre + o->head_frame - lo) * fb;
-        if (dsf_put(e, o, st, f, FRAME_BYTES_PER_CH - o->head_bytes, FRAME_BYTES_PER_CH) < 0)
-            return -1;
+    if (head && !st->have_head) {   /* -z: the frame whose bytes this file carries in */
+        if (!st->head && !(st->head = malloc(fb)))
+            return out_fail(o, "out of memory");
+        memcpy(st->head, b->dsd + (size_t)(b->pre + o->head_frame - lo) * fb, fb);
+        st->have_head = 1;
     }
 
     for (uint32_t tc = s; tc < t; tc++) {
@@ -1107,9 +1175,7 @@ static int write_output(engine_t *e, sc_output_t *o, out_state_t *st, batch_t *b
 
         switch (o->format) {
         case OUT_DSF:
-            if (dsf_put(e, o, st, b->planar + i * fb, 0, FRAME_BYTES_PER_CH) < 0)
-                return -1;
-            break;
+            break;      /* dsf_write, below */
         case OUT_DFF_DSD:
             if (fwrite(b->dsd + i * fb, fb, 1, st->fp) != 1)
                 return out_fail(o, "%s: write failed: %s", o->path, strerror(errno));
@@ -1142,6 +1208,8 @@ static int write_output(engine_t *e, sc_output_t *o, out_state_t *st, batch_t *b
         }
         o->frames_written++;
     }
+    if (o->format == OUT_DSF && s < t && dsf_write(e, o, st, b) < 0)
+        return -1;
 
     if (t == o->tc_end && hi >= o->tc_end)
         return out_close(e, o, st);
@@ -1211,10 +1279,12 @@ static int writer_run(engine_t *e)
  * _load() refuses a library whose version, struct sizes or field offsets differ from its
  * ctypes mirrors. Bump SACDCONV_ABI whenever a struct or an exported signature changes.
  */
-#define SACDCONV_ABI 5     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
+#define SACDCONV_ABI 6     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
                               3: provisional range starts (exact, provisional, refuted_from);
                               4: the old engine's scan range and ISO sector count removed;
-                              5: missing frames and the #93 silence check */
+                              5: missing frames and the #93 silence check;
+                              6: DSF through scarletbook's layout (layout; head_bytes, tail_bytes
+                                 removed: #114) */
 
 #define OFF(T, f) (uint32_t)offsetof(T, f)
 static const uint32_t area_layout[] = {
@@ -1234,7 +1304,7 @@ static const uint32_t area_layout[] = {
 static const uint32_t output_layout[] = {
     sizeof(sc_output_t),
     OFF(sc_output_t, format), OFF(sc_output_t, path), OFF(sc_output_t, tc_start), OFF(sc_output_t, tc_end),
-    OFF(sc_output_t, head_frame), OFF(sc_output_t, head_bytes), OFF(sc_output_t, tail_bytes),
+    OFF(sc_output_t, head_frame), OFF(sc_output_t, layout),
     OFF(sc_output_t, header), OFF(sc_output_t, header_len), OFF(sc_output_t, footer),
     OFF(sc_output_t, footer_len), OFF(sc_output_t, dst_offsets), OFF(sc_output_t, dst_lengths),
     OFF(sc_output_t, dst_cap), OFF(sc_output_t, flac_level), OFF(sc_output_t, flac_padding),
@@ -1486,10 +1556,9 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
     for (int i = 0; i < e.npool; i++) {
         batch_t *b = &e.pool[i];
         b->dsd = malloc((size_t)SLOT_FRAMES * e.frame_bytes);
-        b->planar = malloc((size_t)SLOT_FRAMES * e.frame_bytes);
         if (want_pcm)
             b->pcm = malloc(sizeof(int32_t) * BATCH_FRAMES * e.opf * a->channels);
-        if (!b->dsd || !b->planar || (want_pcm && !b->pcm))
+        if (!b->dsd || (want_pcm && !b->pcm))
             goto oom;
         b->next = e.free_list;
         e.free_list = b;
@@ -1530,7 +1599,6 @@ cleanup:
         for (int i = 0; i < e.npool; i++) {
             free(e.pool[i].raw);
             free(e.pool[i].dsd);
-            free(e.pool[i].planar);
             free(e.pool[i].pcm);
         }
     free(e.pool);

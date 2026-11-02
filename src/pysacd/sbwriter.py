@@ -1,10 +1,13 @@
 """DSF and DSDIFF files through scarletbook's output API (#94).
 
 scarletbook lays out every byte of a DSF or DSDIFF file that isn't audio, from the TOC alone
-(`sb_output_layout_new`, `sb_output_layout_new_dst`, `sb_output_dsf_chain_plan`). pysacd asks it
-for the header and the trailer of each file, with the writer's choices that give
-`sacd_extract`'s bytes (scarletbook-rs#169, in scarletbook 0.5.4), and the engine writes them
-around the audio it streams. pysacd has no DSF or DSDIFF writer of its own since 0.4.0.
+(`sb_output_layout_new`, `sb_output_layout_new_dst`, `sb_output_dsf_chain_plan`), with the
+writer's choices that give `sacd_extract`'s bytes (scarletbook-rs#169, in scarletbook 0.5.4).
+A DSF file's layout is handed to the engine, which fills the whole file from it with the frames
+it reads (`sb_output_layout_fill`): the audio's channel separation, bit order and blocks are
+scarletbook's too (#114). For DSDIFF, pysacd asks for the header and the trailer, and the engine
+writes them around the audio it streams. pysacd has no DSF or DSDIFF writer of its own since
+0.4.0, and no DSF audio layout of its own (#114).
 
 What stays pysacd's is content, not layout: the ID3 tag `sacd_extract` makes from the TOC
 (`sbcompat.id3_tag`, passed as the raw tag of a DSF file and as `ID3 ` caller chunks of a
@@ -17,6 +20,7 @@ from __future__ import annotations
 import ctypes as C
 import datetime
 import threading
+import weakref
 from dataclasses import dataclass
 from typing import Any
 
@@ -232,8 +236,28 @@ def dsf_chain(img: SACDImage, area: Area, bounds: list[int]) -> list[ChainFile]:
     return out
 
 
+class DsfLayout:
+    """scarletbook's layout of one DSF file (an `SbOutputLayout`), kept for the engine to fill
+    the file from (`_native.OutputSpec.layout`); freed when this object goes."""
+
+    def __init__(self, lib, handle: C.c_void_p):
+        self.handle = handle.value
+        weakref.finalize(self, lib.sb_output_layout_free, self.handle)
+        info = _Info()
+        _ok(lib, lib.sb_output_layout_info(handle, C.byref(info)), "layout info")
+        kinds = []
+        for k in range(info.regions):
+            r = _Region()
+            _ok(lib, lib.sb_output_layout_region(handle, k, C.byref(r)), "layout region")
+            kinds.append(r.kind)
+        if kinds.count(SOUND_DATA) != 1 or kinds[0] != HEADER:
+            raise OutputError(f"unexpected DSF layout regions {kinds}")
+        self.size: int = info.size
+        self.memory: int = info.memory
+
+
 def dsf(img: SACDImage, area: Area, first: int, end: int, tag: bytes,
-        chain: ChainFile | None = None) -> Layout:
+        chain: ChainFile | None = None) -> DsfLayout:
     """A DSF file of frames [first, end) with `tag` (an ID3v2.3 or v2.4 tag, or b"" for none) as
     its metadata, as sacd_extract writes it; with `chain`, the byte range of a gapless chain."""
     lib = _lib()
@@ -248,7 +272,7 @@ def dsf(img: SACDImage, area: Area, first: int, end: int, tag: bytes,
             o.set(DSF_CHAIN_END, chain.chain_end)
         lay = H()
         _ok(lib, lib.sb_output_layout_new(_disc(img), slot(area), first, end, DSF, o.h, C.byref(lay)), "DSF layout")
-    return _layout(lib, lay)
+    return DsfLayout(lib, lay)
 
 
 # ------------------------------------------------------------ DSDIFF

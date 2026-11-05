@@ -23,6 +23,7 @@ import io
 import logging
 import os
 import signal
+import struct
 import sys
 import tempfile
 import unittest
@@ -269,6 +270,35 @@ class Expectations(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(len(list((Path(tmp) / "out").rglob("*.dsf"))), 2)
             self.assertIn("2 has no audio", err.getvalue())
+
+    @unittest.skipUnless(_native_ok(), "native engine not built")
+    def test_exit_zero_means_complete_output(self):
+        # An area that claims to run past the end reads what exists. Whatever an image claims, a
+        # run that exits 0 wrote every frame the TOC gives its tracks, and each file holds what
+        # its header says.
+        checked = 0
+        for name in self.images:
+            for args, which in ((("-2", "-s"), "stereo"), (("-m", "-s"), "multichannel")):
+                rc, files = self._extract(name, *args)
+                if rc != 0:
+                    continue
+                area = getattr(self._disc(name), which)
+                total = 0
+                for path, data in files.items():
+                    if not path.endswith(".dsf"):
+                        continue
+                    with self.subTest(image=name, mode=args, file=Path(path).suffix):
+                        self.assertEqual(struct.unpack_from("<Q", data, 12)[0], len(data), "file size field")
+                        channels, samples = struct.unpack_from("<I", data, 52)[0], struct.unpack_from("<Q", data, 64)[0]
+                        chunk = struct.unpack_from("<Q", data, 84)[0]
+                        self.assertGreaterEqual(chunk - 12, samples // 8 * channels, "data chunk against the header")
+                        self.assertLessEqual(92 + chunk - 12, len(data), "data chunk against the file")
+                        total += samples // 8 * channels
+                want = sum(t.duration.total_frames for t in area.tracks) * 4704 * area.channel_count if area else 0
+                with self.subTest(image=name, mode=args):
+                    self.assertEqual(total, want, "audio written against the TOC")
+                checked += total > 0
+        self.assertGreater(checked, 100)        # the check above really ran
 
     @unittest.skipUnless(_native_ok(), "native engine not built")
     def test_track_lsns_only_steer_the_scan(self):

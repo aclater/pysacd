@@ -199,19 +199,46 @@ class SectorSource(unittest.TestCase):
             self.assertFalse((self.dir / f".{name}.dsf.partial").exists())
 
 
-    def test_area_outside_image_is_refused_before_reading(self):
+    def test_source_is_asked_only_for_sectors_that_exist(self):
+        # A hostile TOC must never make the engine ask a source (a PS3 connection, say) for
+        # sectors past the end of the image (#11). Since scarletbook reads the TOC itself, the
+        # engine's reader enforces this, whatever the TOC claims: every image of the hostile
+        # corpus is run through a recording source, the last track of every area.
         from pysacd import SACDImage, _native
-        asked = []
-        with SACDImage(self.iso) as img:
-            area = img.read_toc().stereo
-            area.track_end = img.total_sectors + 100      # as a hostile TOC could claim
-            t = area.tracks[-1]
-            spec = _native.OutputSpec("dsf", self.dir / "out.dsf", t.start.total_frames,
-                                      t.start.total_frames + t.duration.total_frames)
-            with self.assertRaisesRegex(_native.NativeError, "outside the image"):
-                _native.run_area(img, "source", area, [spec],
-                                 source=lambda lsn, n: asked.append(lsn) or self.local(lsn, n))
-        self.assertEqual(asked, [])
+        from pysacd.toc import SACDError
+        read_anything = set()
+        past_the_end = {"area-audio-past-end", "area-audio-start-past-end", "track-lsn-past-end",
+                        "track-duration-max-area-past-end"}
+        for h in sacdgen.hostile_corpus():
+            total = len(h.image) // 2048
+            asked: list[tuple[int, int]] = []
+
+            def source(lsn: int, n: int, image: bytes = h.image, asked: list = asked) -> bytes:
+                asked.append((lsn, n))
+                return image[lsn * 2048:(lsn + n) * 2048].ljust(n * 2048, b"\0")
+
+            iso = self.dir / "hostile.iso"
+            iso.write_bytes(h.image)
+            try:
+                with SACDImage(iso) as img:
+                    for area in img.read_toc().areas:
+                        if not area.tracks:
+                            continue
+                        t = area.tracks[-1]
+                        spec = _native.OutputSpec("dsf", self.dir / "hostile.dsf", t.start.total_frames,
+                                                  t.start.total_frames + t.duration.total_frames)
+                        try:
+                            _native.run_area(img, "source", area, [spec], source=source)
+                        except _native.NativeError:
+                            pass        # refused, or stopped by the source: both fine here
+            except SACDError:
+                continue                # refused at the TOC, before the engine
+            with self.subTest(h.name):
+                self.assertEqual([x for x in asked if x[0] + x[1] > total], [])
+            if asked:
+                read_anything.add(h.name)
+        # The cases this is about really reached the engine's reader
+        self.assertLessEqual(past_the_end, read_anything)
 
 
 class LogSafety(unittest.TestCase):

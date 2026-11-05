@@ -7,6 +7,28 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
+## Unreleased
+
+- **The comparison with `sacd_extract` runs in CI again, and compares more (#131).** From #86 until
+  now, so for every release from 0.3.0 to 0.4.3, a test's check for the engine looked for a function the engine no
+  longer exported: 44 tests skipped, among them every comparison, in a job that stayed green. Even
+  before that, the job compared decoded audio only. It now also compares whole output trees in
+  every compatible mode, names, ID3, DSDIFF, cue, XML and `-P`, on generated discs. Real discs run
+  by hand before each release; docs/development.md says what each covers.
+- CI fails if a test starts skipping, stops skipping or changes its reason (`tests/expected-skips.json`).
+- `pysacd-extract` ends its output with the final empty line `sacd_extract` prints, so `-P` is now
+  identical.
+- Documented a difference from `sacd_extract` that the comparison found: the pad byte after
+  odd-length text and ID3 tags in a DSDIFF file, which `sacd_extract` leaves uninitialised.
+- `tools/extract_compare.py` reports each run against `sacd_extract` per file format, and
+  `--require-sacd-extract` fails on an unexplained difference or a `sacd_extract` that didn't run.
+- Tests: the frame tests of `tests/test_dst_full.py` call scarletbook's `sb_dst_decode`, since the
+  decoder they called was removed in 0.3.0. They pass unchanged. The sector-source test now runs
+  the whole hostile corpus through a recording source, and a new test checks that a run exiting 0
+  wrote everything the TOC promises. An area claiming to run past the end of the image is no longer
+  refused before reading, since 0.3.0: the sectors that exist are read, and a source is still
+  never asked for one that doesn't.
+
 ## 0.4.3 (2026-11-02)
 
 The release candidate 0.4.3rc1, installed from PyPI, passed `tests/wheel_smoke.py` on clean

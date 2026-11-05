@@ -1,10 +1,10 @@
 """sacd_extract compatibility: naming, ID3, DSDIFF, CUE and XML.
 
-The comparison tests run the real sacd_extract and need:
-  SACD_EXTRACT=/path/to/sacd_extract   (or sacd_extract on PATH)
+The comparison tests run the real sacd_extract, and need
+  SACD_EXTRACT=/path/to/sacd_extract   (or sacd_extract on PATH).
+They use two generated discs (tests/sacdgen.py), unless you name real ones:
   PYSACD_COMPAT_DSD=<plain-DSD stereo ISO>  PYSACD_COMPAT_DST=<DST stereo+5.1 ISO>
-    (default to two discs in the author's library)
-  PYSACD_SLOW=1 also runs the ~1 GB DSDIFF edit-master comparison.
+With real discs, PYSACD_SLOW=1 also runs the ~1 GB DSDIFF edit-master comparison.
 Output goes to a temporary directory (set TMPDIR to put it on disk).
 """
 
@@ -14,21 +14,28 @@ import os
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 import sacdgen
+import test_dst_full as dst
+from extract_compare import _dff_sans_machine as dff_sans_machine
+from extract_compare import documented_only
 from test_toc import make_image
 
 from pysacd import SACDImage, read_toc, sbwriter
 from pysacd import sbcompat as sb
 
 SACD_EXTRACT = os.environ.get("SACD_EXTRACT") or shutil.which("sacd_extract")
-DSD_ISO = os.environ.get("PYSACD_COMPAT_DSD", "/path/to/album.iso")
-DST_ISO = os.environ.get("PYSACD_COMPAT_DST",
-                         "/path/to/album.iso")
-HAVE_REAL = bool(SACD_EXTRACT) and os.path.exists(DSD_ISO) and os.path.exists(DST_ISO)
+REAL_DSD = os.environ.get("PYSACD_COMPAT_DSD")
+REAL_DST = os.environ.get("PYSACD_COMPAT_DST")
+HAVE_DISCS = bool(REAL_DSD and REAL_DST) or dst.HAVE_ENCODER
+SRC = Path(__file__).resolve().parents[1] / "src"
 
 
 def dff_split(path):
@@ -61,16 +68,12 @@ def dff_split(path):
         return header, f.read(size - end), dst, audio, frames, index
 
 
-def mask_creating_machine(footer: bytes) -> bytes:
-    """Blank COMT's second comment (machine name + timestamp differ by design)."""
-    b = bytearray(footer)
-    p = b.find(b"COMT")
-    q = p + 14
-    ln, = struct.unpack_from(">I", b, q + 10)
-    q += 14 + ln + (ln & 1)
-    end = p + 12 + struct.unpack_from(">Q", b, p + 4)[0]
-    b[q:end] = bytes(end - q)
-    return bytes(b)
+def sans_machine(footer: bytes) -> str:
+    """A DSDIFF footer without what differs by design (docs/sacd_extract.md)."""
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d, "x.dff")
+        p.write_bytes(b"FRM8" + (len(footer) + 4).to_bytes(8, "big") + b"DSD " + footer)
+        return dff_sans_machine(p)
 
 
 class Helpers(unittest.TestCase):
@@ -129,11 +132,34 @@ class Helpers(unittest.TestCase):
                 self.assertEqual(dst.size, len(dst.header) + 12 + 100 + 12 + 102 + len(dst.trailer))
 
 
-@unittest.skipUnless(HAVE_REAL, "sacd_extract binary or test ISOs not available")
+def synthetic_discs(root: Path) -> tuple[str, str]:
+    """A plain-DSD stereo disc and a DST stereo + 6-channel disc, each track numbered and titled."""
+    def tracks(n: int) -> list[int]:
+        return [n // 3, n // 3, n - 2 * (n // 3)]
+
+    titles = ["First", "Second", "Third"]
+    plain = [bytes([i]) * (2 * 4704) for i in range(12)]
+    two, six = [f for _, _, f in dst.encoded(2)], [f for _, _, f in dst.encoded(6)]
+    info = sacdgen.DiscInfo(title="Compat Album", artist="Compat Artist")
+    dsd_iso, dst_iso = root / "dsd.iso", root / "dst.iso"
+    sacdgen.build_iso(dsd_iso, [sacdgen.AreaSpec(2, plain, tracks(len(plain)), dst=False, titles=titles)], info=info)
+    sacdgen.build_iso(dst_iso, [sacdgen.AreaSpec(2, two, tracks(len(two)), titles=titles),
+                                sacdgen.AreaSpec(6, six, tracks(len(six)), titles=titles)], info=info)
+    return str(dsd_iso), str(dst_iso)
+
+
+@unittest.skipUnless(SACD_EXTRACT and HAVE_DISCS, "set SACD_EXTRACT to compare with the real sacd_extract")
 class AgainstSacdExtract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.dsd, cls.dst = read_toc(DSD_ISO), read_toc(DST_ISO)
+        cls.real = bool(REAL_DSD and REAL_DST)
+        if cls.real:
+            cls.dsd_iso, cls.dst_iso = REAL_DSD, REAL_DST
+        else:
+            cls.tmp = tempfile.TemporaryDirectory()
+            cls.addClassCleanup(cls.tmp.cleanup)
+            cls.dsd_iso, cls.dst_iso = synthetic_discs(Path(cls.tmp.name))
+        cls.dsd, cls.dst = read_toc(cls.dsd_iso), read_toc(cls.dst_iso)
 
     def run_se(self, iso, *args, cfg=None):
         d = tempfile.mkdtemp(prefix="sbcompat-")
@@ -161,7 +187,7 @@ class AgainstSacdExtract(unittest.TestCase):
                                  ((), "id3tag=2", 2), ((), "id3tag=3", 3), ((), "id3tag=5", 5)):
             with self.subTest(flags=flags, cfg=cfg):
                 aa = bool(flags)
-                d = self.run_se(DSD_ISO, "-s", *flags, "-t", "2", cfg=cfg)
+                d = self.run_se(self.dsd_iso, "-s", *flags, "-t", "2", cfg=cfg)
                 want = sb.make_filename(sb.output_dir(disc, area, None, aa),
                                         sb.music_filename(disc, area, 1, "", aa), "dsf")
                 self.assertEqual(self.files(d, "dsf"), [want])
@@ -169,30 +195,31 @@ class AgainstSacdExtract(unittest.TestCase):
 
     def test_concatenate_name(self):
         disc, area = self.dsd, self.dsd.stereo
-        d = self.run_se(DSD_ISO, "-s", "-k", "-t", "2,3")
+        d = self.run_se(self.dsd_iso, "-s", "-k", "-t", "2,3")
         want = sb.make_filename(sb.output_dir(disc, area, None),
                                 sb.music_filename(disc, area, 1, "[02-03]"), "dsf")
         self.assertEqual(self.files(d, "dsf"), [want])
 
     def check_dff(self, iso, disc, area, track_idx, path):
-        """scarletbook's layout with pysacd's choices (pysacd.sbwriter) against sacd_extract's file."""
+        """scarletbook's layout with pysacd's choices (pysacd.sbwriter) against sacd_extract's file, except
+        what differs by design."""
         header, footer, dst, _audio, _frames, index = dff_split(path)
         t = area.tracks[track_idx]
         first = t.start.total_frames
         with SACDImage(iso) as img:
             lay = sbwriter.dsdiff(img, disc, area, track_idx, first, first + t.duration.total_frames,
                                   id3_tags=[sb.id3_tag(disc, area, track_idx, 4, True)], now=datetime(2026, 1, 1),
-                                  machine=sb.SACD_RIPPER_VERSION_INFO,
+                                  machine=sb.PYSACD_VERSION_INFO,
                                   dst_lengths=[n for _o, n in index] if dst else None)
-        self.assertEqual(mask_creating_machine(lay.trailer), mask_creating_machine(footer))
-        self.assertEqual(lay.header, header)
-        self.assertEqual(lay.size, os.path.getsize(path))
+        self.assertEqual(sans_machine(lay.trailer), sans_machine(footer))
+        self.assertEqual(lay.header[16:], header[16:])          # (FRM8's size follows the machine comment)
+        self.assertEqual(lay.size, len(lay.header) + (os.path.getsize(path) - len(header) - len(footer)) + len(lay.trailer))
 
     def test_dsdiff_tracks(self):
-        for iso, disc, args, area, t in ((DSD_ISO, self.dsd, ("-p", "-t", "2"), self.dsd.stereo, 1),
-                                         (DST_ISO, self.dst, ("-p", "-t", "3"), self.dst.stereo, 2),
-                                         (DST_ISO, self.dst, ("-p", "-c", "-t", "1"), self.dst.stereo, 0),
-                                         (DST_ISO, self.dst, ("-p", "-m", "-t", "1"), self.dst.multichannel, 0)):
+        for iso, disc, args, area, t in ((self.dsd_iso, self.dsd, ("-p", "-t", "2"), self.dsd.stereo, 1),
+                                         (self.dst_iso, self.dst, ("-p", "-t", "3"), self.dst.stereo, 2),
+                                         (self.dst_iso, self.dst, ("-p", "-c", "-t", "1"), self.dst.stereo, 0),
+                                         (self.dst_iso, self.dst, ("-p", "-m", "-t", "1"), self.dst.multichannel, 0)):
             with self.subTest(args=args):
                 d = self.run_se(iso, *args)
                 want = sb.make_filename(sb.output_dir(disc, area, None),
@@ -202,28 +229,35 @@ class AgainstSacdExtract(unittest.TestCase):
 
     def test_cue_and_xml(self):
         disc = self.dsd
-        d = self.run_se(DSD_ISO, "-C")
+        d = self.run_se(self.dsd_iso, "-C")
         base = sb.album_dir(disc)
         cue = sb.make_filename(sb.output_dir(disc, disc.stereo, None), base, "cue")
         self.assertEqual(self.files(d, "cue"), [cue])
         with open(os.path.join(d, cue), "rb") as f:
             self.assertEqual(sb.cue_sheet(disc, disc.stereo, sb.make_filename(None, base, "dff"), version="NA"),
                              f.read())
-        with SACDImage(DSD_ISO) as img:
+        with SACDImage(self.dsd_iso) as img:
             raw = sb.raw_catalog_numbers(img)
         xml = self.files(d, "xml")
         self.assertEqual(xml, [sb.make_filename(sb.album_path(disc), base, "xml")])
         with open(os.path.join(d, xml[0]), "rb") as f:
             self.assertEqual(sb.metadata_xml(disc, version="NA", raw_catalog=raw), f.read())
 
-    @unittest.skipUnless(os.environ.get("PYSACD_SLOW"), "set PYSACD_SLOW=1 for the edit-master test")
     def test_edit_master(self):
+        if self.real and not os.environ.get("PYSACD_SLOW"):
+            self.skipTest("set PYSACD_SLOW=1 for the edit-master test on a real disc (about 1 GB)")
         disc, area = self.dst, self.dst.stereo
-        d = self.run_se(DST_ISO, "-e")
+        d = self.run_se(self.dst_iso, "-e")
+        ours = tempfile.mkdtemp(prefix="sbcompat-")
+        self.addCleanup(shutil.rmtree, ours)
+        r = subprocess.run([sys.executable, "-m", "pysacd.extract", "--no-cfg", "-e", "-i", self.dst_iso], cwd=ours,
+                           env={**os.environ, "PYTHONPATH": str(SRC)}, capture_output=True, text=True, check=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
         base = sb.album_dir(disc)
         dff = sb.make_filename(sb.output_dir(disc, area, None), base, "dff")
         self.assertEqual(self.files(d, "dff"), [dff])
-        self.check_dff(disc, area, None, os.path.join(d, dff))
+        self.assertEqual(self.files(ours, "dff"), [dff])
+        self.assertTrue(documented_only(Path(ours, dff), Path(d, dff)), "the edit master differs from sacd_extract's")
         with open(os.path.join(d, sb.make_filename(sb.output_dir(disc, area, None), base, "cue")), "rb") as f:
             self.assertEqual(sb.cue_sheet(disc, area, sb.make_filename(None, base, "dff"), version="NA"), f.read())
 

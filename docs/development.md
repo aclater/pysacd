@@ -264,7 +264,11 @@ master alone and with DSF (one pass), cue and XML, pauses, no padding, single tr
 concatenation, multichannel, `-P`, FLAC, WAV at 176.4 kHz, `convert` with and without
 pauses, and the writer's choices of #94 one by one (ID3 modes 0 to 5, `-z` on a selection and
 with pauses, DSDIFF with pauses, a multichannel edited master). The new tree must give the same files, names and bytes as the old one, and must match
-`sacd_extract` file by file wherever the old one did. `--no-values` reports counts only.
+`sacd_extract` file by file wherever the old one did. Both trees need the same `__version__`,
+which pysacd writes into its output. Each run also reports, per file format, how
+both trees compare with `sacd_extract`: identical, identical apart from the documented exceptions,
+or different with where the files part. `--require-sacd-extract` makes any unexplained difference a
+failure, along with a `sacd_extract` that failed or wrote nothing. `--no-values` reports counts only.
 
 **Moving to another scarletbook release:**
 
@@ -300,6 +304,15 @@ PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s
 With `SACD_EXTRACT=/path/to/sacd_extract` and `PYSACD_TEST_ISO` set, the tests also
 copy the ISO through `ps3sim` with the real `sacd_extract -I` and check that the copy
 is byte-identical.
+
+**What the tests cover.** With `SACD_EXTRACT` set, `tests/test_extract_tree.py`,
+`tests/test_sbcompat.py`, `tests/test_names.py` and `tests/test_disc_collisions.py` compare with
+`sacd_extract` on generated discs. `PYSACD_COMPAT_DSD` and `PYSACD_COMPAT_DST` run
+`test_sbcompat.py` on real discs instead. `sacd_extract` itself isn't fully steady: under load, 3 of 450 runs
+of a 6-channel DST extraction came out different, with exit status 0, so the tree test tries a
+mode three times before calling a difference real. For 0.3.0 to 0.4.3 CI compared nothing:
+from #86 an engine check always failed and every comparison skipped in a green job. The check was
+added to CI's test jobs so that can't recur silently (#131).
 
 `tests/test_fuzz.py` feeds seeded, mutated input to the protocol decoder, the PS3 client,
 the TOC reader and the `ps3sim` handler. It runs 300 cases per target by default;
@@ -348,8 +361,18 @@ Every pull request runs:
 - **libFuzzer** on the engine (`fuzz_engine`), 2 minutes, when `csrc/`, `fuzz/`, the
   hostile corpus or the scarletbook pin changes. A weekly run lasts 30 minutes and keeps its
   corpus cached.
-- **The comparison tests** against a `sacd_extract` built from a pinned
-  upstream commit inside the runner. Its code never enters the repository.
+- **The comparison tests** against a `sacd_extract` built from a pinned upstream commit inside the
+  runner; its code never enters the repository. They use generated discs only: audio from every
+  DST feature, whole output trees in every compatible mode of `tools/extract_compare.py`, names,
+  ID3, DSDIFF, cue, XML, `-P`, and `sacd_extract -I` as a client of `ps3sim`. What real discs carry
+  beyond that (real text and timing, real DST streams, long tracks) is only checked by hand at
+  release (see [releasing](#packaging-and-releases)). See "What the tests cover" under
+  [Tests](#tests).
+- **Only the expected skips:** the test jobs fail unless exactly the tests listed for them in
+  `tests/expected-skips.json` skip, for the reason given there (`tools/check_skips.py`). A new skip,
+  a stopped skip and a changed reason all fail. To add one, say why it's legitimate there.
+  The job names are `tests`, `asan`, `tsan` and `oracle`; the portability and fuzz workflows aren't
+  checked.
 - **An informational benchmark**, when `src/`, `csrc/`, the `Makefile` or the scarletbook pin changes
   (about 1.5 min; never a required check, so it may be path-filtered). It builds base (the pull
   request's target branch) and head in one job and times `pysacd-extract` to DSF on synthetic discs
@@ -451,8 +474,23 @@ use the plain filters.
 
 To release:
 
-1. Bump `version` in `pyproject.toml` and `src/pysacd/__init__.py`, and merge.
-2. Tag `vX.Y.Z` on master and push the tag. The workflow then:
+1. **Compare with `sacd_extract` on real discs,** which CI can't, before the version bump: pysacd's
+   version is in its output (DSDIFF comment, cue, XML, `-P`, tags), so two trees compare equal only
+   at one version. Use a `sacd_extract` built from
+   the commit pinned in `.github/workflows/ci.yml`, and discs covering plain DSD, DST, hybrid and
+   multichannel; raw-sector images need `pysacd-extract -I` first, since `sacd_extract` refuses them:
+
+   ```
+   python3 tools/extract_compare.py --old PREVIOUS_RELEASE/src --new src --sacd-extract BIN \
+       --no-values --require-sacd-extract IMAGE...
+   ```
+
+   Exit status 0 means no difference between the two trees, and none from `sacd_extract` beyond the
+   documented exceptions. The `-b` modes are reported in `vs_sacd_extract` without failing, because
+   `sacd_extract` repeats frames at some boundaries of some discs: look at them. Record the counts
+   in the release's changelog section.
+2. Bump `version` in `pyproject.toml` and `src/pysacd/__init__.py`, and merge.
+3. Tag `vX.Y.Z` on master and push the tag. The workflow then:
    - creates build provenance attestations for every wheel and the sdist;
    - attaches the files to a GitHub release, each with its attestation bundle as
      `<file>.intoto.jsonl` (verified in the job first). Check a download with
@@ -463,7 +501,7 @@ To release:
      `true` (trusted publishing, environment `testpypi`);
    - then publishes to PyPI, if `PYPI_PUBLISH` is `true` (environment `pypi`),
      and only if TestPyPI succeeded or was skipped.
-3. Trusted publishing is configured once per index on its website: owner
+4. Trusted publishing is configured once per index on its website: owner
    `aclater`, repository `pysacd`, workflow `workflow.yml`, environment `pypi`
    (the PyPI publisher is constrained to it). On GitHub, the `pypi` environment
    only accepts `v*` tags, so nothing but a release tag can publish. No API token

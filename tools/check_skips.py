@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Fail when a CI job's skipped tests aren't exactly the ones expected (#131).
 
-    python3 -I tools/check_skips.py --job NAME JUNIT.xml
+    python3 -I tools/check_skips.py --job NAME REPORT.json
 
 The engine check of tests/test_dst_full.py once looked for a function the engine stopped
 exporting, and 44 tests, the comparison with sacd_extract among them, skipped for days in a green
 job. So every skip a CI job may have is listed in tests/expected-skips.json, with its job, its
 reason as pytest reports it, and why it's legitimate there. This fails on a new skip, on a skip
 that has stopped (remove it from the list), on a changed reason, and on a report with no tests.
+pytest writes the report when PYSACD_TEST_REPORT names a file (tests/conftest.py).
 """
 
 from __future__ import annotations
@@ -15,21 +16,15 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 EXPECTED = Path(__file__).resolve().parents[1] / "tests" / "expected-skips.json"
 
 
 def read_report(path: str | Path) -> tuple[int, dict[str, str]]:
-    """(number of tests, {test: skip reason}) of a JUnit XML report."""
-    tests, skips = 0, {}
-    for case in ET.parse(path).getroot().iter("testcase"):
-        tests += 1
-        skipped = case.find("skipped")
-        if skipped is not None:
-            skips[f"{case.get('classname')}.{case.get('name')}"] = skipped.get("message") or ""
-    return tests, skips
+    """(number of tests, {test: skip reason}) of the report tests/conftest.py wrote."""
+    report = json.loads(Path(path).read_text(encoding="utf-8"))
+    return report["tests"], report["skips"]
 
 
 def expected_for(job: str, expected: list[dict]) -> dict[str, str]:

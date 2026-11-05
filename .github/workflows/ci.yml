@@ -66,15 +66,19 @@ jobs:
 
       - name: Tests
         if: matrix.python != '3.13'
-        run: PYTHONPATH=src pytest -q tests --junitxml="$RUNNER_TEMP/junit.xml"
+        env:
+          PYSACD_TEST_REPORT: ${{ runner.temp }}/test-report.json
+        run: PYTHONPATH=src pytest -q tests
 
       # One leg runs the suite under coverage.py (configured in pyproject.toml); the report goes
       # to the job summary, an artifact and Codecov. Python code only: the C engine is
       # covered by the sanitizer and fuzz jobs.
       - name: Tests under coverage
         if: matrix.python == '3.13'
+        env:
+          PYSACD_TEST_REPORT: ${{ runner.temp }}/test-report.json
         run: |
-          PYTHONPATH=src coverage run -m pytest -q tests --junitxml="$RUNNER_TEMP/junit.xml"
+          PYTHONPATH=src coverage run -m pytest -q tests
           coverage report
           {
             echo "## Coverage (Python 3.13)"
@@ -84,7 +88,7 @@ jobs:
           coverage xml -o coverage.xml
 
       - name: Only the expected tests skipped
-        run: python3 -I tools/check_skips.py --job tests "$RUNNER_TEMP/junit.xml"
+        run: python3 -I tools/check_skips.py --job tests "$RUNNER_TEMP/test-report.json"
 
       # Coverage also goes to Codecov for the README badge and PR comparisons, authenticated
       # with the job's OIDC token. Pull requests from forks get no token, so they skip it, and
@@ -147,10 +151,11 @@ jobs:
           export UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
           # tests/test_fuzz_engine.py builds the C fuzz harnesses with these flags too
           export PYSACD_FUZZ_CFLAGS="$SAN"
-          PYTHONPATH=src python -m pytest -q tests --junitxml="$RUNNER_TEMP/junit.xml"
+          export PYSACD_TEST_REPORT="$RUNNER_TEMP/test-report.json"
+          PYTHONPATH=src python -m pytest -q tests
 
       - name: Only the expected tests skipped
-        run: python3 -I tools/check_skips.py --job asan "$RUNNER_TEMP/junit.xml"
+        run: python3 -I tools/check_skips.py --job asan "$RUNNER_TEMP/test-report.json"
 
   leaks:
     # The ASan job can't look for leaks, because Python itself reports them at exit. This drives
@@ -220,11 +225,12 @@ jobs:
           # numpy's OpenBLAS threads race in their own uninstrumented code (seen in CI); one
           # thread keeps TSan on pysacd's engine
           export OPENBLAS_NUM_THREADS=1
-          PYTHONPATH=src python -m pytest -v tests --junitxml="$RUNNER_TEMP/junit.xml" || { cat "$RUNNER_TEMP"/tsan* 2>/dev/null; exit 1; }
+          export PYSACD_TEST_REPORT="$RUNNER_TEMP/test-report.json"
+          PYTHONPATH=src python -m pytest -v tests || { cat "$RUNNER_TEMP"/tsan* 2>/dev/null; exit 1; }
 
       - name: Only the expected tests skipped
         # Without the runtime the engine doesn't load and its tests would skip: this catches that.
-        run: python3 -I tools/check_skips.py --job tsan "$RUNNER_TEMP/junit.xml"
+        run: python3 -I tools/check_skips.py --job tsan "$RUNNER_TEMP/test-report.json"
 
   oracle:
     # Build the real sacd_extract from a pinned sacd-ripper commit and run the tests that compare
@@ -273,13 +279,13 @@ jobs:
         run: |
           # a generated disc for the tests that take an image
           PYSACD_TEST_ISO="$(PYTHONPATH=src:tests python -c 'import sys; from pathlib import Path; import test_extract_tree as t; print(t.discs(Path(sys.argv[1]))["dst"])' "$RUNNER_TEMP")"
-          export PYSACD_TEST_ISO
+          export PYSACD_TEST_ISO PYSACD_TEST_REPORT="$RUNNER_TEMP/test-report.json"
           PYTHONPATH=src:tests python -m pytest -q tests/test_dst_full.py tests/test_sbcompat.py tests/test_names.py \
-            tests/test_disc_collisions.py tests/test_extract_tree.py tests/test_remote.py tests/test_toc.py \
-            --junitxml="$RUNNER_TEMP/junit.xml"
+            tests/test_disc_collisions.py tests/test_extract_tree.py tests/test_remote.py tests/test_toc.py
+           
 
       - name: Only the expected tests skipped
-        run: python3 -I tools/check_skips.py --job oracle "$RUNNER_TEMP/junit.xml"
+        run: python3 -I tools/check_skips.py --job oracle "$RUNNER_TEMP/test-report.json"
 
   scarletbook:
     # The engine links the scarletbook-rs C library pinned in scarletbook.lock (#85); every build

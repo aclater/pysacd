@@ -11,17 +11,14 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import check_skips
 
-REPORT = """<testsuites><testsuite>
-<testcase classname="tests.t.A" name="ok"/>
-<testcase classname="tests.t.A" name="off"><skipped type="pytest.skip" message="set X">x</skipped></testcase>
-</testsuite></testsuites>"""
+REPORT = {"tests": 2, "skips": {"tests.t.A.off": "set X"}}
 
 
 class CheckSkips(unittest.TestCase):
-    def report(self, text: str = REPORT) -> tuple[int, dict[str, str]]:
+    def report(self, report: dict = REPORT) -> tuple[int, dict[str, str]]:
         with tempfile.TemporaryDirectory() as d:
-            p = Path(d, "r.xml")
-            p.write_text(text)
+            p = Path(d, "r.json")
+            p.write_text(json.dumps(report))
             return check_skips.read_report(p)
 
     def test_reads_tests_and_skips(self):
@@ -41,7 +38,7 @@ class CheckSkips(unittest.TestCase):
         self.assertIn("reason changed", check_skips.problems(*self.report(), {"tests.t.A.off": "set Z"})[0])
 
     def test_no_tests_fails(self):
-        self.assertIn("no tests", check_skips.problems(*self.report("<testsuites/>"), {})[0])
+        self.assertIn("no tests", check_skips.problems(*self.report({"tests": 0, "skips": {}}), {})[0])
 
     def test_every_expected_skip_says_why(self):
         for e in json.loads(check_skips.EXPECTED.read_text(encoding="utf-8")):

@@ -7,7 +7,7 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
-## 0.5.0 (unreleased)
+## 0.5.0 (2026-11-05)
 
 0.5.0 is mostly about trust in what 0.3.0 to 0.4.3 shipped. **For those six releases (0.3.0, 0.3.1,
 0.4.0, 0.4.1, 0.4.2 and 0.4.3), CI did not compare pysacd with `sacd_extract` at all.** From #86 a check for the engine looked for a
@@ -39,7 +39,7 @@ files differ only where docs/sacd_extract.md says they do (262 of 266, 17 of 17,
 with `-z`, shifts the later tracks: documented, and identical for 0.4.3 and 0.5.0. A wheel built
 from master, installed in clean Fedora 44 containers on Python 3.11 and 3.15, UBI 9 on Python 3.11
 and UBI 10 on Python 3.14, extracts the real hybrid disc to the same 12 DSF files as the
-reference checksums. (UBI offers no Python 3.15; Fedora 44 covers it.)
+reference checksums. (UBI offers no Python 3.15; Fedora 44 covers it.) The published 0.5.0rc1, installed from PyPI in clean containers, did the same on Fedora 44 (Python 3.11 and 3.15), UBI 9 (3.11), UBI 10 (3.12), Debian 13 (3.13), Ubuntu 26.04 (3.14) and Alpine 3.22 (3.12, musl).
 
 - The engine links scarletbook-rs 0.5.8 (digests checked against the release's `.sha256` files and
   attestations; the CET shadow-stack mark is kept). 0.5.8 fixes a seek-index loader case and adds a

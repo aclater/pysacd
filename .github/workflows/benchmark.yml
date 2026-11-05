@@ -1,0 +1,64 @@
+# A coarse, informational alarm for performance regressions (#123): base and head are built in
+# one job and run pysacd-extract on synthetic discs, alternating, medians of 5
+# (scripts/bench_compare.py). Never a required check, so the path filter is fine, and a flagged
+# slowdown only warns. See docs/development.md.
+name: benchmark
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "csrc/**"
+      - "Makefile"
+      - "scarletbook.lock"
+      - "scripts/bench_compare.py"
+      - "scripts/bench_workload.py"
+      - ".github/workflows/benchmark.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true  # a new push supersedes the old run
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: benchmark (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2  # a pull request's checkout is its merge commit: the first parent is the base
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libflac-dev
+          # hash-locked (tools/lock_dev.py)
+          pip install --require-hashes -r requirements-dev.txt
+
+      - name: Build base and head
+        run: |
+          git worktree add -q "$RUNNER_TEMP/base" HEAD^1
+          make -C "$RUNNER_TEMP/base" PORTABLE=1
+          make PORTABLE=1
+          make test-tools
+
+      - name: Generate the discs
+        run: python3 -I scripts/bench_workload.py generate "$RUNNER_TEMP/discs"
+
+      - name: Compare
+        env:
+          BENCH_DISCS: ${{ runner.temp }}/discs
+        run: |
+          python3 -I scripts/bench_compare.py --base "$RUNNER_TEMP/base" --head "$PWD" \
+            --measure "python3 -I scripts/bench_workload.py" dst-stereo dst-multichannel plain-dsd

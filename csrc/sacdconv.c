@@ -591,6 +591,9 @@ static void *sb_reader_main(void *arg)
         }
 
         for (uint32_t k = 0; !stopping(e); k++) {
+            if (ai.frame_format == 0)   /* DEMO: an injected slowdown, DST frames only */
+                for (volatile int spin = 0; spin < 60000; spin++)
+                    ;
             SbFrameInfo fi = {0};
             SbRawFrameInfo ri = {0};
             /* read into the stage's next slot (stage_frame then copies nothing) */

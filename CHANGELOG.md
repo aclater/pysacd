@@ -11,8 +11,11 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 - The engine links scarletbook-rs 0.5.8 (digests checked against the release's `.sha256` files and
   attestations; the CET shadow-stack mark is kept). 0.5.8 fixes a seek-index loader case and adds a
-  `bench` report in scarletbook itself; it changes no speed or output (TIMINGS PENDING,
-  docs/performance.md).
+  `bench` report in scarletbook itself; it changes no speed. Output is byte-identical to master
+  (0.4.3, on 0.5.7) in every mode on the five real test discs (175 runs, 0 differences). Wall s,
+  medians of 3, alternating, output to `/dev/shm`: DST stereo to DSF on one thread 52.14 (0.4.3:
+  52.16), on all threads 5.37 (5.36), DST 6-channel on all threads 19.89 (19.84), plain DSD on
+  all threads 0.90 (0.93), all within the runs' spread (docs/performance.md).
 
 ## 0.4.3 (2026-11-02)
 

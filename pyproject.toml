@@ -25,6 +25,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Multimedia :: Sound/Audio :: Conversion",
 ]
 dependencies = ["mutagen>=1.45"]     # tags for convert and pysacd-extract --musicbrainz

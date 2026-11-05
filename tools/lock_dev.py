@@ -6,7 +6,7 @@ requirements-test.txt is what the test suite needs (the Windows and fuzz jobs); 
 adds the linters and the build backend. CI installs them with `pip install --require-hashes`, so a
 replaced or
 tampered release on PyPI fails the install instead of running in CI. The pins below are the
-whole dependency closure for Python 3.11-3.14 on Linux, macOS and Windows (check it with
+whole dependency closure for Python 3.11-3.15 on Linux, macOS and Windows (check it with
 `pip install --dry-run --ignore-installed --report`). Each pinned release must be at least
 two weeks old (CLAUDE.md), unless requirements-dev.txt already holds it (Dependabot bumps the
 lock files directly, after its own cooldown). To update: edit PINS, run

@@ -22,7 +22,7 @@ from pathlib import Path
 WORKLOADS = {
     "dst-stereo": (2, True, 60, 15000, "-2"),
     "dst-multichannel": (6, True, 60, 3000, "-m"),
-    "plain-dsd": (2, False, 60, 30000, "-2"),
+    "plain-dsd": (2, False, 60, 60000, "-2"),
 }
 
 

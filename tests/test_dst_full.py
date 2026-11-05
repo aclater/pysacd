@@ -25,13 +25,12 @@ from dstenc import FL, NB, BitWriter, Coding, Frame, Segmentation
 try:
     from pysacd import _native
     _lib = _native._load()
-    _lib.dst_decoder_new.argtypes = [ctypes.c_int]
-    _lib.dst_decoder_new.restype = ctypes.c_void_p
-    _lib.dst_decoder_free.argtypes = [ctypes.c_void_p]
-    _lib.dst_decode_frame.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p]
-    _lib.dst_decode_frame.restype = ctypes.c_int
+    # DST decoding is scarletbook's documented C interface, linked into the engine (#85, #90)
+    _lib.sb_dst_decode.argtypes = [ctypes.c_char_p, ctypes.c_size_t, ctypes.c_uint32, ctypes.c_char_p,
+                                   ctypes.c_size_t, ctypes.POINTER(ctypes.c_uint32)]
+    _lib.sb_dst_decode.restype = ctypes.c_int
     HAVE_NATIVE = True
-except Exception:  # noqa: BLE001 - any failure to load means "not built"; tests skip
+except Exception:  # noqa: BLE001 - any failure to load means "not built"; tests skip, and CI's skip check notices
     HAVE_NATIVE = False
 
 def _native_has_flac() -> bool:
@@ -49,17 +48,18 @@ except Exception:  # noqa: BLE001 - any failure to load means "unavailable"; tes
 
 SACD_EXTRACT = os.environ.get("SACD_EXTRACT")
 DST_ERR_INVALID = -1
+SB_STATUS_INVALID_DST_FRAME = -13
 CHANNELS = (2, 5, 6)
 
 
 def decode(frame: bytes, channels: int) -> tuple[int, bytes]:
-    dec = _lib.dst_decoder_new(channels)
-    try:
-        out = ctypes.create_string_buffer(FL * channels)
-        rc = _lib.dst_decode_frame(dec, frame, len(frame), out)
-        return rc, out.raw
-    finally:
-        _lib.dst_decoder_free(dec)
+    """Decode one frame with scarletbook: (0, DSD), or (DST_ERR_INVALID, b"") for an invalid frame."""
+    out = ctypes.create_string_buffer(FL * channels)
+    rc = _lib.sb_dst_decode(frame, len(frame), channels, out, len(out), None)
+    if rc == SB_STATUS_INVALID_DST_FRAME:
+        return DST_ERR_INVALID, b""     # scarletbook: "the output bytes are unspecified"
+    assert rc == 0, f"sb_dst_decode: status {rc}"
+    return 0, out.raw
 
 
 def number(maps: list[list[int]]) -> list[list[int]]:

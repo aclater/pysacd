@@ -49,8 +49,9 @@ deliberate:
 | An image cut short inside the audio | stops at the cut, writing what it has | reads up to the cut and writes the rest of each track as silence (counted as missing frames, exit status 1) | scarletbook's reading of the specification: positions it can't find are missing frames |
 | A DST frame the specification calls invalid (for example a code value out of range, sacd-spec corpus `dst-code-all-ones`) | decodes it anyway, into undefined audio | fills it with 0x55, as for any undecodable frame, warns, and counts it as a DST error (exit status 1) | the frame has no defined audio; since 0.3.0 scarletbook decodes, and it applies the specification's validity rules |
 | Unreadable frames in a DSDIFF file that keeps DST (`-p`, `-e` without `-c`) | leaves them out | leaves them out too, and also the markers that would fall past the frames the file holds (a track file's index marker at its end, an edited master's later markers) | since 0.4.0 scarletbook lays out the file for the frames it holds, and a marker can't point past them; only on a damaged image |
-| `-b` (pauses) | cuts on sectors, so a boundary frame can land in both tracks | cuts on frame timecodes | gapless and unambiguous |
+| `-b` (pauses) | cuts on sectors, so frames near a boundary can land in both tracks (on one real disc of the five we compare, 6 frames at 4 of its 17 boundaries; with `-z`, the carry then shifts every later track) | cuts on frame timecodes: the tracks joined are exactly the area's audio | gapless and unambiguous |
 | DSDIFF "creating machine" comment; `.cue`/`.xml` version lines | name sacd-ripper | name pysacd | honesty; otherwise byte-identical |
+| Pad byte after odd-length text and ID3 tags in a DSDIFF file | leaves it uninitialised when DST is kept (or with `-e`), so it holds whatever was in memory | writes zero | the byte has no meaning, and it can't be matched |
 | Console messages | | `-P` and the cfg summary are identical; other lines are worded differently | |
 
 ## Extensions
@@ -80,8 +81,14 @@ mkdir a b
 diff -r a b && echo identical
 ```
 
-The same comparison runs in CI on every pull request. On a library of real
-discs:
+**What's checked, and where.** Every pull request runs this comparison on generated discs
+(`tests/test_extract_tree.py`): plain DSD, DST and both together, at 2, 5 and 6 channels, in every
+`sacd_extract`-compatible mode of `tools/extract_compare.py`, against a `sacd_extract` built from a
+pinned commit. Real discs carry far more than a generated one can, so the same tool runs on them by
+hand before each release ([releasing](development.md#packaging-and-releases)); CI has no real discs.
+The comparison didn't run in CI at all for 0.3.0 to 0.4.3: see the [changelog](../CHANGELOG.md).
+
+On a library of real discs:
 
 - **`-P` disc information:** identical on **99 of 99** plain-SACD images.
 - **Output trees:** **28 of 28** end-to-end cases byte-identical. They cover

@@ -874,7 +874,7 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
         rc |= _execute(img, disc, None, [], o, iso_path)
     if o.refused:
         rc = 255        # as when the engine refuses a run
-    say("\nProgram terminates!")
+    say("\nProgram terminates!\n")      # with sacd_extract's final empty line
     return rc
 
 

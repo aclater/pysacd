@@ -11,11 +11,31 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 - The engine links scarletbook-rs 0.5.8 (digests checked against the release's `.sha256` files and
   attestations; the CET shadow-stack mark is kept). 0.5.8 fixes a seek-index loader case and adds a
-  `bench` report in scarletbook itself; it changes no speed. Output is byte-identical to master
+  `bench` report in scarletbook itself; it changes no speed. Output is byte-identical to master before #133
   (0.4.3, on 0.5.7) in every mode on the five real test discs (175 runs, 0 differences). Wall s,
   medians of 3, alternating, output to `/dev/shm`: DST stereo to DSF on one thread 52.14 (0.4.3:
   52.16), on all threads 5.37 (5.36), DST 6-channel on all threads 19.89 (19.84), plain DSD on
   all threads 0.90 (0.93), all within the runs' spread (docs/performance.md).
+
+- **The comparison with `sacd_extract` runs in CI again, and compares more (#131).** From #86 until
+  now, so for every release from 0.3.0 to 0.4.3, a test's check for the engine looked for a function the engine no
+  longer exported: 44 tests skipped, among them every comparison, in a job that stayed green. Even
+  before that, the job compared decoded audio only. It now also compares whole output trees in
+  every compatible mode, names, ID3, DSDIFF, cue, XML and `-P`, on generated discs. Real discs run
+  by hand before each release; docs/development.md says what each covers.
+- CI fails if a test starts skipping, stops skipping or changes its reason (`tests/expected-skips.json`).
+- `pysacd-extract` ends its output with the final empty line `sacd_extract` prints, so `-P` is now
+  identical.
+- Documented a difference from `sacd_extract` that the comparison found: the pad byte after
+  odd-length text and ID3 tags in a DSDIFF file, which `sacd_extract` leaves uninitialised.
+- `tools/extract_compare.py` reports each run against `sacd_extract` per file format, and
+  `--require-sacd-extract` fails on an unexplained difference or a `sacd_extract` that didn't run.
+- Tests: the frame tests of `tests/test_dst_full.py` call scarletbook's `sb_dst_decode`, since the
+  decoder they called was removed in 0.3.0. They pass unchanged. The sector-source test now runs
+  the whole hostile corpus through a recording source, and a new test checks that a run exiting 0
+  wrote everything the TOC promises. An area claiming to run past the end of the image is no longer
+  refused before reading, since 0.3.0: the sectors that exist are read, and a source is still
+  never asked for one that doesn't.
 
 ## 0.4.3 (2026-11-02)
 

@@ -15,8 +15,15 @@ SHA-256) plus its standard output for -P.
 - new must equal sacd_extract wherever old equalled it (file by file, and -P's text):
   the compatibility pysacd had before is kept, and nothing is claimed beyond it.
 
+Each run also says, per file format, how the output compares with sacd_extract's, for both
+trees ("vs_sacd_extract"): identical; identical apart from the documented exceptions
+(docs/sacd_extract.md: the DSDIFF creating-machine comment and text pad bytes, the version lines
+of cue and XML); or
+different, with what differs. Anything in "different" is a difference nobody has explained.
+
 --no-values reports counts and mode names only (no file names), for private discs. Exit
-status 1 on any difference.
+status 1 on any difference between the trees, or, with --require-sacd-extract, on any
+unexplained difference from sacd_extract.
 """
 
 from __future__ import annotations
@@ -25,6 +32,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -73,6 +81,10 @@ MODES = {
     "dsdiff-pauses": ("extract", ["-2", "-p", "-b"]),
     "mch-edit-master": ("extract", ["-m", "-e"]),
 }
+
+
+# Where a cue sheet and an XML file name the writing program (docs/sacd_extract.md)
+VERSION = re.compile(rb"(REM File created by SACD Extract, version: |\(created by sacd_extract, version: )[^\n)]*")
 
 
 def _dff_timestamps(f) -> list[int]:
@@ -127,6 +139,116 @@ def tree(root: Path) -> dict[str, str]:
     return out
 
 
+def _sans_version(data: bytes) -> bytes:
+    """A cue sheet or XML file without the version that names the writing program."""
+    return VERSION.sub(rb"\1", data, count=1)
+
+
+def _first_difference(a: Path, b: Path) -> dict:
+    """Where two files part, without loading them: sizes, first differing offset, bytes differing."""
+    first, count, pos = None, 0, 0
+    with open(a, "rb") as fa, open(b, "rb") as fb:
+        while True:
+            x, y = fa.read(1 << 20), fb.read(1 << 20)
+            if not x and not y:
+                break
+            if x != y:
+                for i, (p, q) in enumerate(zip(x, y)):
+                    if p != q:
+                        first = pos + i if first is None else first
+                        count += 1
+            pos += max(len(x), len(y))
+    return {"sizes": (a.stat().st_size, b.stat().st_size), "first": first, "bytes": count}
+
+
+def _dff_sans_machine(path: Path) -> str:
+    """A DSDIFF file's hash without what may differ (docs/sacd_extract.md): the time the file was
+    written, the comments after the first (the creating machine), the sizes of COMT and FRM8, which
+    those change (FRM8's must still agree with the file), and the pad bytes after odd-length text
+    and ID3 tags, which sacd_extract leaves uninitialised."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        end = f.seek(0, 2)
+        f.seek(0)
+        h.update(f.read(4))
+        h.update(b"sizes agree" if int.from_bytes(f.read(8), "big") + 12 == end else b"FRM8's size is wrong")
+        h.update(f.read(4))
+        pos = 16
+        while pos + 12 <= end:
+            f.seek(pos)
+            head = f.read(12)
+            size = int.from_bytes(head[4:12], "big")
+            h.update(head[:4])
+            if head[:4] == b"COMT":
+                h.update(f.read(2))
+                f.seek(6, 1)
+                rest = f.read(8)
+                h.update(rest)
+                h.update(f.read(int.from_bytes(rest[4:8], "big")))
+            elif head[:4] == b"ID3 ":
+                h.update(head[4:12])
+                body = f.read(size)
+                if body[:3] == b"ID3" and len(body) >= 10:   # the tag's own length, without the pad byte
+                    n = (body[6] << 21) | (body[7] << 14) | (body[8] << 7) | body[9]
+                    body = body[:10 + n]
+                h.update(body)
+            elif head[:4] == b"DIIN":
+                h.update(head[4:12])
+                body = f.read(size)
+                q = 0
+                while q + 12 <= len(body):
+                    n = int.from_bytes(body[q + 4:q + 12], "big")
+                    # DIAR and DITI: a 4-byte length, the text, and a pad byte within the chunk's size
+                    text = 4 + int.from_bytes(body[q + 12:q + 16], "big") if body[q:q + 4] in (b"DIAR", b"DITI") else n
+                    h.update(body[q:q + 12 + min(n, text)])
+                    q += 12 + n + (n & 1)
+            else:
+                h.update(head[4:12])
+                left = size + (size & 1)
+                while left > 0:
+                    block = f.read(min(left, 1 << 20))
+                    if not block:
+                        break
+                    h.update(block)
+                    left -= len(block)
+            pos += 12 + size + (size & 1)
+    return h.hexdigest()
+
+
+def documented_only(ours: Path, theirs: Path) -> bool:
+    """True if the files differ only where docs/sacd_extract.md says they do."""
+    ext = ours.suffix.lower()
+    if ext in (".cue", ".xml"):
+        return _sans_version(ours.read_bytes()) == _sans_version(theirs.read_bytes())
+    return ext == ".dff" and _dff_sans_machine(ours) == _dff_sans_machine(theirs)
+
+
+def against_sacd_extract(root: Path, se_root: Path, files: dict[str, str], se_files: dict[str, str],
+                         hide_names: bool) -> dict:
+    """Per file format, how a tree compares with sacd_extract's."""
+    out: dict[str, dict] = {}
+
+    def entry(name: str) -> dict:
+        return out.setdefault(Path(name).suffix.lower().lstrip(".") or "(none)",
+                              {"theirs": 0, "identical": 0, "documented": 0, "different": []})
+
+    for name, h in se_files.items():
+        e = entry(name)
+        e["theirs"] += 1
+        if name not in files:
+            e["different"].append({"file": "" if hide_names else name, "why": "only sacd_extract wrote it"})
+        elif files[name] == h:
+            e["identical"] += 1
+        elif documented_only(root / name, se_root / name):
+            e["documented"] += 1
+        else:
+            d = _first_difference(root / name, se_root / name)
+            e["different"].append({"file": "" if hide_names else name, **d})
+    for name in files.keys() - se_files.keys():
+        entry(name)["different"].append({"file": "" if hide_names else name, "why": "only pysacd wrote it"})
+    return out
+
+
 def last_track(src: str, image: Path, area: str) -> int:
     code = ("import sys; from pysacd.toc import read_toc; d = read_toc(sys.argv[1]); "
             "a = d.multichannel if sys.argv[2] == 'm' else d.stereo; print(len(a.tracks) if a else 0)")
@@ -167,14 +289,24 @@ def one(kind: str, which: str, image: Path, args: list[str], work: Path, srcs: d
 
 
 def compare(image: Path, mode: str, srcs: dict[str, str], sacd_extract: str | None, threads: int,
-            keep: Path | None) -> dict:
+            keep: Path | None, hide_names: bool = False) -> dict:
     kind, args = MODES[mode]
     if "LAST" in args or "MIDDLE" in args:
         n = last_track(srcs["new"], image, "m" if "-m" in args else "2")
         args = [str(n) if a == "LAST" else str(max(1, (n + 1) // 2)) if a == "MIDDLE" else a for a in args]
     work = Path(tempfile.mkdtemp(prefix="cmp-", dir=keep))
+    vs = {}
     try:
-        res = {w: one(kind, w, image, args, work, srcs, sacd_extract, threads) for w in ("old", "new", "sacd_extract")}
+        same = srcs["old"] == srcs["new"]       # one tree, compared with sacd_extract only: run it once
+        res = {w: one(kind, w, image, args, work, srcs, sacd_extract, threads)
+               for w in (("new", "sacd_extract") if same else ("old", "new", "sacd_extract"))}
+        if same:
+            res["old"] = res["new"]
+        if res["sacd_extract"] is not None:
+            vs = {w: against_sacd_extract(work / w, work / "sacd_extract", res[w]["files"], res["sacd_extract"]["files"],
+                                          hide_names) for w in (("new",) if same else ("old", "new"))}
+            if same:
+                vs["old"] = vs["new"]
     finally:
         if keep is None:
             shutil.rmtree(work, ignore_errors=True)
@@ -198,11 +330,40 @@ def compare(image: Path, mode: str, srcs: dict[str, str], sacd_extract: str | No
         for name, h in se["files"].items():
             if old["files"].get(name) == h and new["files"].get(name) != h:
                 r["problems"].append(f"no longer matches sacd_extract: {name}")
-        if se["stdout"] and se["stdout"] == old["stdout"] and new["stdout"] != se["stdout"]:
-            r["problems"].append("-P text no longer matches sacd_extract")
-        r["print_matches_sacd_extract"] = bool(se["stdout"]) and se["stdout"] == new["stdout"] or None
+        # The header before the disc information names the program (docs/sacd_extract.md)
+        body = lambda t: t[t.find("Disc Information:"):] if "Disc Information:" in t else ""
+        r["print_matches_sacd_extract"] = bool(body(se["stdout"])) and body(se["stdout"]) == body(new["stdout"]) or None
+        r["rc_sacd_extract"] = se["rc"]
+        r["vs_sacd_extract"] = vs
         r["seconds"] = (*r["seconds"], round(se["seconds"], 2))
     return r
+
+
+def sacd_extract_problems(r: dict, real_disc: bool = False) -> list[str]:
+    """What --require-sacd-extract fails on. A comparison that compared nothing is a failure too:
+    a sacd_extract that couldn't run must never read as "no differences". On a real disc, -b modes
+    are reported but don't fail: where a pause falls inside a sector, sacd_extract repeats frames
+    in both tracks and pysacd cuts on the timecode (docs/sacd_extract.md)."""
+    kind = MODES[r["mode"]][0]
+    if kind != "extract":
+        return []                               # pysacd's own extensions: nothing to compare with
+    if "rc_sacd_extract" not in r:
+        return ["no sacd_extract to compare with"]
+    out = []
+    if r["rc_sacd_extract"] != r["rc"][1]:
+        out.append(f"exit status {r['rc'][1]}, sacd_extract's {r['rc_sacd_extract']}")
+    if r["mode"] == "print" and not r["print_matches_sacd_extract"]:
+        out.append("-P text differs from sacd_extract")
+    # A disc with no multichannel area gives neither program anything to write in a -m mode
+    nothing_to_write = "-m" in MODES[r["mode"]][1] and not r["files"]
+    if r["mode"] != "print" and not r["sacd_extract_files"] and not nothing_to_write:
+        out.append("sacd_extract wrote nothing")
+    if real_disc and "-b" in MODES[r["mode"]][1]:
+        return out
+    for fmt, e in r["vs_sacd_extract"]["new"].items():
+        if e["different"]:
+            out.append(f"{len(e['different'])} {fmt} file(s) differ from sacd_extract")
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -215,15 +376,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--no-values", action="store_true")
     ap.add_argument("--keep", type=Path, help="work under this directory and keep the outputs")
+    ap.add_argument("--require-sacd-extract", action="store_true",
+                    help="also fail on any difference from sacd_extract the docs don't explain")
     args = ap.parse_args(argv)
     srcs = {"old": str(Path(args.old).resolve()), "new": str(Path(args.new).resolve())}
     bad = 0
     for n, image in enumerate(args.images, 1):
         for mode in args.modes.split(","):
-            r = compare(image.resolve(), mode, srcs, args.sacd_extract, args.threads, args.keep)
+            r = compare(image.resolve(), mode, srcs, args.sacd_extract, args.threads, args.keep, args.no_values)
             r["image"] = f"image {n}" if args.no_values else str(image)
             if args.no_values:
                 r["problems"] = [p.split(":", 1)[0] for p in r["problems"]]
+            if args.require_sacd_extract:
+                r["problems"] += sacd_extract_problems(r, real_disc=True)
             bad += bool(r["problems"])
             print(json.dumps(r, ensure_ascii=False), flush=True)
     print(f"{bad} run(s) with differences", file=sys.stderr)

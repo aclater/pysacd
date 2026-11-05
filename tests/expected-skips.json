@@ -1,0 +1,85 @@
+[
+  {
+    "why": "An extract-side subclass inherits three tests of `pysacd convert`'s behaviour, which pysacd-extract doesn't have. They run in the parent class.",
+    "reason": "convert-only",
+    "jobs": [
+      "tests",
+      "asan",
+      "tsan",
+      "oracle"
+    ],
+    "tests": [
+      "tests.test_disc_collisions.ExtractDiscCollisions.test_collision_detected_in_flac_tags",
+      "tests.test_disc_collisions.ExtractDiscCollisions.test_rerun_reports_skips",
+      "tests.test_disc_collisions.ExtractDiscCollisions.test_unrelated_discs_same_title_get_no_hint"
+    ]
+  },
+  {
+    "why": "These need a sacd_extract binary, built only in the oracle job, where they run.",
+    "reason": "set SACD_EXTRACT to compare with the real sacd_extract",
+    "jobs": [
+      "tests",
+      "asan",
+      "tsan"
+    ],
+    "tests": [
+      "tests.test_disc_collisions.ExtractDiscCollisions.test_disc_override_matches_sacd_extract_set_layout",
+      "tests.test_extract_tree.Trees.test_every_mode_on_every_disc",
+      "tests.test_names.Decoding.test_ksc_gb_documented_difference",
+      "tests.test_names.Decoding.test_sjis_big5_match_sacd_extract",
+      "tests.test_sbcompat.AgainstSacdExtract.test_concatenate_name",
+      "tests.test_sbcompat.AgainstSacdExtract.test_cue_and_xml",
+      "tests.test_sbcompat.AgainstSacdExtract.test_dsdiff_tracks",
+      "tests.test_sbcompat.AgainstSacdExtract.test_dsf_names_and_id3",
+      "tests.test_sbcompat.AgainstSacdExtract.test_edit_master"
+    ]
+  },
+  {
+    "why": "Needs a sacd_extract binary and a disc image, which the oracle job has.",
+    "reason": "set SACD_EXTRACT and PYSACD_TEST_ISO to test against the real client",
+    "jobs": [
+      "tests",
+      "asan",
+      "tsan"
+    ],
+    "tests": [
+      "tests.test_remote.RealClient.test_sacd_extract_iso_copy_is_identical"
+    ]
+  },
+  {
+    "why": "Needs a disc image; the oracle job generates one and runs it.",
+    "reason": "set PYSACD_TEST_ISO to test the CLI against a real disc",
+    "jobs": [
+      "tests",
+      "asan",
+      "tsan"
+    ],
+    "tests": [
+      "tests.test_remote.RemoteCLI.test_iso_copy_and_dsf_match_local"
+    ]
+  },
+  {
+    "why": "Needs a disc image; the oracle job generates one and runs it.",
+    "reason": "PYSACD_TEST_ISO not set",
+    "jobs": [
+      "tests",
+      "asan",
+      "tsan"
+    ],
+    "tests": [
+      "tests.test_toc.RealISO.test_parse"
+    ]
+  },
+  {
+    "why": "Makes a real request to MusicBrainz, so pull requests don't depend on it; the weekly live-musicbrainz workflow runs it.",
+    "reason": "live MusicBrainz test: set PYSACD_LIVE_MB=1",
+    "jobs": [
+      "tests",
+      "asan",
+      "tsan"
+    ],
+    "tests": [
+      "tests.test_musicbrainz_live.LiveMusicBrainz.test_release_lookup_still_parses_and_matches"
+    ]
+  }
+]

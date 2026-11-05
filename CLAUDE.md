@@ -85,8 +85,9 @@ PYTHONPATH=src pytest -q tests
 CI also runs:
 
 - the tests under ASan and UBSan, and the engine leak check (`scripts/leak-check.sh`);
-- `tests/test_dst_full.py` and `tests/test_sbcompat.py` against a
-  `sacd_extract` built from a pinned upstream commit;
+- the comparison tests against a `sacd_extract` built from a pinned upstream commit, on generated
+  discs (real discs run by hand at release, docs/development.md);
+- a check that only the skips listed in `tests/expected-skips.json` happen, each with its reason;
 - CodeQL and semgrep. These fail on findings.
 - zizmor on workflow changes, dependency review, coverage (the 3.13 leg, uploaded to Codecov by OIDC), and a
   docs link check; weekly, OpenSSF Scorecard and one live MusicBrainz lookup
@@ -97,8 +98,8 @@ CI also runs:
 All of them must pass.
 
 Locally, run the comparison tests against the real binary with
-`SACD_EXTRACT=/path/to/sacd_extract`. Tests that need real discs read their
-paths from environment variables and skip without them.
+`SACD_EXTRACT=/path/to/sacd_extract`. Tests that need a disc image read its
+path from an environment variable and skip without it; a new skip in CI must be listed, with why.
 
 ## Workflow
 

@@ -16,8 +16,9 @@ Blu-ray player running SACD Ripper or AutoScript are especially useful (#10).
 ## Changing code
 
 1. **Start with an issue,** so the change can be discussed first.
-2. **Work on a branch and open a pull request** against `master`. The default branch only
-   accepts pull requests whose checks pass.
+2. **Work on a branch and open a pull request** against `master`. The default branch only accepts
+   pull requests whose checks pass on a branch that is up to date with `master`. If `master` moves
+   while yours waits, merge it into your branch (no force-push) and let the checks run again.
 3. **Run the checks before you push:**
 
    ```bash

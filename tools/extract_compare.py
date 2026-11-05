@@ -339,9 +339,11 @@ def compare(image: Path, mode: str, srcs: dict[str, str], sacd_extract: str | No
     return r
 
 
-def sacd_extract_problems(r: dict) -> list[str]:
+def sacd_extract_problems(r: dict, real_disc: bool = False) -> list[str]:
     """What --require-sacd-extract fails on. A comparison that compared nothing is a failure too:
-    a sacd_extract that couldn't run must never read as "no differences"."""
+    a sacd_extract that couldn't run must never read as "no differences". On a real disc, -b modes
+    are reported but don't fail: where a pause falls inside a sector, sacd_extract repeats frames
+    in both tracks and pysacd cuts on the timecode (docs/sacd_extract.md)."""
     kind = MODES[r["mode"]][0]
     if kind != "extract":
         return []                               # pysacd's own extensions: nothing to compare with
@@ -352,8 +354,12 @@ def sacd_extract_problems(r: dict) -> list[str]:
         out.append(f"exit status {r['rc'][1]}, sacd_extract's {r['rc_sacd_extract']}")
     if r["mode"] == "print" and not r["print_matches_sacd_extract"]:
         out.append("-P text differs from sacd_extract")
-    if r["mode"] != "print" and not r["sacd_extract_files"]:
+    # A disc with no multichannel area gives neither program anything to write in a -m mode
+    nothing_to_write = "-m" in MODES[r["mode"]][1] and not r["files"]
+    if r["mode"] != "print" and not r["sacd_extract_files"] and not nothing_to_write:
         out.append("sacd_extract wrote nothing")
+    if real_disc and "-b" in MODES[r["mode"]][1]:
+        return out
     for fmt, e in r["vs_sacd_extract"]["new"].items():
         if e["different"]:
             out.append(f"{len(e['different'])} {fmt} file(s) differ from sacd_extract")
@@ -382,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.no_values:
                 r["problems"] = [p.split(":", 1)[0] for p in r["problems"]]
             if args.require_sacd_extract:
-                r["problems"] += sacd_extract_problems(r)
+                r["problems"] += sacd_extract_problems(r, real_disc=True)
             bad += bool(r["problems"])
             print(json.dumps(r, ensure_ascii=False), flush=True)
     print(f"{bad} run(s) with differences", file=sys.stderr)

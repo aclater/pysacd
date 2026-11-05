@@ -483,7 +483,9 @@ To release:
    ```
 
    Exit status 0 means no difference between the two trees, and none from `sacd_extract` beyond the
-   documented exceptions. Record the counts in the release's changelog section.
+   documented exceptions. The `-b` modes are reported in `vs_sacd_extract` without failing, because
+   `sacd_extract` repeats frames at some boundaries of some discs: look at them. Record the counts
+   in the release's changelog section.
 2. Bump `version` in `pyproject.toml` and `src/pysacd/__init__.py`, and merge.
 3. Tag `vX.Y.Z` on master and push the tag. The workflow then:
    - creates build provenance attestations for every wheel and the sdist;

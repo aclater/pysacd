@@ -2,6 +2,7 @@
 
 import importlib.util
 import os
+import shlex
 import subprocess
 import sys
 import unittest
@@ -37,13 +38,18 @@ class Compare(unittest.TestCase):
             [sys.executable, "-I", str(SCRIPT), "--base", "1", "--head", "2", "--rounds", "2", "--measure", measure, "w"],
             capture_output=True, text=True, check=False, env=env)
 
+    def python(self, code: str) -> str:
+        return shlex.join([sys.executable, "-I", "-c", code])
+
+    @unittest.skipUnless(os.name == "posix", "the job and its command line are for POSIX shells")
     def test_a_slower_head_only_warns(self):
-        r = self.run_main(f"{sys.executable} -I -c 'import sys; print(sys.argv[1])'")
+        r = self.run_main(self.python("import sys; print(sys.argv[1])"))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("**SLOWER**", r.stdout)
 
+    @unittest.skipUnless(os.name == "posix", "the job and its command line are for POSIX shells")
     def test_a_failed_measurement_fails(self):
-        r = self.run_main("false")
+        r = self.run_main(self.python("import sys; sys.exit(3)"))
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("failed", r.stderr)
 

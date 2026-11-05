@@ -45,12 +45,11 @@ def generate(directory: Path) -> None:
 
 def measure(tree: Path, workload: str) -> float:
     with tempfile.TemporaryDirectory(dir=os.environ.get("RUNNER_TEMP")) as out:
-        code = (f"import sys; sys.path.insert(0, {str(tree / 'src')!r}); "
-                "from pysacd.extract import main; sys.exit(main())")
-        command = [sys.executable, "-I", "-c", code, "--no-cfg", WORKLOADS[workload][4], "-s", "-i",
+        command = [sys.executable, "-m", "pysacd.extract", "--no-cfg", WORKLOADS[workload][4], "-s", "-i",
                    str(Path(os.environ["BENCH_DISCS"]) / f"{workload}.iso"), "-y", out]
         start = time.perf_counter()
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=out)
+        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=out,  # nosemgrep: dangerous-subprocess-use-tainted-env-args  # a list, no shell; the developer's own paths
+                       env=dict(os.environ, PYTHONPATH=str(tree.resolve() / "src")))
         return time.perf_counter() - start
 
 

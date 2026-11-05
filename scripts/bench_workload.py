@@ -12,7 +12,6 @@ user would see it; it is small next to the disc.
 """
 
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -46,9 +45,9 @@ def generate(directory: Path) -> None:
 
 def measure(tree: Path, workload: str) -> float:
     with tempfile.TemporaryDirectory(dir=os.environ.get("RUNNER_TEMP")) as out:
-        command = [sys.executable, "-I", "-c", f"import sys; sys.path.insert(0, {str(tree / 'src')!r}); "
-                   "from pysacd.extract import main; sys.exit(main())",
-                   "--no-cfg", WORKLOADS[workload][4], "-s", "-i",
+        code = (f"import sys; sys.path.insert(0, {str(tree / 'src')!r}); "
+                "from pysacd.extract import main; sys.exit(main())")
+        command = [sys.executable, "-I", "-c", code, "--no-cfg", WORKLOADS[workload][4], "-s", "-i",
                    str(Path(os.environ["BENCH_DISCS"]) / f"{workload}.iso"), "-y", out]
         start = time.perf_counter()
         subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, cwd=out)

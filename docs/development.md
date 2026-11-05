@@ -337,11 +337,36 @@ Every pull request runs:
   `-Werror` (FLAC included).
 - **The tests under AddressSanitizer and UndefinedBehaviorSanitizer**, and again under
   **ThreadSanitizer**.
+- **The engine leak check** (`scripts/leak-check.sh`, about a minute): the ASan job can't look for
+  leaks, because Python itself reports them at exit, so this one drives the engine and the
+  scarletbook library from C, with `make leak-driver`: the fuzz harness plus FLAC output. It
+  opens each image, reads the TOC, writes DSF, DSDIFF, WAV and FLAC, and closes it. LeakSanitizer
+  runs on all the synthetic seeds (`fuzz/make_seeds.py`), twice, and valgrind memcheck on six of
+  them, failing on any definite leak or memory error. To run it locally:
+  `scripts/leak-check.sh lsan` and `scripts/leak-check.sh memcheck`. Besides the build
+  dependencies they need gcc's LeakSanitizer runtime (`liblsan` on Fedora) and valgrind.
 - **libFuzzer** on the engine (`fuzz_engine`), 2 minutes, when `csrc/`, `fuzz/`, the
   hostile corpus or the scarletbook pin changes. A weekly run lasts 30 minutes and keeps its
   corpus cached.
 - **The comparison tests** against a `sacd_extract` built from a pinned
   upstream commit inside the runner. Its code never enters the repository.
+- **An informational benchmark**, when `src/`, `csrc/`, the `Makefile` or the scarletbook pin changes
+  (about 1.5 min; never a required check, so it may be path-filtered). It builds base (the pull
+  request's target branch) and head in one job and times `pysacd-extract` to DSF on synthetic discs
+  (`tests/sacdgen.py`): `dst-stereo`, `dst-multichannel` and `plain-dsd`. The builds alternate and
+  the order swaps every round; 5 rounds give each build's median and their ratio, in the job
+  summary. A ratio over 1.10 is marked **SLOWER** and adds a warning, and the job still passes. It is a
+  coarse alarm: an unchanged build gave ratios of 0.94 to 1.00 over 5 runs, so re-run it before
+  believing a flag. The timing tables in [performance](performance.md), under the benchmark lock
+  against the previous release, stay the real check. `scripts/bench_compare.py` is the same file
+  in sacdfs, whose `benchmark` job has the same design through the mount (sacdfs's #162); only
+  `scripts/bench_workload.py` differs. To run it by hand on two built trees:
+
+  ```bash
+  python3 -I scripts/bench_workload.py generate build/bench-discs   # needs numpy and make test-tools
+  BENCH_DISCS=$PWD/build/bench-discs python3 -I scripts/bench_compare.py --base OLD_TREE --head NEW_TREE \
+      --measure "python3 -I scripts/bench_workload.py" dst-stereo dst-multichannel plain-dsd
+  ```
 - **CodeQL** (Python, C, workflows) and **semgrep**.
 - **A check for private names**, in files and commit identities.
 - **scarletbook provenance**: every archive pinned in `scarletbook.lock` must match its digest
@@ -446,4 +471,4 @@ To release:
 
 ## CI speed
 
-A pull request's checks finish in about 3 min, and a new push cancels the superseded run (`concurrency`; master runs are never cancelled). The test matrix caches pip downloads. Every required check runs on every pull request: none is path-filtered at the workflow level, because a skipped required check stays pending and blocks the merge. Keep new jobs short, and put slow, rarely-failing ones on master, tags or a schedule.
+A pull request's checks finish in about 3 min, and a new push cancels the superseded run (`concurrency`; master runs are never cancelled). The test matrix caches pip downloads. Every required check runs on every pull request: none is path-filtered at the workflow level, because a skipped required check stays pending and blocks the merge. Keep new jobs short, and put slow, rarely-failing ones on master, tags or a schedule. The informational `benchmark` job is path-filtered, because it is never required.

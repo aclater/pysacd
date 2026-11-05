@@ -172,6 +172,18 @@ build/replay_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csr
 	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread -DSC_DISPATCH -I$(SCARLETBOOK_DIR)/include -o $@ \
 	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) -lm
 
+# The engine's leak check (#122): the same harness with FLAC output added, and no interpreter
+# whose own allocations would hide the engine's. LEAK_FLAGS: -fsanitize=leak, or -g for valgrind.
+LEAK_FLAGS ?= -O1 -g -fno-omit-frame-pointer
+
+leak-driver: build/leak_engine
+
+build/leak_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
+	@test -n "$(FLAC_LIBS)" || { echo "the leak check covers FLAC output: install libFLAC's development files" >&2; exit 1; }
+	@mkdir -p $(dir $@)
+	$(CC) $(LEAK_FLAGS) -std=gnu17 -pthread -DSC_DISPATCH -DHAVE_FLAC $(FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ \
+	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) $(FLAC_LIBS) -lm
+
 # `make clean` keeps the downloaded scarletbook library (build/scarletbook); distclean removes it too.
 clean:
 	find build -mindepth 1 -maxdepth 1 ! -name scarletbook -exec rm -rf {} + 2>/dev/null || true
@@ -180,4 +192,4 @@ clean:
 distclean: clean
 	rm -rf build
 
-.PHONY: all clean distclean test-tools fuzz fuzz-replay
+.PHONY: all clean distclean test-tools fuzz fuzz-replay leak-driver

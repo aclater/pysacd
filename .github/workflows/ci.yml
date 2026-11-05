@@ -172,6 +172,7 @@ jobs:
         run: scripts/leak-check.sh lsan
 
       - name: valgrind memcheck
+        if: ${{ !cancelled() }}  # both tools report, whichever fails first
         run: scripts/leak-check.sh memcheck
 
   tsan:

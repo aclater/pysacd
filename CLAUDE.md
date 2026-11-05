@@ -84,7 +84,7 @@ PYTHONPATH=src pytest -q tests
 
 CI also runs:
 
-- the tests under ASan and UBSan;
+- the tests under ASan and UBSan, and the engine leak check (`scripts/leak-check.sh`);
 - `tests/test_dst_full.py` and `tests/test_sbcompat.py` against a
   `sacd_extract` built from a pinned upstream commit;
 - CodeQL and semgrep. These fail on findings.

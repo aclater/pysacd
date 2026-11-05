@@ -146,6 +146,34 @@ jobs:
           export PYSACD_FUZZ_CFLAGS="$SAN"
           PYTHONPATH=src python -m pytest -q tests
 
+  leaks:
+    # The ASan job can't look for leaks, because Python itself reports them at exit. This drives
+    # the engine and the scarletbook library from C instead (#122; docs/development.md, "CI").
+    name: engine leak check (LSan, memcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libflac-dev valgrind
+          pip install --require-hashes -r requirements-dev.txt
+
+      - name: LeakSanitizer
+        run: scripts/leak-check.sh lsan
+
+      - name: valgrind memcheck
+        run: scripts/leak-check.sh memcheck
+
   tsan:
     # The engine hands batches between its reader, worker and writer threads: run the suite
     # under ThreadSanitizer too (#14).

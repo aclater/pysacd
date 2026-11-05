@@ -12,6 +12,7 @@
  *     stored, all in one pass;
  *   - the area's last track to WAV, starting provisionally (seek gap 0), read through a sector
  *     source (sb_disc_read_sectors on the image in memory);
+ *   - in the leak check's build (make leak-driver, with HAVE_FLAC), also the whole area to FLAC.
  *
  * capped at MAX_FRAMES frames so that one input stays fast. Outputs go to a private temporary
  * directory and are removed after each run.
@@ -52,11 +53,12 @@ static void run_area(const char *image, SbDisc *disc, const SbDiscInfo *di, cons
     if (ai->channel_count < 1 || ai->channel_count > 6 || ai->playtime_frames == 0)
         return;
     uint32_t end = ai->playtime_frames < MAX_FRAMES ? ai->playtime_frames : MAX_FRAMES;
-    char dsf[96], dff[96], dst[96], wav[96];
+    char dsf[96], dff[96], dst[96], wav[96], flac[96];
     out_path(dsf, sizeof dsf, "a.dsf");
     out_path(dff, sizeof dff, "a.dff");
     out_path(dst, sizeof dst, "d.dff");
     out_path(wav, sizeof wav, "t.wav");
+    out_path(flac, sizeof flac, "a.flac");
 
     /* the whole area (capped), one pass, from the image file; the DSF file through its layout
        (a channel type for an area of unspecified layout, as pysacd gives), when scarletbook
@@ -69,13 +71,17 @@ static void run_area(const char *image, SbDisc *disc, const SbDiscInfo *di, cons
                               channel_type[ai->channel_count]) == SB_STATUS_OK)
         sb_output_layout_new(disc, ai->slot, 0, end, SB_OUTPUT_FORMAT_DSF, opts, &layout);
     sb_output_options_free(opts);
-    sc_output_t outs[3];
+    sc_output_t outs[4];
     int nouts = 0;
     memset(outs, 0, sizeof outs);
     if (layout)
         outs[nouts++] = (sc_output_t){.format = 0, .path = dsf, .tc_start = 0, .tc_end = end, .head_frame = -1,
                                       .layout = layout};
     outs[nouts++] = (sc_output_t){.format = 3, .path = dff, .tc_start = 0, .tc_end = end, .head_frame = -1};
+#ifdef HAVE_FLAC
+    outs[nouts++] = (sc_output_t){.format = 1, .path = flac, .tc_start = 0, .tc_end = end, .head_frame = -1,
+                                  .flac_level = 0};
+#endif
     static uint64_t offs[MAX_FRAMES];
     static uint32_t lens[MAX_FRAMES];
     if (ai->frame_format == 0)
@@ -86,6 +92,7 @@ static void run_area(const char *image, SbDisc *disc, const SbDiscInfo *di, cons
     a.iso_path = image;
     a.sector_size = (int)di->sector_size;
     a.channels = (int)ai->channel_count;
+    a.pcm_rate = 88200;
     a.threads = 2;
     a.toc_lsn = ai->toc_lsn;
     a.image_sectors = di->sectors;
@@ -118,6 +125,7 @@ static void run_area(const char *image, SbDisc *disc, const SbDiscInfo *di, cons
     unlink(dff);
     unlink(dst);
     unlink(wav);
+    unlink(flac);
 }
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)

@@ -57,9 +57,10 @@ def report(results: dict[str, dict[str, list[float]]], threshold: float, elapsed
     rounds = len(next(iter(results.values()))["base"])
     lines += [
         "",
-        f"Medians of {rounds}, builds alternated, measured in {elapsed:.0f} s. **SLOWER** means head is more than "
-        f"{percent}% slower than base. Shared runners are noisy: if the ranges overlap, or the change can't "
-        "affect this path, suspect the runner and re-run the job before suspecting the change. Not a required check.",
+        (f"Medians of {rounds}, builds alternated, measured in {elapsed:.0f} s. **SLOWER** means head is more than "
+         f"{percent}% slower than base. Shared runners are noisy: if the ranges overlap, or the change can't "
+         "affect this path, suspect the runner and re-run the job before suspecting the change. "
+         "Not a required check."),
     ]
     return "\n".join(lines) + "\n", flagged
 

@@ -7,7 +7,39 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
-## Unreleased
+## 0.5.0 (unreleased)
+
+0.5.0 is mostly about trust in what 0.3.0 to 0.4.3 shipped. **For those six releases (0.3.0, 0.3.1,
+0.4.0, 0.4.1, 0.4.2 and 0.4.3), CI did not compare pysacd with `sacd_extract` at all.** From #86 a check for the engine looked for a
+function the engine no longer exported, so 44 tests skipped, every comparison among them, in a job
+that stayed green. Fixing that (#131) turned the comparison on again, and the comparison found two
+differences from `sacd_extract`: the last line of `-P` output (fixed,
+below) and the pad byte after odd-length text in a DSDIFF file, which `sacd_extract` leaves
+uninitialised (documented, docs/sacd_extract.md). The by-hand run on real discs for this release, below,
+found no other audio difference beyond what the docs already list, such as `-b`'s frame repeats. What changes for users:
+
+- **`-P` is now identical to `sacd_extract`'s.** `pysacd-extract -P` ends its output with the final
+  empty line `sacd_extract` prints. A script that compared the last line of `-P` output will see it.
+- **The engine links scarletbook-rs 0.5.8** (see below). Output is unchanged, and so is speed.
+- **Python 3.15 is tested in CI** (#132), in the Linux test matrix; `requires-python` stays `>=3.11`.
+- **CI checks the C engine for leaks** (#122): LeakSanitizer on all 97 synthetic seeds, twice, and
+  valgrind memcheck on six of them, on every pull request. It found none on master, and failed on a leak injected for the test. An informational benchmark job (#123) reports each pull request's speed against
+  its base; it never fails a build.
+- **The `sacd_extract` comparison runs again, and compares more** (#131), as below.
+
+Release checks for 0.5.0 (docs/development.md, "To release"): `tools/extract_compare.py
+--require-sacd-extract` against `sacd_extract` built from CI's pinned commit, 0.4.3 against this
+tree, on the five real test discs in all 35 modes (175 runs): the audio files, ISO copies, cue
+sheets and XML match 0.4.3 byte for byte in 170 runs, and the only difference between the trees is
+`-P`'s final empty line, in the five `-P` runs, where 0.5.0 now matches `sacd_extract` and 0.4.3
+did not. Against `sacd_extract`: 472 of 493 DSF files identical; the DSDIFF files, cue sheets and XML
+files differ only where docs/sacd_extract.md says they do (262 of 266, 17 of 17, 20 of 20); 10 of
+10 ISO copies identical. The 25 other files are all from `-b` runs on one raw-sector disc
+(converted with `-I` first), where `sacd_extract` repeats frames at some track boundaries and,
+with `-z`, shifts the later tracks: documented, and identical for 0.4.3 and 0.5.0. A wheel built
+from master, installed in clean Fedora 44 containers on Python 3.11 and 3.15, UBI 9 on Python 3.11
+and UBI 10 on Python 3.14, extracts the real hybrid disc to the same 12 DSF files as the
+reference checksums. (UBI offers no Python 3.15; Fedora 44 covers it.)
 
 - The engine links scarletbook-rs 0.5.8 (digests checked against the release's `.sha256` files and
   attestations; the CET shadow-stack mark is kept). 0.5.8 fixes a seek-index loader case and adds a

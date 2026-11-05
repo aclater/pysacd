@@ -337,6 +337,14 @@ Every pull request runs:
   `-Werror` (FLAC included).
 - **The tests under AddressSanitizer and UndefinedBehaviorSanitizer**, and again under
   **ThreadSanitizer**.
+- **The engine leak check** (`scripts/leak-check.sh`, about a minute): the ASan job can't look for
+  leaks, because Python itself reports them at exit, so this one drives the engine and the
+  scarletbook library from C, with `make leak-driver`: the fuzz harness plus FLAC output. It
+  opens each image, reads the TOC, writes DSF, DSDIFF, WAV and FLAC, and closes it. LeakSanitizer
+  runs on all the synthetic seeds (`fuzz/make_seeds.py`), twice, and valgrind memcheck on six of
+  them, failing on any definite leak or memory error. To run it locally:
+  `scripts/leak-check.sh lsan` and `scripts/leak-check.sh memcheck`. Besides the build
+  dependencies they need gcc's LeakSanitizer runtime (`liblsan` on Fedora) and valgrind.
 - **libFuzzer** on the engine (`fuzz_engine`), 2 minutes, when `csrc/`, `fuzz/`, the
   hostile corpus or the scarletbook pin changes. A weekly run lasts 30 minutes and keeps its
   corpus cached.

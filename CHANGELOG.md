@@ -7,6 +7,13 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
+## Unreleased
+
+- The engine links scarletbook-rs 0.5.8 (digests checked against the release's `.sha256` files and
+  attestations; the CET shadow-stack mark is kept). 0.5.8 fixes a seek-index loader case and adds a
+  `bench` report in scarletbook itself; it changes no speed or output (TIMINGS PENDING,
+  docs/performance.md).
+
 ## 0.4.3 (2026-11-02)
 
 The release candidate 0.4.3rc1, installed from PyPI, passed `tests/wheel_smoke.py` on clean

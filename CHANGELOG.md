@@ -9,14 +9,14 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## 0.5.0 (unreleased)
 
-0.5.0 is mostly about trust in what 0.3.0 to 0.4.3 shipped. **For those four releases, CI did
-not compare pysacd with `sacd_extract` at all.** From #86 a check for the engine looked for a
+0.5.0 is mostly about trust in what 0.3.0 to 0.4.3 shipped. **For those six releases (0.3.0, 0.3.1,
+0.4.0, 0.4.1, 0.4.2 and 0.4.3), CI did not compare pysacd with `sacd_extract` at all.** From #86 a check for the engine looked for a
 function the engine no longer exported, so 44 tests skipped, every comparison among them, in a job
 that stayed green. Fixing that (#131) turned the comparison on again, and the comparison found two
 differences from `sacd_extract`: the last line of `-P` output (fixed,
 below) and the pad byte after odd-length text in a DSDIFF file, which `sacd_extract` leaves
-uninitialised (documented, docs/sacd_extract.md). No audio difference has been found: the by-hand
-run on real discs for this release, below, shows none. What changes for users:
+uninitialised (documented, docs/sacd_extract.md). The by-hand run on real discs for this release, below,
+found no other audio difference beyond what the docs already list, such as `-b`'s frame repeats. What changes for users:
 
 - **`-P` is now identical to `sacd_extract`'s.** `pysacd-extract -P` ends its output with the final
   empty line `sacd_extract` prints. A script that compared the last line of `-P` output will see it.

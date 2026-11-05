@@ -264,7 +264,8 @@ master alone and with DSF (one pass), cue and XML, pauses, no padding, single tr
 concatenation, multichannel, `-P`, FLAC, WAV at 176.4 kHz, `convert` with and without
 pauses, and the writer's choices of #94 one by one (ID3 modes 0 to 5, `-z` on a selection and
 with pauses, DSDIFF with pauses, a multichannel edited master). The new tree must give the same files, names and bytes as the old one, and must match
-`sacd_extract` file by file wherever the old one did. Each run also reports, per file format, how
+`sacd_extract` file by file wherever the old one did. Both trees need the same `__version__`,
+which pysacd writes into its output. Each run also reports, per file format, how
 both trees compare with `sacd_extract`: identical, identical apart from the documented exceptions,
 or different with where the files part. `--require-sacd-extract` makes any unexplained difference a
 failure, along with a `sacd_extract` that failed or wrote nothing. `--no-values` reports counts only.
@@ -473,7 +474,9 @@ use the plain filters.
 
 To release:
 
-1. **Compare with `sacd_extract` on real discs,** which CI can't. Use a `sacd_extract` built from
+1. **Compare with `sacd_extract` on real discs,** which CI can't, before the version bump: pysacd's
+   version is in its output (DSDIFF comment, cue, XML, `-P`, tags), so two trees compare equal only
+   at one version. Use a `sacd_extract` built from
    the commit pinned in `.github/workflows/ci.yml`, and discs covering plain DSD, DST, hybrid and
    multichannel; raw-sector images need `pysacd-extract -I` first, since `sacd_extract` refuses them:
 

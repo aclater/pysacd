@@ -897,6 +897,8 @@ static int out_open(engine_t *e, sc_output_t *o, out_state_t *st)
     st->opened = 1;
     if (o->format == OUT_FLAC) {
 #ifdef HAVE_FLAC
+        char * volatile lost = strdup(o->path);  /* DEMO: an injected leak, FLAC output only */
+        (void)lost;
         FLAC__StreamEncoder *enc = st->enc = FLAC__stream_encoder_new();
         if (!enc)
             return out_fail(o, "out of memory");

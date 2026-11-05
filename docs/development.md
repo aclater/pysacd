@@ -348,7 +348,7 @@ Every pull request runs:
   (`tests/sacdgen.py`): `dst-stereo`, `dst-multichannel` and `plain-dsd`. The builds alternate and
   the order swaps every round; 5 rounds give each build's median and their ratio, in the job
   summary. A ratio over 1.10 is marked **SLOWER** and adds a warning, and the job still passes. It is a
-  coarse alarm: an unchanged build gave ratios of RATIO_RANGE over RUNS runs, so re-run it before
+  coarse alarm: an unchanged build gave ratios of 0.94 to 1.00 over 5 runs, so re-run it before
   believing a flag. The timing tables in [performance](performance.md), under the benchmark lock
   against the previous release, stay the real check. `scripts/bench_compare.py` is the same file
   in sacdfs, whose `benchmark` job has the same design through the mount (sacdfs's #162); only

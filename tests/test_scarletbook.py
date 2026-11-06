@@ -144,9 +144,12 @@ class StaleEngine(unittest.TestCase):
         saved = _native._lib
         _native._lib = None
         try:
-            with mock.patch.object(ctypes, "CDLL", OldLib), mock.patch("pathlib.Path.exists", return_value=True):
-                with self.assertRaisesRegex(_native.NativeError, "engine ABI 5.*rebuild it"):
-                    _native._load()
+            with (
+                mock.patch.object(ctypes, "CDLL", OldLib),
+                mock.patch("pathlib.Path.exists", return_value=True),
+                self.assertRaisesRegex(_native.NativeError, "engine ABI 5.*rebuild it"),
+            ):
+                _native._load()
         finally:
             _native._lib = saved
 

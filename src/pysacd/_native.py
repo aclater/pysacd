@@ -118,9 +118,9 @@ def _load():
         lib.sacdconv_area_run.restype = ctypes.c_int
         lib.sacdconv_has_flac.restype = ctypes.c_int
         lib.sacdconv_build_info.restype = ctypes.c_char_p
+        _check_abi(lib, path)      # before binding anything an older engine lacks (sacdconv_cancel)
         lib.sacdconv_cancel.argtypes = [ctypes.POINTER(_Area)]
         lib.sacdconv_cancel.restype = None
-        _check_abi(lib, path)
         _check_scarletbook(lib, path)
         _lib = lib
     return _lib

@@ -7,6 +7,20 @@ behaviour, and a patch version only adds or fixes. Each release on
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
+## Unreleased
+
+- **The engine links scarletbook-rs 0.5.9** (digests checked against the release's `.sha256` files
+  and attestations; the CET shadow-stack mark is kept). Output is byte-identical to the 0.5.8 build in
+  every mode on the five real test discs; speed is in docs/performance.md. 0.5.9 has nothing new for
+  pysacd to adopt: its additions are Rust-only (`TrackAudioCursor::with_dst_lanes`) or documentation
+  of how to write per-track DSF files, whose writer is planned for scarletbook 0.6.0 (scarletbook-rs#202),
+  so pysacd's per-track writer stays until then.
+- **A stale engine is refused with a rebuild message.** `src/pysacd/_sacdconv.so` is a build product that
+  git ignores; one built before `sacdconv_cancel` was added failed with `AttributeError: undefined
+  symbol: sacdconv_cancel`, because pysacd bound that function before it checked the engine's ABI.
+  It now checks the ABI first, so the error says `engine ABI N, this pysacd needs M; rebuild it
+  (make clean all)`. A clean `make` fixes such a tree (docs/development.md).
+
 ## 0.5.0 (2026-11-05)
 
 0.5.0 is mostly about trust in what 0.3.0 to 0.4.3 shipped. **For those six releases (0.3.0, 0.3.1,

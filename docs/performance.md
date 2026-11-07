@@ -443,6 +443,6 @@ output to `/dev/shm`, start-up included, `make` engine (`-march=native`), one-th
 | plain DSD stereo to DSF, all threads | 0.92 (0.91-0.96) | 0.91 (0.90-0.92) | 0.92 (0.90-0.94) | +1.1 % | -0.2 % |
 
 - Nothing is slower than 0.5.8 or 0.4.3 beyond the spread of the runs; the plain-DSD change is inside it.
-- The thermal-throttle counters were read around every run and never changed.
+- **Thermal throttling** was read around every run (cpu0 `package_throttle_count`, `core_throttle_count`). The core count never changed. The package count changed only in the 6-channel rows (+72 to +1 337 on 0.4.3, +2 493 to +3 088 on master, +131 to +1 274 on this change), so treat that row as less certain; the other rows saw none.
 - **Output** is byte-identical to master in every mode of `tools/extract_compare.py` on the five real test discs
   (175 runs, 0 differences between the trees).

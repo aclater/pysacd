@@ -471,8 +471,12 @@ engine is a ctypes library rather than a CPython extension, so one
 musllinux (x86-64), macOS (arm64, x86-64) and Windows (x86-64), plus the sdist,
 whenever packaging or `csrc/` changes. Every wheel's engine has the pinned scarletbook library
 linked in statically, and the wheel job runs only after the `scarletbook provenance` check.
-auditwheel and delocate bundle libFLAC and libogg; the Windows DLL is linked statically. Their licences ship in the wheel
-(`licenses/`). Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
+auditwheel bundles libFLAC and libogg into the Linux wheels. The macOS wheels link a static libFLAC
+built in the job from its release source, SHA-256 checked (`FLAC_VERSION` and `FLAC_SHA256` in the
+workflow), for the wheel's minimum macOS: 11.0 on arm64, 10.13 on x86-64 (#142). The job checks
+each macOS wheel's tag and its engine's `minos`, and that the engine links nothing outside the system,
+and a separate job installs the arm64 wheel on macOS 14 and runs the smoke test. The Windows DLL is
+linked statically. Their licences ship in the wheel (`licenses/`). Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
 in a clean environment: it converts a synthetic disc to DSF and FLAC with the
 installed console scripts, and checks that the engine has the pinned scarletbook release
 (version and commit) linked in. Building from the sdist downloads that release, as `make` does. Runtime SIMD dispatch needs glibc, so musllinux wheels

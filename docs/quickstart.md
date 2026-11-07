@@ -8,8 +8,8 @@
 
 ## Install
 
-**From PyPI** (wheels for Linux x86-64/aarch64 with glibc or musl, macOS
-arm64/x86-64 and Windows x86-64):
+**From PyPI** (wheels for Linux x86-64/aarch64 with glibc or musl, macOS 11 or later on arm64,
+macOS 10.13 or later on x86-64, and Windows x86-64):
 
 ```sh
 pip install pysacd                    # engine, libFLAC and mutagen included

@@ -9,6 +9,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- **The macOS wheels run on macOS 11 and later (Apple silicon) and 10.13 and later (Intel)** (#142),
+  instead of macOS 15 only. They link libFLAC 1.5.0, the release Homebrew ships, built in CI from its
+  release source with the SHA-256 checked, statically, for those versions.
+
 - **The engine links scarletbook-rs 0.5.9** (digests checked against the release's `.sha256` files
   and attestations; the CET shadow-stack mark is kept). Output is byte-identical to the 0.5.8 build in
   every mode on the five real test discs; speed is in docs/performance.md. 0.5.9 has nothing new for

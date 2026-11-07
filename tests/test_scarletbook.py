@@ -124,6 +124,36 @@ class Fetch(unittest.TestCase):
             sbtool.download("http://example.invalid/x.tar.gz", self.tmp / "x")
 
 
+
+class StaleEngine(unittest.TestCase):
+    """An engine built before sacdconv_cancel existed (ABI 5) is refused with a message that says
+    to rebuild it, not with an AttributeError for the first symbol it lacks (found 2026-11-06,
+    when a stale src/pysacd/_sacdconv.so stopped a test run)."""
+
+    def test_old_engine_is_refused_with_a_rebuild_message(self):
+        import ctypes
+        from unittest import mock
+
+        class OldLib:
+            def __init__(self, path):
+                self.sacdconv_area_run = mock.Mock()
+                self.sacdconv_has_flac = mock.Mock()
+                self.sacdconv_build_info = mock.Mock()
+                self.sacdconv_abi = lambda: 5      # and no sacdconv_cancel
+
+        saved = _native._lib
+        _native._lib = None
+        try:
+            with (
+                mock.patch.object(ctypes, "CDLL", OldLib),
+                mock.patch("pathlib.Path.exists", return_value=True),
+                self.assertRaisesRegex(_native.NativeError, "engine ABI 5.*rebuild it"),
+            ):
+                _native._load()
+        finally:
+            _native._lib = saved
+
+
 class Engine(unittest.TestCase):
     def setUp(self):
         try:

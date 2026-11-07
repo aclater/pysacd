@@ -71,7 +71,7 @@ in the archive's `native-static-libs.txt`.
   release with cancellation, progress, and stored and decoded frames in one pass, 0.5.1
   the first with the TOC's timecodes as stored, 0.5.2 the first with the whole TOC in one call
   (`sb_disc_toc`), and 0.5.4 the first whose output API can lay out `sacd_extract`'s DSF and
-  DSDIFF files byte for byte (scarletbook-rs#169). The pin is 0.5.8 (see [performance](performance.md#scarletbook-rs-058)), which changes no speed or output over 0.5.7 (0.5.7 won back 0.5.6's one-thread DST regression, [performance](performance.md#scarletbook-rs-057)). 0.5.5 added the DST decoder, which chooses an AVX2/BMI2 build of
+  DSDIFF files byte for byte (scarletbook-rs#169). The pin is 0.5.9 (see [performance](performance.md#scarletbook-rs-059)), which changes no output over 0.5.8 (0.5.8 changed no speed over 0.5.7, [performance](performance.md#scarletbook-rs-058); 0.5.7 won back 0.5.6's one-thread DST regression, [performance](performance.md#scarletbook-rs-057)). 0.5.5 added the DST decoder, which chooses an AVX2/BMI2 build of
   itself at run time on x86-64 (#109; [performance](performance.md#where-dst-time-goes-109)); 0.5.4
   still works, more slowly.
 - **Logged.** `_native.build_info()` (in `pysacd --version` and in log files) names the
@@ -279,6 +279,12 @@ failure, along with a `sacd_extract` that failed or wrote nothing. `--no-values`
    code that calls it.
 3. Update the versions of the Rust crates in `licenses/scarletbook-rs-runtime-MIT` if they
    changed (scarletbook's `Cargo.lock`).
+4. Rebuild the engine with `make`. `src/pysacd/_sacdconv.so` is a build product that git ignores,
+   and nothing rebuilds it when you pull: a copy built before `csrc/` or the pinned library
+   changed stays in the tree. An engine of an older ABI is refused with
+   `engine ABI N, this pysacd needs M; rebuild it (make clean all)`, and the tests that need
+   the engine skip. (Before this change, pysacd bound `sacdconv_cancel` ahead of that check, so such an
+   engine failed with `undefined symbol: sacdconv_cancel` and an `AttributeError`.)
 
 **Licence.** scarletbook-rs, and the Rust standard library and crates inside it, are licensed
 MIT OR Apache-2.0. pysacd uses them under MIT, which is compatible with GPL-2.0; Apache-2.0

@@ -154,7 +154,8 @@ jobs:
           echo "engine minos: $minos"
           [ "$minos" = "$TARGET" ] || { echo "::error::engine minos $minos, not $TARGET"; exit 1; }
           otool -L "$lib"
-          if otool -L "$lib" | tail -n +2 | grep -v -e /usr/lib/ -e /System/Library/; then
+          # (otool -L also lists the engine's own install name)
+          if otool -L "$lib" | tail -n +2 | grep -v -e /usr/lib/ -e /System/Library/ -e '/_sacdconv\.dylib '; then
             echo "::error::the engine links a library outside the system"; exit 1
           fi
 

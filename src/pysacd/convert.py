@@ -6,10 +6,14 @@ import os
 import re
 import sys
 import time
-import tomllib
 import unicodedata
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:                       # Python 3.10: the same parser, from PyPI
+    import tomli as tomllib
 
 from . import _native, musicbrainz, safeio, safetext, sbwriter, tagging
 from .toc import FRAME_RATE, Area, Disc, SACDImage, Track, track_range

@@ -20,6 +20,18 @@ import sacdgen
 from pysacd import _native
 from pysacd.toc import SACDImage, read_toc
 
+
+@contextlib.contextmanager
+def _chdir(path):
+    """contextlib.chdir, which Python 3.10 lacks."""
+    old = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(old)
+
+
 FRAME = 4704
 
 
@@ -247,7 +259,7 @@ class RefutedWarning(unittest.TestCase):
         from pysacd import extract
         err = io.StringIO()
         with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()), \
-                contextlib.chdir(self.dir):
+                _chdir(self.dir):
             rc = extract.main(["--no-cfg", "-2", "-s", "-t", "3", "-i", str(self.iso)])
         self.assertEqual(rc, 1)
         self.assertIn("frames before 7 may differ from an exact read", err.getvalue())
@@ -255,7 +267,7 @@ class RefutedWarning(unittest.TestCase):
         self.assertFalse(self.calls[0]["exact"])
         (self.dir / "x").mkdir()
         with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()), \
-                contextlib.chdir(self.dir / "x"):
+                _chdir(self.dir / "x"):
             extract.main(["--no-cfg", "-2", "-s", "-t", "3", "--exact", "-i", str(self.iso)])
         self.assertEqual(len(self.calls), 2)
         self.assertTrue(self.calls[-1]["exact"])

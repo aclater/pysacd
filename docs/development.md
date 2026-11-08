@@ -352,7 +352,7 @@ To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 Every pull request runs:
 
 - **ruff and mypy** on the Python code.
-- **The test suite** on Python 3.11 to 3.15, with the engine built with
+- **The test suite** on Python 3.10 to 3.15, with the engine built with
   `-Werror` (FLAC included).
 - **The tests under AddressSanitizer and UndefinedBehaviorSanitizer**, and again under
   **ThreadSanitizer**.

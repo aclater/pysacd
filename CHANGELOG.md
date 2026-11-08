@@ -9,6 +9,16 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- **Python 3.10 is supported again (#140)**, so pysacd installs with Ubuntu 22.04's own Python. On 3.10 the
+  config file is read with `tomli` (installed only there), and CI runs the suite on 3.10 too. The
+  wheels are unchanged (one per platform serves every Python).
+- **The engine builds with GCC 11** (Ubuntu 22.04's). GCC before 12 stopped with "no dispatcher found
+  for the versioning attributes" on the PCM filters' load-time choice of AVX-512 or AVX2; such a
+  compiler now builds them for the baseline only. Wheels are built with a newer GCC and keep the choice.
+  Run on Python 3.10.12 and GCC 11.4 in an Ubuntu 22.04 container, as an ordinary user: ruff, mypy, the
+  engine with `-Werror`, and the whole suite (267 tests, the expected 16 skipped) pass.
+- `docs/quickstart.md` now gives the minimums: Python 3.10, and for wheels glibc 2.28, musl 1.2,
+  macOS 11 (arm64) or macOS 10.13 (x86-64).
 - **The macOS wheels run on macOS 11 and later (Apple silicon) and 10.13 and later (Intel)** (#142),
   instead of macOS 15 only. They link libFLAC 1.5.0, the release Homebrew ships, built in CI from its
   release source with the SHA-256 checked, statically, for those versions.

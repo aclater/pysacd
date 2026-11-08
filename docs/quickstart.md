@@ -8,8 +8,9 @@
 
 ## Install
 
-**From PyPI** (wheels for Linux x86-64/aarch64 with glibc or musl, macOS 11 or later on arm64,
-macOS 10.13 or later on x86-64, and Windows x86-64):
+**From PyPI** (Python 3.10 or later; wheels for Linux x86-64/aarch64 with glibc 2.28 or later,
+Linux x86-64 with musl 1.2 or later, macOS 11 or later on arm64, macOS 10.13 or later on x86-64,
+and Windows x86-64; anywhere else pip builds from source, below):
 
 ```sh
 pip install pysacd                    # engine, libFLAC and mutagen included
@@ -25,7 +26,10 @@ bundle with `--bundle <file>.intoto.jsonl` added.
 Wheels are portable builds: the PCM filters pick AVX-512, AVX2 or the baseline
 when the library loads.
 
-**From source** on Linux or macOS (needs a C compiler and make; libFLAC for FLAC output). The
+**From source** on Linux or macOS (needs a C compiler and make; libFLAC for FLAC output). With
+GCC before 12 (Ubuntu 22.04's GCC 11, for one) the engine builds without the load-time choice of
+AVX-512 or AVX2 for the PCM filters, and they run the baseline code, as the musllinux wheel does
+(slower: see [performance](performance.md), portable builds). The
 build downloads the [scarletbook-rs](https://github.com/aclater/scarletbook-rs) C library that
 the engine links, from its GitHub release, and checks it against the SHA-256 pinned in
 `scarletbook.lock`. To build offline, see

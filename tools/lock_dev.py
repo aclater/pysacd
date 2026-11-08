@@ -6,7 +6,7 @@ requirements-test.txt is what the test suite needs (the Windows and fuzz jobs); 
 adds the linters and the build backend. CI installs them with `pip install --require-hashes`, so a
 replaced or
 tampered release on PyPI fails the install instead of running in CI. The pins below are the
-whole dependency closure for Python 3.11-3.15 on Linux, macOS and Windows (check it with
+whole dependency closure for Python 3.10-3.15 on Linux, macOS and Windows (check it with
 `pip install --dry-run --ignore-installed --report`). Each pinned release must be at least
 two weeks old (CLAUDE.md), unless requirements-dev.txt already holds it (Dependabot bumps the
 lock files directly, after its own cooldown). To update: edit PINS, run
@@ -25,7 +25,8 @@ from pathlib import Path
 # or "dev" (linters and the build backend)
 PINS = [
     ("mutagen", "1.48.1", "", "test"),
-    ("numpy", "2.4.6", 'python_version < "3.12"', "test"),
+    ("numpy", "2.2.6", 'python_version < "3.11"', "test"),     # numpy 2.3 dropped Python 3.10
+    ("numpy", "2.4.6", 'python_version >= "3.11" and python_version < "3.12"', "test"),
     ("numpy", "2.5.4", 'python_version >= "3.12"', "test"),
     ("pytest", "9.1.1", "", "test"),
     ("iniconfig", "2.3.1", "", "test"),
@@ -33,13 +34,15 @@ PINS = [
     ("pluggy", "1.6.0", "", "test"),
     ("pygments", "2.21.0", "", "test"),
     ("colorama", "0.4.6", 'sys_platform == "win32"', "test"),
+    ("tomli", "2.4.0", 'python_version < "3.11"', "test"),       # pysacd and pytest on Python 3.10
+    ("exceptiongroup", "1.3.1", 'python_version < "3.11"', "test"),  # pytest on Python 3.10
     ("ruff", "0.17.0", "", "dev"),
     ("mypy", "2.4.0", "", "dev"),
     ("ast-serialize", "0.13.0", "", "dev"),
     ("librt", "0.16.0", "", "dev"),
     ("mypy-extensions", "1.1.0", "", "dev"),
     ("pathspec", "1.1.1", "", "dev"),
-    ("typing-extensions", "4.16.0", "", "dev"),
+    ("typing-extensions", "4.16.0", "", "test"),   # exceptiongroup (3.10) and mypy
     ("coverage", "7.16.2", "", "dev"),       # CI's coverage leg (ci.yml)
     ("setuptools", "84.1.0", "", "dev"),     # build backend: CI installs pysacd with --no-build-isolation
     ("build", "1.6.1", "", "dev"),           # the release workflow's sdist, built with --no-isolation

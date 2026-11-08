@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import BinaryIO, Self
+from typing import TYPE_CHECKING, BinaryIO
+
+if TYPE_CHECKING:                  # typing.Self from Python 3.11
+    from typing_extensions import Self
 
 SECTOR_SIZE = 2048
 START_OF_MASTER_TOC = 510

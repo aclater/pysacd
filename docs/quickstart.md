@@ -9,8 +9,8 @@
 ## Install
 
 **From PyPI** (Python 3.10 or later; wheels for Linux x86-64/aarch64 with glibc 2.28 or later,
-Linux x86-64 with musl 1.2 or later, macOS 15 or later on arm64/x86-64, and Windows x86-64;
-anywhere else pip builds from source, below):
+Linux x86-64 with musl 1.2 or later, macOS 11 or later on arm64, macOS 10.13 or later on x86-64,
+and Windows x86-64; anywhere else pip builds from source, below):
 
 ```sh
 pip install pysacd                    # engine, libFLAC and mutagen included

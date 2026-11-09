@@ -21,6 +21,13 @@ concurrency:
 permissions:
   contents: read
 
+# libFLAC for the macOS wheels, built from its release source (#142): Homebrew's bottles target the
+# runner's macOS, which made the wheels macOS 15 only. The SHA-256 is the same from downloads.xiph.org,
+# the GitHub release and Homebrew's formula.
+env:
+  FLAC_VERSION: "1.5.0"
+  FLAC_SHA256: f2c1c76592a82ffff8413ba3c4a1299b6c7ab06c734dee03fd88630485c2b920
+
 jobs:
   scarletbook:
     # Every wheel links the scarletbook-rs C library pinned in scarletbook.lock (#85), and each
@@ -49,8 +56,9 @@ jobs:
           - {name: manylinux x86_64, os: ubuntu-latest, build: "cp313-manylinux_*"}
           - {name: manylinux aarch64, os: ubuntu-24.04-arm, build: "cp313-manylinux_*"}
           - {name: musllinux x86_64, os: ubuntu-latest, build: "cp313-musllinux_*"}
-          - {name: macOS arm64, os: macos-15, build: "cp313-macosx_arm64", target: "15.0"}
-          - {name: macOS x86_64, os: macos-15-intel, build: "cp313-macosx_x86_64", target: "15.0"}
+          # the oldest macOS each architecture's Python and scarletbook library support (#142)
+          - {name: macOS arm64, os: macos-15, build: "cp313-macosx_arm64", target: "11.0"}
+          - {name: macOS x86_64, os: macos-15-intel, build: "cp313-macosx_x86_64", target: "10.13"}
           - {name: Windows x86_64, os: windows-latest, build: "cp313-win_amd64"}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -80,9 +88,25 @@ jobs:
           echo "$(cygpath -w "$root/ucrt64/bin")" >> "$GITHUB_PATH"
           echo "$(cygpath -w "$root/usr/bin")" >> "$GITHUB_PATH"
 
-      - name: Install libFLAC (macOS)
+      # A static libFLAC (no Ogg, no programs) for the wheel's minimum macOS, linked into the engine,
+      # so delocate has nothing to bundle. Same libFLAC release as Homebrew's.
+      - name: Build libFLAC from source (macOS)
         if: runner.os == 'macOS'
-        run: brew install flac pkg-config
+        env:
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
+        run: |
+          brew install pkg-config
+          curl -fsSL -o "$RUNNER_TEMP/flac.tar.xz" \
+            "https://github.com/xiph/flac/releases/download/$FLAC_VERSION/flac-$FLAC_VERSION.tar.xz"
+          echo "$FLAC_SHA256  $RUNNER_TEMP/flac.tar.xz" | shasum -a 256 -c -
+          tar -xf "$RUNNER_TEMP/flac.tar.xz" -C "$RUNNER_TEMP"
+          cmake -S "$RUNNER_TEMP/flac-$FLAC_VERSION" -B "$RUNNER_TEMP/flac-build" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/flac" -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DBUILD_SHARED_LIBS=OFF -DWITH_OGG=OFF -DBUILD_CXXLIBS=OFF \
+            -DBUILD_PROGRAMS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_TESTING=OFF -DBUILD_DOCS=OFF -DINSTALL_MANPAGES=OFF
+          cmake --build "$RUNNER_TEMP/flac-build" -j "$(sysctl -n hw.ncpu)"
+          cmake --install "$RUNNER_TEMP/flac-build"
+          echo "PKG_CONFIG_PATH=$RUNNER_TEMP/flac/lib/pkgconfig" >> "$GITHUB_ENV"
 
       - name: Build
         uses: pypa/cibuildwheel@b9e566a2b284570af229f6c2a33673410d0389a3  # v4.3.4
@@ -97,7 +121,7 @@ jobs:
             else dnf install -y dnf-plugins-core &&
             (dnf config-manager --set-enabled powertools || dnf config-manager --set-enabled crb) &&
             dnf install -y flac-devel; fi
-          # Homebrew's libFLAC targets the runner's macOS, so the wheel does too.
+          # The wheel's minimum macOS (#142); libFLAC above and scarletbook's library target it or older.
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
           # The Windows DLL is static: nothing to bundle.
           CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: ""
@@ -111,6 +135,29 @@ jobs:
       - name: The engine keeps the CET shadow-stack mark (x86-64 manylinux)
         if: runner.os == 'Linux' && runner.arch == 'X64' && contains(matrix.build, 'manylinux')
         run: python3 -I tools/check_cet.py wheelhouse/*.whl
+
+      # The tag and the engine's own minimum (LC_BUILD_VERSION) both say the target, and the engine
+      # links no library outside the system (#142).
+      - name: The wheel's minimum macOS (macOS)
+        if: runner.os == 'macOS'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -eu
+          whl=$(ls wheelhouse/*.whl)
+          tag="macosx_$(echo "$TARGET" | tr . _)_$(uname -m)"
+          case "$whl" in *"$tag.whl") echo "tag: $tag" ;; *) echo "::error::$whl is not $tag"; exit 1 ;; esac
+          mkdir "$RUNNER_TEMP/whl" && unzip -q "$whl" -d "$RUNNER_TEMP/whl"
+          lib="$RUNNER_TEMP/whl/pysacd/_sacdconv.dylib"
+          minos=$(otool -l "$lib" | awk '/LC_BUILD_VERSION/{f=1} f&&$1=="minos"{print $2; exit}')
+          [ -n "$minos" ] || minos=$(otool -l "$lib" | awk '/LC_VERSION_MIN_MACOSX/{f=1} f&&$1=="version"{print $2; exit}')
+          echo "engine minos: $minos"
+          [ "$minos" = "$TARGET" ] || { echo "::error::engine minos $minos, not $TARGET"; exit 1; }
+          otool -L "$lib"
+          # (otool -L also lists the engine's own install name)
+          if otool -L "$lib" | tail -n +2 | grep -v -e /usr/lib/ -e /System/Library/ -e '/_sacdconv\.dylib '; then
+            echo "::error::the engine links a library outside the system"; exit 1
+          fi
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:

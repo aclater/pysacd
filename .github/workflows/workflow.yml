@@ -109,7 +109,7 @@ jobs:
           echo "PKG_CONFIG_PATH=$RUNNER_TEMP/flac/lib/pkgconfig" >> "$GITHUB_ENV"
 
       - name: Build
-        uses: pypa/cibuildwheel@b9e566a2b284570af229f6c2a33673410d0389a3  # v4.3.4
+        uses: pypa/cibuildwheel@f9b966cfadf4109556cadc5bb39ddb72d0ce664e  # v4.3.5
         env:
           # The engine is loaded through ctypes, so one py3-none wheel per platform
           # serves every Python: build it once.

@@ -285,6 +285,9 @@ jobs:
     env:
       SACD_RIPPER_REPO: https://github.com/sacd-ripper/sacd-ripper.git
       SACD_RIPPER_COMMIT: a3d981c935c3224217e2842cd492f9351106c81e
+      # sacd_extract converts Shift-JIS and Big5 text with iconv, in the locale's charset: a UTF-8
+      # locale, as on the runner, and glibc's extra converters (glibc-gconv-extra on Fedora).
+      LANG: C.UTF-8
     container:
       # Fedora 44, pinned by digest: the build and the tests run in Red Hat-derived userland;
       # the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container.
@@ -299,7 +302,7 @@ jobs:
         env:
           PY: "3.13"
         run: |
-          dnf -y -q --setopt=install_weak_deps=False install shadow-utils util-linux git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which cmake libxml2-devel \
+          dnf -y -q --setopt=install_weak_deps=False install shadow-utils util-linux git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which cmake libxml2-devel glibc-gconv-extra \
             "/usr/bin/python$PY" "/usr/include/python$PY/Python.h"
           dnf clean all
           uid=$(stat -c %u "$GITHUB_WORKSPACE"); [ "$uid" != 0 ] || uid=1001

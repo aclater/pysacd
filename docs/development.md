@@ -349,6 +349,17 @@ To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
 ## CI
 
+GitHub's hosted Linux runners are Ubuntu only, so the jobs that build or test pysacd run inside
+a Red Hat-derived container, pinned by digest, and the runner only hosts it: Fedora 44 for the
+test suite on every Python (Fedora packages Python 3.10 to 3.15), the sanitizer, leak, fuzz,
+comparison and benchmark jobs, the live MusicBrainz lookup and the release's sdist; UBI 10 for
+semgrep, zizmor and the private-names check. semgrep and zizmor come from PyPI, pinned by version
+and hash in `.github/requirements/`, instead of their vendors' container images. Still on the
+runner itself: the TSan job (it lowers the host's `vm.mmap_rnd_bits`, which a container can't),
+the scarletbook provenance check (it uses the runner's `gh`), CodeQL, Scorecard, dependency
+review, the link check, the AI review (PR-Agent's own image) and the wheel builds, which run in
+cibuildwheel's manylinux and musllinux images so that the wheels install on what users run.
+
 Every pull request runs:
 
 - **ruff and mypy** on the Python code.
@@ -403,7 +414,7 @@ Every pull request runs:
   pinned tag and commit (see [the scarletbook library](#the-scarletbook-library)).
 - **zizmor**, the GitHub Actions security linter, when `.github/workflows/` changes
   (offline audits; run it locally with
-  `pipx run zizmor==1.30.1 --no-online-audits .github/workflows`).
+  `pipx run zizmor==1.30.1 --offline .github/workflows`).
 - **Dependency review**: a pull request that adds a dependency with a known high or
   critical vulnerability fails.
 - **Coverage**: the Python 3.13 leg runs the suite under coverage.py (settings in

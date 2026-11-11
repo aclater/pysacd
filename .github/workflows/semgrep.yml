@@ -1,10 +1,10 @@
 # Pattern-based static analysis with the community rule packs for the
 # languages this repo ships: Python, C and the workflows themselves.  Any
 # finding fails the check; intentional exceptions are suppressed inline with
-# `nosemgrep` and a reason.  Runs locally with the same image:
+# `nosemgrep` and a reason.  Runs locally with the same pinned version:
 #
-#   podman run --rm -v "$PWD:/src:Z" -w /src docker.io/semgrep/semgrep:1.178.0 \
-#     semgrep scan --metrics=off --error \
+#   python3 -m venv /tmp/sg && /tmp/sg/bin/pip install --require-hashes \
+#     -r .github/requirements/semgrep.txt && /tmp/sg/bin/semgrep scan --metrics=off --error \
 #       --config p/python --config p/c --config p/github-actions
 
 name: semgrep
@@ -25,13 +25,26 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     container:
-      # Pinned by digest; Dependabot can't update container: images, so
-      # bump tag and digest together by hand.
-      image: docker.io/semgrep/semgrep:1.178.0@sha256:32e459968daabe7ab86968184a29109b9564aa00392401156f9788452b42786b
+      # UBI 10 (ubi10/ubi 10.3), pinned by digest; the tool comes from PyPI, pinned by hash.
+      image: registry.access.redhat.com/ubi10/ubi@sha256:1e9193f051ac70582821c8a941325c5053488c54c75cd0c31b577d871ac29dba
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Packages
+        run: dnf -y -q --setopt=install_weak_deps=False install git-core python3-pip && dnf clean all
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+
+      # semgrep from PyPI, pinned by version and hash (.github/requirements/semgrep.txt),
+      # in place of the vendor's container image.
+      - name: Install semgrep
+        run: |
+          python3 -m venv "$RUNNER_TEMP/semgrep"
+          "$RUNNER_TEMP/semgrep/bin/pip" install -q --require-hashes -r .github/requirements/semgrep.txt
+          echo "$RUNNER_TEMP/semgrep/bin" >> "$GITHUB_PATH"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: semgrep scan
         # Private repository without code scanning: findings print in the log

@@ -1,0 +1,5 @@
+# zizmor for .github/workflows/zizmor.yml, installed with `pip install --require-hashes`
+# in the job's UBI container (the zizmor action would run zizmor's own container image).
+# Bump the version and the hash together: https://pypi.org/project/zizmor/#files
+zizmor==1.30.1 \
+    --hash=sha256:eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e

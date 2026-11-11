@@ -1,16 +1,16 @@
 # zizmor: security linter for GitHub Actions workflows (template injection,
 # credential persistence, excessive permissions, unpinned uses, ...). Offline
 # audits only; findings are printed as annotations and fail the check.
-# Locally: `pipx run zizmor==1.30.1 --no-online-audits .github/workflows`
+# Locally: `pipx run zizmor==1.30.1 --offline .github/workflows`
 
 name: zizmor
 
 on:
   pull_request:
-    paths: [".github/workflows/**"]
+    paths: [".github/workflows/**", ".github/requirements/zizmor.txt"]
   push:
     branches: [master]
-    paths: [".github/workflows/**"]
+    paths: [".github/workflows/**", ".github/requirements/zizmor.txt"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -23,16 +23,23 @@ jobs:
   zizmor:
     name: zizmor
     runs-on: ubuntu-latest
+    container:
+      # UBI 10 (ubi10/ubi 10.3), pinned by digest; the tool comes from PyPI, pinned by hash.
+      image: registry.access.redhat.com/ubi10/ubi@sha256:1e9193f051ac70582821c8a941325c5053488c54c75cd0c31b577d871ac29dba
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Packages
+        run: dnf -y -q --setopt=install_weak_deps=False install git-core python3-pip && dnf clean all
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      # The action runs zizmor's container image, pinned by digest for each version
-      - uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e  # v0.7.1
-        with:
-          version: 1.30.1
-          inputs: .github/workflows
-          online-audits: false
-          advanced-security: false
-          annotations: true
+      # zizmor from PyPI, pinned by version and hash (.github/requirements/zizmor.txt), in
+      # place of the zizmor action, which runs zizmor's own container image.
+      - name: zizmor
+        run: |
+          python3 -m venv "$RUNNER_TEMP/zizmor"
+          "$RUNNER_TEMP/zizmor/bin/pip" install -q --require-hashes -r .github/requirements/zizmor.txt
+          "$RUNNER_TEMP/zizmor/bin/zizmor" --offline --format=github .github/workflows

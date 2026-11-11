@@ -24,22 +24,30 @@ jobs:
       fail-fast: false
       matrix:
         python: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+    container:
+      # Fedora 44, pinned by digest: the build and the tests run in Red Hat-derived userland;
+      # the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container.
+      image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    defaults:
+      run:
+        shell: bash
     steps:
+      # flac-devel so the FLAC output path is compiled and tested too.
+      - name: Python ${{ matrix.python }} and the build packages (Fedora)
+        env:
+          PY: ${{ matrix.python }}
+        run: |
+          dnf -y -q --setopt=install_weak_deps=False install git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which \
+            "/usr/bin/python$PY" "/usr/include/python$PY/Python.h"
+          dnf clean all
+          "python$PY" -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          python-version: ${{ matrix.python }}
-          cache: pip
-          cache-dependency-path: requirements-dev.txt
-
       - name: Install build and dev dependencies
-        # libflac-dev so the FLAC output path is compiled and tested too.
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends libflac-dev
           # hash-locked (tools/lock_dev.py); pysacd itself without build isolation, so the
           # locked setuptools builds it and nothing unhashed is downloaded (#14)
           pip install --require-hashes -r requirements-dev.txt
@@ -117,19 +125,29 @@ jobs:
     # AddressSanitizer + UndefinedBehaviorSanitizer.
     name: tests under ASan + UBSan
     runs-on: ubuntu-latest
+    container:
+      # Fedora 44, pinned by digest: the build and the tests run in Red Hat-derived userland;
+      # the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container.
+      image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Python 3.13 and the build packages (Fedora)
+        env:
+          PY: "3.13"
+        run: |
+          dnf -y -q --setopt=install_weak_deps=False install git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which libasan libubsan \
+            "/usr/bin/python$PY" "/usr/include/python$PY/Python.h"
+          dnf clean all
+          "python$PY" -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          python-version: "3.13"
-
       - name: Install
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends libflac-dev
           # hash-locked (tools/lock_dev.py); pysacd itself without build isolation, so the
           # locked setuptools builds it and nothing unhashed is downloaded (#14)
           pip install --require-hashes -r requirements-dev.txt
@@ -162,21 +180,30 @@ jobs:
     # the engine and the scarletbook library from C instead (#122; docs/development.md, "CI").
     name: engine leak check (LSan, memcheck)
     runs-on: ubuntu-latest
+    container:
+      # Fedora 44, pinned by digest: the build and the tests run in Red Hat-derived userland;
+      # the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container. LeakSanitizer stops the threads with ptrace.
+      image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+      options: --cap-add SYS_PTRACE
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Python 3.13 and the build packages (Fedora)
+        env:
+          PY: "3.13"
+        run: |
+          dnf -y -q --setopt=install_weak_deps=False install git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which liblsan valgrind \
+            "/usr/bin/python$PY" "/usr/include/python$PY/Python.h"
+          dnf clean all
+          "python$PY" -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          python-version: "3.13"
-          cache: pip
-          cache-dependency-path: requirements-dev.txt
-
       - name: Install
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends libflac-dev valgrind
           pip install --require-hashes -r requirements-dev.txt
 
       - name: LeakSanitizer
@@ -243,19 +270,29 @@ jobs:
     env:
       SACD_RIPPER_REPO: https://github.com/sacd-ripper/sacd-ripper.git
       SACD_RIPPER_COMMIT: a3d981c935c3224217e2842cd492f9351106c81e
+    container:
+      # Fedora 44, pinned by digest: the build and the tests run in Red Hat-derived userland;
+      # the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container.
+      image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Python 3.13 and the build packages (Fedora)
+        env:
+          PY: "3.13"
+        run: |
+          dnf -y -q --setopt=install_weak_deps=False install git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which cmake \
+            "/usr/bin/python$PY" "/usr/include/python$PY/Python.h"
+          dnf clean all
+          "python$PY" -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          python-version: "3.13"
-
       - name: Install
         run: |
-          sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends libflac-dev cmake
           # hash-locked (tools/lock_dev.py); pysacd itself without build isolation, so the
           # locked setuptools builds it and nothing unhashed is downloaded (#14)
           pip install --require-hashes -r requirements-dev.txt
@@ -311,7 +348,15 @@ jobs:
     # they never appear in the repository themselves.
     name: no private names
     runs-on: ubuntu-latest
+    container:
+      # UBI 10 (ubi10/ubi 10.3), pinned by digest.
+      image: registry.access.redhat.com/ubi10/ubi@sha256:1e9193f051ac70582821c8a941325c5053488c54c75cd0c31b577d871ac29dba
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Packages
+        run: dnf -y -q --setopt=install_weak_deps=False install git-core findutils && dnf clean all
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -321,4 +366,6 @@ jobs:
         env:
           PRIVATE_NAMES: ${{ vars.PRIVATE_NAMES }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: bash scripts/check-private-names.sh
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash scripts/check-private-names.sh

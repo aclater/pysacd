@@ -26,3 +26,15 @@ updates:
         patterns: ["*"]
     commit-message:
       prefix: deps
+  # Tools CI installs from PyPI by hash (.github/requirements): zizmor, semgrep.
+  - package-ecosystem: pip
+    directory: /.github/requirements
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      ci-tools:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

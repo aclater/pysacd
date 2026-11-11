@@ -28,23 +28,30 @@ jobs:
       # Fedora 44, pinned by digest: the build and the tests run in Red Hat-derived userland;
       # the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container.
       image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    # The tests run as a normal user, `ci` (pysacd convert refuses to run as root).
     defaults:
       run:
-        shell: bash
+        shell: runuser -u ci -- bash --noprofile --norc -eo pipefail {0}
     steps:
       # flac-devel so the FLAC output path is compiled and tested too.
       - name: Python ${{ matrix.python }} and the build packages (Fedora)
+        shell: bash
         env:
           PY: ${{ matrix.python }}
         run: |
-          dnf -y -q --setopt=install_weak_deps=False install git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which \
+          dnf -y -q --setopt=install_weak_deps=False install shadow-utils util-linux git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which \
             "/usr/bin/python$PY" "/usr/include/python$PY/Python.h"
           dnf clean all
-          "python$PY" -m venv "$RUNNER_TEMP/venv"
+          uid=$(stat -c %u "$GITHUB_WORKSPACE"); [ "$uid" != 0 ] || uid=1001
+          useradd -u "$uid" -M -d "$HOME" -s /bin/bash ci
+          runuser -u ci -- "python$PY" -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - name: The checkout to the build user
+        shell: bash
+        run: chown -R ci "$GITHUB_WORKSPACE"
 
       - name: Install build and dev dependencies
         run: |
@@ -129,22 +136,29 @@ jobs:
       # Fedora 44, pinned by digest: the build and the tests run in Red Hat-derived userland;
       # the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container.
       image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    # The tests run as a normal user, `ci` (pysacd convert refuses to run as root).
     defaults:
       run:
-        shell: bash
+        shell: runuser -u ci -- bash --noprofile --norc -eo pipefail {0}
     steps:
       - name: Python 3.13 and the build packages (Fedora)
+        shell: bash
         env:
           PY: "3.13"
         run: |
-          dnf -y -q --setopt=install_weak_deps=False install git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which libasan libubsan \
+          dnf -y -q --setopt=install_weak_deps=False install shadow-utils util-linux git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which libasan libubsan \
             "/usr/bin/python$PY" "/usr/include/python$PY/Python.h"
           dnf clean all
-          "python$PY" -m venv "$RUNNER_TEMP/venv"
+          uid=$(stat -c %u "$GITHUB_WORKSPACE"); [ "$uid" != 0 ] || uid=1001
+          useradd -u "$uid" -M -d "$HOME" -s /bin/bash ci
+          runuser -u ci -- "python$PY" -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - name: The checkout to the build user
+        shell: bash
+        run: chown -R ci "$GITHUB_WORKSPACE"
 
       - name: Install
         run: |
@@ -164,7 +178,8 @@ jobs:
         # Python itself isn't instrumented: preload the runtimes and skip
         # leak checks (the interpreter keeps memory until exit).
         run: |
-          export LD_PRELOAD="$(gcc -print-file-name=libasan.so):$(gcc -print-file-name=libubsan.so)"
+          # the runtimes themselves: Fedora's unversioned libasan.so and libubsan.so are linker scripts
+          export LD_PRELOAD="$(gcc -print-file-name=libasan.so.8):$(gcc -print-file-name=libubsan.so.1)"
           export ASAN_OPTIONS=detect_leaks=0:abort_on_error=1
           export UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
           # tests/test_fuzz_engine.py builds the C fuzz harnesses with these flags too
@@ -274,22 +289,29 @@ jobs:
       # Fedora 44, pinned by digest: the build and the tests run in Red Hat-derived userland;
       # the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container.
       image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    # The tests run as a normal user, `ci` (pysacd convert refuses to run as root).
     defaults:
       run:
-        shell: bash
+        shell: runuser -u ci -- bash --noprofile --norc -eo pipefail {0}
     steps:
       - name: Python 3.13 and the build packages (Fedora)
+        shell: bash
         env:
           PY: "3.13"
         run: |
-          dnf -y -q --setopt=install_weak_deps=False install git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which cmake \
+          dnf -y -q --setopt=install_weak_deps=False install shadow-utils util-linux git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which cmake libxml2-devel \
             "/usr/bin/python$PY" "/usr/include/python$PY/Python.h"
           dnf clean all
-          "python$PY" -m venv "$RUNNER_TEMP/venv"
+          uid=$(stat -c %u "$GITHUB_WORKSPACE"); [ "$uid" != 0 ] || uid=1001
+          useradd -u "$uid" -M -d "$HOME" -s /bin/bash ci
+          runuser -u ci -- "python$PY" -m venv "$RUNNER_TEMP/venv"
           echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+      - name: The checkout to the build user
+        shell: bash
+        run: chown -R ci "$GITHUB_WORKSPACE"
 
       - name: Install
         run: |

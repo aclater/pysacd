@@ -353,7 +353,8 @@ GitHub's hosted Linux runners are Ubuntu only, so the jobs that build or test py
 a Red Hat-derived container, pinned by digest, and the runner only hosts it: Fedora 44 for the
 test suite on every Python (Fedora packages Python 3.10 to 3.15), the sanitizer, leak, fuzz,
 comparison and benchmark jobs, the live MusicBrainz lookup and the release's sdist; UBI 10 for
-semgrep, zizmor and the private-names check. semgrep and zizmor come from PyPI, pinned by version
+semgrep, zizmor and the private-names check. The test jobs run as a normal user (`ci`, with
+the runner's uid), since `pysacd convert` refuses to run as root. semgrep and zizmor come from PyPI, pinned by version
 and hash in `.github/requirements/`, instead of their vendors' container images. Still on the
 runner itself: the TSan job (it lowers the host's `vm.mmap_rnd_bits`, which a container can't),
 the scarletbook provenance check (it uses the runner's `gh`), CodeQL, Scorecard, dependency

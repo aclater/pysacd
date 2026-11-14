@@ -230,7 +230,11 @@ as hostile:
 - **Time:** each request has a deadline: the timeout (60 s) covers the whole response, not
   just each `recv()`, so a server can't trickle a reply a byte at a time. Reconnects are
   bounded (3 in a row, with backoff), and every successful reply moves the copy forward, so
-  the total transferred never exceeds the requested ranges.
+  the total transferred never exceeds the requested ranges. A copy as a whole must also keep
+  an average of 256 KiB/s after a 300 s allowance (reconnects included), or it fails: a
+  server returning one sector just inside each timeout can't stretch a copy over weeks. A
+  real PS3 reads 2-4 MB/s, 8 to 16 times faster, so a full dual-layer disc has about 9 hours.
+- **Error messages:** fields of the wrong type are reported by size, never dumped.
 - **Reconnects:** a reconnect that reports a different disc size or master TOC fails the
   copy. A server that swapped discs (even another pressing with the same size) can't splice
   another disc into the file.

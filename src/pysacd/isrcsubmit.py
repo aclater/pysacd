@@ -282,6 +282,10 @@ def submit(p: Plan, contact: str | None, user: str | None = None, token_path: Pa
     except (OSError, http.client.HTTPException) as e:
         raise musicbrainz.MBError(f"submission failed: {musicbrainz._net_error(e)}; "
                                   "check on MusicBrainz whether it was applied before retrying") from None
+    except musicbrainz.MBError as e:
+        # the deadline or the size cap: the request went out, so it may have been applied
+        raise musicbrainz.MBError(f"submission failed: {e}; "
+                                  "check on MusicBrainz whether it was applied before retrying") from None
     if b"<text>OK</text>" not in reply:
         raise musicbrainz.MBError("unexpected reply from MusicBrainz: " + reply[:200].decode("utf-8", "replace"))
 

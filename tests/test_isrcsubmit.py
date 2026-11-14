@@ -268,6 +268,12 @@ class Submission(unittest.TestCase):
         with self.assertRaisesRegex(musicbrainz.MBError, "HTTP 400: Invalid ISRC"):
             isrcsubmit.submit(self.plan, None, token_path=self.token)
 
+    def test_a_timed_out_submission_says_to_check_first(self):
+        isrcsubmit.save_token({"access_token": "abc", "expires_at": 4e9, "server": musicbrainz.API}, self.token)
+        with mock.patch.object(musicbrainz, "_open", side_effect=musicbrainz.MBError("x: no response in time")), \
+                self.assertRaisesRegex(musicbrainz.MBError, "no response in time; check on MusicBrainz"):
+            isrcsubmit.submit(self.plan, None, token_path=self.token)
+
     def test_token_for_another_server_not_used(self):
         isrcsubmit.save_token({"access_token": "abc", "expires_at": 4e9, "server": "https://x/ws/2"}, self.token)
         with self.assertRaisesRegex(musicbrainz.MBError, "not signed in"):

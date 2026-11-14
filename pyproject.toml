@@ -35,7 +35,7 @@ dependencies = ["mutagen>=1.45", "tomli>=1.1; python_version < '3.11'"]
 [project.optional-dependencies]
 convert = []        # kept so `pip install pysacd[convert]` still works; mutagen is a dependency now
 # ruff and mypy are pinned: an unpinned upgrade can change the rule set on unchanged code.
-dev = ["mutagen>=1.45", "numpy", "pytest==9.1.1", "ruff==0.17.1", "mypy==2.4.0", "coverage==7.16.2"]
+dev = ["mutagen>=1.45", "numpy", "pytest==9.2.0", "ruff==0.17.3", "mypy==2.4.1", "coverage==7.16.2"]
 
 [project.scripts]
 pysacd = "pysacd.__main__:main"

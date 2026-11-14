@@ -138,13 +138,27 @@ def _open_private(path: Path, flags: int) -> int:
     return os.open(path, flags | getattr(os, "O_NOFOLLOW", 0), 0o600)    # no O_NOFOLLOW on Windows
 
 
+def check_folder(folder: Path) -> None:
+    """Refuse a token folder that group or others can write (POSIX only): whoever can write it
+    can replace the token file. mkdir(exist_ok=True) doesn't correct an existing folder's mode."""
+    if os.name == "posix" and os.stat(folder).st_mode & 0o022:
+        raise musicbrainz.MBError(f"{folder} is writable by other users; run chmod go-w on it (or chmod 700)")
+
+
 def save_token(token: dict, path: Path = TOKEN_FILE) -> None:
+    """Write the token owner-only: a new file under an unpredictable name (O_EXCL, O_NOFOLLOW,
+    mode 0600 from creation, as safeio does), then moved into place."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", opener=lambda p, f: _open_private(Path(p), f)) as f:
-        json.dump(token, f)
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, path)
+    check_folder(path.parent)
+    tmp = safeio.temp_name(path)
+    fd = os.open(tmp, safeio.FLAGS, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(token, f)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def check_private(mode: int, path: Path) -> None:

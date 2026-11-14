@@ -201,9 +201,12 @@ podman run --rm --network none --userns=keep-id \
 ISRC submission (`pysacd submit-isrcs`, `--submit-isrcs`) is the only feature
 that writes to a remote service, and it asks before every submission.
 
-- **OAuth token:** `~/.config/pysacd/musicbrainz-token.json`, created with mode
-  0600 and never through a symlink. It's refused if others can read it, and
-  it's used only for the server it was issued by.
+- **OAuth token:** `~/.config/pysacd/musicbrainz-token.json`, written as a new
+  file under an unpredictable name (`O_EXCL`, mode 0600 from creation, never
+  through a symlink) and then moved into place. It's refused if others can read
+  it, and it's used only for the server it was issued by. pysacd refuses to save
+  it in a folder that group or others can write (POSIX), since they could
+  replace the file: `chmod go-w` (or `chmod 700`) the folder.
 - **Passwords** (digest auth) are asked for each time or read from
   `PYSACD_MB_PASSWORD`. They're never written anywhere.
 - **What's sent:** only ISRCs that pass validation (`CCXXXYYNNNNN`), with the

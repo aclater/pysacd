@@ -148,6 +148,30 @@ class Tokens(unittest.TestCase):
         with self.assertRaises(OSError):
             isrcsubmit.load_token(self.path)
 
+    def test_no_predictable_temp_name(self):
+        # A file (or symlink) planted at the old fixed temp name is neither used nor followed
+        self.path.parent.mkdir(mode=0o700)
+        planted = self.path.with_name(self.path.name + ".tmp")
+        planted.write_text("planted")
+        with mock.patch("os.open", wraps=os.open) as op:
+            isrcsubmit.save_token({"access_token": "t"}, self.path)
+        flags = [c.args[1] for c in op.call_args_list]
+        self.assertTrue(flags and all(f & os.O_EXCL and f & os.O_CREAT for f in flags))
+        self.assertEqual(planted.read_text(), "planted")
+        self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()), sorted([self.path.name, planted.name]))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX permissions")
+    def test_writable_folder_refused(self):
+        self.path.parent.mkdir(mode=0o700)
+        for mode in (0o770, 0o707, 0o777):
+            os.chmod(self.path.parent, mode)
+            with self.subTest(mode=oct(mode)), self.assertRaisesRegex(musicbrainz.MBError, "writable by other"):
+                isrcsubmit.save_token({"access_token": "t"}, self.path)
+            self.assertFalse(self.path.exists())
+        os.chmod(self.path.parent, 0o755)
+        isrcsubmit.save_token({"access_token": "t"}, self.path)
+        self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
+
     @unittest.skipUnless(os.name == "posix", "POSIX permissions")
     def test_readable_by_others_refused(self):
         for mode in (0o100640, 0o100604, 0o100620):

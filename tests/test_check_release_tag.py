@@ -24,26 +24,28 @@ def git(cwd: Path, *args: str) -> str:
 
 @unittest.skipUnless(shutil.which("git"), "git is not installed")
 class CheckReleaseTag(unittest.TestCase):
-    """An "origin" with master and release/1.0, and a clone of it with one unmerged commit."""
+    """A repository whose origin has master and release/1.0, and one commit on neither.
+
+    origin's branches are set as remote-tracking refs rather than cloned: `git clone` starts
+    helper processes, which fail under the sanitizer jobs' preloaded runtime.
+    """
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
-        origin, self.clone = Path(tmp.name, "origin"), Path(tmp.name, "clone")
-        origin.mkdir()
-        git(origin, "init", "-q")
-        self.write(origin, "1.2.3", "1.2.3")
-        git(origin, "add", "-A")
-        git(origin, "commit", "-q", "-m", "one")
-        self.merged = git(origin, "rev-parse", "HEAD")
-        git(origin, "checkout", "-q", "-b", "release/1.0")
-        git(origin, "commit", "-q", "--allow-empty", "-m", "backport")
-        self.backport = git(origin, "rev-parse", "HEAD")
-        git(origin, "checkout", "-q", "-b", "feature")
-        git(origin, "commit", "-q", "--allow-empty", "-m", "unmerged")
-        self.unmerged = git(origin, "rev-parse", "HEAD")
-        git(origin, "checkout", "-q", "master")
-        git(Path(tmp.name), "clone", "-q", str(origin), str(self.clone))
+        self.clone = repo = Path(tmp.name)
+        git(repo, "init", "-q")
+        self.write(repo, "1.2.3", "1.2.3")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-q", "-m", "one")
+        self.merged = git(repo, "rev-parse", "HEAD")
+        git(repo, "commit", "-q", "--allow-empty", "-m", "backport")
+        self.backport = git(repo, "rev-parse", "HEAD")
+        git(repo, "commit", "-q", "--allow-empty", "-m", "unmerged")
+        self.unmerged = git(repo, "rev-parse", "HEAD")
+        git(repo, "update-ref", "refs/remotes/origin/master", self.merged)
+        git(repo, "update-ref", "refs/remotes/origin/release/1.0", self.backport)
+        git(repo, "update-ref", "refs/remotes/origin/feature", self.unmerged)
 
     @staticmethod
     def write(root: Path, project: str, init: str) -> None:
@@ -69,6 +71,12 @@ class CheckReleaseTag(unittest.TestCase):
     def test_an_unknown_commit_fails(self):
         (p,) = self.problems("refs/tags/v1.2.3", "0" * 40)
         self.assertIn("isn't on a release branch", p)
+
+    def test_a_commit_that_is_not_a_hash_fails(self):
+        for sha in ("--all", "master", "", self.merged[:12]):
+            with self.subTest(sha):
+                (p,) = crt.problems(self.clone, "refs/tags/v1.2.3", sha, "master", INIT)
+                self.assertIn("isn't a commit hash", p)
 
     def test_a_tag_that_is_not_the_version_fails(self):
         for tag in ("v1.2.4", "v1.2.3rc1", "v1.2", "v01.2.3"):

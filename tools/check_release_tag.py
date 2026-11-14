@@ -67,7 +67,9 @@ def problems(root: Path, ref: str, sha: str, default: str, init: str | None = IN
     if tag != "v" + version:
         out.append(f"the tag is {tag}, the package version is {version} (expected v{version})")
     branches = release_branches(root, default)
-    if f"refs/remotes/origin/{default}" not in branches:
+    if not re.fullmatch(r"[0-9a-f]{40}([0-9a-f]{24})?", sha):  # it goes to git: never an option or a name
+        out.append(f"{sha!r} isn't a commit hash")
+    elif f"refs/remotes/origin/{default}" not in branches:
         out.append(f"origin/{default} isn't here: the check needs a full clone (fetch-depth: 0)")
     elif not any(git(root, "merge-base", "--is-ancestor", sha, b).returncode == 0 for b in branches):
         names = ", ".join(b.removeprefix("refs/remotes/origin/") for b in branches)

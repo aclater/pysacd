@@ -12,7 +12,7 @@ behaviour, and a patch version only adds or fixes. Each release on
 ### Security
 
 - **Disc text could place `pysacd-extract`'s output outside the output folder**
-  ([GHSA-gx45-h8q4-vwmc](https://github.com/aclater/pysacd/security/advisories/GHSA-gx45-h8q4-vwmc)).
+  (advisory GHSA-gx45-h8q4-vwmc).
   For some titles made only of dots, spaces and control characters, the folder or file name derived
   from the title was empty, `.` or `..`. Such names are no longer produced, a relative `-o` starting
   with `../` is used as given, and every output path is checked against the output folder before
@@ -22,7 +22,7 @@ behaviour, and a patch version only adds or fixes. Each release on
   removed, and `pysacd toc --json` wrote non-ASCII control characters from disc text to the terminal
   as they were (it now writes ASCII, with `\u` escapes).
 - **A disc could replace another disc's files without a warning**
-  ([GHSA-whv9-98xg-4xw9](https://github.com/aclater/pysacd/security/advisories/GHSA-whv9-98xg-4xw9)).
+  (advisory GHSA-whv9-98xg-4xw9).
   `pysacd convert` writes a disc to `<folder> [<catalogue number>]` when the folder holds a different
   disc; with a very long album title the catalogue number was cut off and the disc went into the
   first folder after all. The number is now always kept, and the run stops if no separate folder can
@@ -30,6 +30,18 @@ behaviour, and a patch version only adds or fixes. Each release on
   as skipped, and the new `--overwrite` replaces them. With `sacd_extract`'s naming nothing changes:
   a re-run replaces its files, and [the documentation](docs/sacd_extract.md#compatibility-policy) now
   says what tells two discs apart there. Upgrade to 0.5.1.
+- **A crafted image could make one run write far more than the image could hold**
+  (advisory GHSA-q45f-7qmf-37x3).
+  The bound added for #17 held each output to what the image's sectors could hold, but not the whole
+  run, and frames missing from the image were written as silence without limit, so a small image
+  could fill a disk. Affects 0.5.0 and earlier; 0.5.1 fixes
+  it. The outputs of one format in a run may now cover the area at most twice (an edit master and its
+  tracks), checked before anything is written and again in the engine, and a run stops once it has
+  written more than 10 seconds of silence beyond the audio it found. Ordinary discs, and truncated
+  rips whose run still has more audio than silence, extract as before, byte for byte
+  ([security](docs/security.md#hostile-images), [sacd_extract differences](docs/sacd_extract.md)).
+
+### Other changes
 
 - **CI builds and tests in Red Hat-derived containers.** The test suite on Python 3.10 to 3.15, the
   ASan/UBSan, leak, fuzz, `sacd_extract` comparison and benchmark jobs, the live MusicBrainz lookup

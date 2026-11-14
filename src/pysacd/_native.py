@@ -15,6 +15,10 @@ from typing import Any
 
 from .toc import Area, SACDImage, area_frame_capacity
 
+# How often the outputs of one run may cover the area, per output format (csrc/sacdconv.c
+# RUN_COVERS): an edit master plus the tracks
+RUN_COVERS = 2
+
 FORMATS = {"dsf": 0, "flac": 1, "wav": 2, "dff": 3, "dff-dst": 4}
 
 
@@ -325,6 +329,20 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
             raise NativeError(f"the outputs need frames up to {max(s.tc_end for s in specs)}, but the area's "
                               f"audio in this image (LSN {area.track_start}-{area.track_end}, "
                               f"{image.total_sectors} sectors) holds at most {capacity}")
+        # ... and not per output only: the outputs of one run may add up to RUN_COVERS times that per
+        # format (an edit master and the tracks in the same format cover the area twice), with
+        # overlapping tracks counted each time they are written (GHSA-q45f-7qmf-37x3). The engine
+        # holds the same bound against the whole image, and limits the silence it writes.
+        per_format: dict[str, int] = {}
+        for s in specs:
+            per_format[s.format] = per_format.get(s.format, 0) + s.tc_end - s.tc_start
+        for fmt, total in per_format.items():
+            if total > RUN_COVERS * capacity:
+                n = sum(s.format == fmt for s in specs)
+                raise NativeError(f"the {n} {fmt} outputs need {total} frames in all, more than {RUN_COVERS} times "
+                                  f"the {capacity} the area's audio in this image (LSN {area.track_start}-"
+                                  f"{area.track_end}, {image.total_sectors} sectors) could hold: tracks that "
+                                  f"overlap or claim more than the area's play time")
         a.channels = area.channel_count
         a.toc_lsn = area.toc_start      # which area scarletbook reads: the one whose TOC this is
     else:

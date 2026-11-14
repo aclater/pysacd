@@ -93,7 +93,8 @@ audio sector, and no track ending after its area's playtime.
 | Area TOC size (master TOC) | at most 128 sectors, else the area is skipped |
 | Area TOC and audio positions | read only where the image has sectors; an audio range that ends before it starts drops the area |
 | Track start and duration | cut to the area's playtime, with a warning |
-| Frames an extraction needs | at most 7 (the most a sector header can start) per audio sector the image really has, else the area fails with an error. Frames the disc lacks become silence, so without this a TOC could ask for hours of output from a few sectors |
+| Frames an extraction needs | per output, at most 7 (the most a sector header can start) per audio sector the image really has; per run, the outputs of each format together at most twice that (an edit master and its tracks cover the area twice; overlapping tracks count each time they are written). Otherwise the area fails with an error before anything is written. The engine holds the same per-run bound against the whole image, so a caller that skips the Python check can't lift it |
+| Silence | frames the image lacks become silence. Over a run, the frames written as silence may exceed those written with audio by at most 10 seconds' worth (750 frames), checked as they are written; past that the engine stops and the run's files are removed. A truncated or hole-filled rip still gets its missing tail filled when the run has more audio than silence. Without this, a sparse file with a few sectors of data could ask for hours of silence |
 | Track LSNs | only narrow where the engine reads, and only when every track's LSN lies inside the area's audio and the tracks are in order; otherwise the whole area is scanned |
 | Text strings and items | 4096 bytes per string, item scans linear in the TOC size |
 | Audio packets and frames | packets must fit their sector, a frame at most 64 KiB; an undecodable DST frame becomes 0x55 bytes and a missing frame becomes silence |
@@ -105,7 +106,9 @@ garbage, tiny, oversized and endless frames, and 2048/2054/2064-byte sector layo
 data offsets. Each image goes through every `pysacd-extract` mode (`-s`, `-p`, `-p -c`, `-e`,
 `-I`, `-P`) and `pysacd convert` (DSF, FLAC, WAV), in-process. Each run must end in a clean
 error or sane output: no other exception, no hang, nothing outside the output directory, no
-partial file left behind, and no file larger than the image's sectors could hold. CI runs it
+partial file left behind, no file larger than the image's sectors could hold, and no run's
+outputs larger than twice that in all. `RunBound` in the same file checks the per-run bounds on
+overlapping tracks and on sparse images that are mostly holes (GHSA-q45f-7qmf-37x3). CI runs it
 under ASan and UBSan. `PYSACD_HOSTILE=name,...` runs only the named images.
 
 Where `sacd_extract` differs on such images: it writes a zero-length track as a DSF header

@@ -169,6 +169,10 @@ class Tokens(unittest.TestCase):
                 isrcsubmit.save_token({"access_token": "t"}, self.path)
             self.assertFalse(self.path.exists())
         os.chmod(self.path.parent, 0o755)
+        with mock.patch.object(os, "geteuid", return_value=os.geteuid() + 1), \
+                self.assertRaisesRegex(musicbrainz.MBError, "another user"):
+            isrcsubmit.save_token({"access_token": "t"}, self.path)
+        self.assertFalse(self.path.exists())
         isrcsubmit.save_token({"access_token": "t"}, self.path)
         self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
 

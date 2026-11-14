@@ -54,7 +54,16 @@ MAX_DISC_SECTORS = 1 << 22
 # and stretch a copy over weeks. A real PS3 reads 2-4 MB/s; 256 KiB/s is 8-16 times below
 # that, so a slow network or a few reconnects (each at most 10 s of back-off) never trip it.
 # The grace covers connecting and the TOC reads. A full dual-layer disc may take up to ~9 h.
-MIN_FETCH_RATE = 256 * 1024     # bytes per second, averaged over the whole copy
+# Someone on a link that really is slower can lower the floor: PYSACD_PS3_MIN_KIBPS=64.
+def _min_fetch_rate(value: str | None, default: float = 256 * 1024) -> float:
+    try:
+        kib = float(value) if value else 0.0
+    except ValueError:
+        return default
+    return kib * 1024 if 1 <= kib <= 1 << 20 else default
+
+
+MIN_FETCH_RATE = _min_fetch_rate(os.environ.get("PYSACD_PS3_MIN_KIBPS"))   # bytes per second, over the whole copy
 FETCH_GRACE = 300.0             # seconds
 
 REQ_OPEN, REQ_CLOSE, REQ_READ, REQ_SIZE = 1, 2, 3, 4

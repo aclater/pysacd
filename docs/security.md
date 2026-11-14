@@ -176,7 +176,9 @@ embedded only if its first bytes say JPEG or PNG, whatever the server's `Content
 Each request also has a deadline for the whole exchange, from connecting to the last byte: 60 s
 for MusicBrainz JSON and OAuth replies (a large release is about 1 MB), 300 s for a cover (25 MB
 at about 85 kB/s). The 30 s socket timeout alone bounds only each read, so a server could
-otherwise trickle a reply for as long as it liked. Timeouts, resets, TLS errors and truncated
+otherwise trickle a reply, or its headers, for as long as it liked. If no response has started
+by the deadline, pysacd gives up on the request and carries on; the abandoned connection is
+closed when its next read returns or times out. Timeouts, resets, TLS errors and truncated
 bodies are retried like other network errors and then reported as a MusicBrainz error; a reply
 that runs past its deadline or its size cap is not retried.
 
@@ -218,7 +220,7 @@ that writes to a remote service, and it asks before every submission.
   file under an unpredictable name (`O_EXCL`, mode 0600 from creation, never
   through a symlink) and then moved into place. It's refused if others can read
   it, and it's used only for the server it was issued by. pysacd refuses to save
-  it in a folder that group or others can write (POSIX), since they could
+  it in a folder that belongs to another user or that group or others can write (POSIX), since they could
   replace the file: `chmod go-w` (or `chmod 700`) the folder.
 - **Passwords** (digest auth) are asked for each time or read from
   `PYSACD_MB_PASSWORD`. They're never written anywhere.
@@ -247,6 +249,8 @@ as hostile:
   an average of 256 KiB/s after a 300 s allowance (reconnects included), or it fails: a
   server returning one sector just inside each timeout can't stretch a copy over weeks. A
   real PS3 reads 2-4 MB/s, 8 to 16 times faster, so a full dual-layer disc has about 9 hours.
+  The copy is abandoned only when that time has passed, so this bound is hours, not minutes. On
+  a link that really is slower, `PYSACD_PS3_MIN_KIBPS` (KiB/s, default 256) lowers the floor.
 - **Error messages:** fields of the wrong type are reported by size, never dumped.
 - **Reconnects:** a reconnect that reports a different disc size or master TOC fails the
   copy. A server that swapped discs (even another pressing with the same size) can't splice

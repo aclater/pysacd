@@ -87,7 +87,8 @@ def _loopback(host: str | None) -> bool:
 
 def _allowed_url(url: str) -> bool:
     """https only. Plain http is allowed only to a loopback address, and only when API itself is
-    an http URL on a loopback address (the tests' local servers); set_server() takes https only."""
+    an http URL on a loopback address. That exception is test scaffolding: the tests point API
+    at local servers by patching it; set_server(), the only way a user sets it, takes https only."""
     u = urllib.parse.urlsplit(url)
     if u.scheme == "https":
         return True
@@ -116,12 +117,46 @@ class _Redirects(urllib.request.HTTPRedirectHandler):
 
 
 def _open(req: urllib.request.Request, timeout: float = SOCKET_TIMEOUT, follow: bool = True,
-          handlers: tuple = ()):
+          handlers: tuple = (), deadline: float | None = None):
     """Open `req` with the redirect rules above (every MusicBrainz, Cover Art Archive and OAuth
-    request goes through here)."""
+    request goes through here).
+
+    `timeout` bounds each socket operation only, so a server that sends its status line and
+    headers a byte at a time could hold the call for as long as the headers last. With the
+    monotonic `deadline`, connecting, redirects and headers together end by then: the request
+    runs in a thread, and if it has no response in time the caller gets MBError and moves on.
+    The abandoned connection is closed when its own next read returns or times out."""
     if not _allowed_url(req.full_url):
         raise MBError(f"{req.full_url}: only https:// URLs are used")
-    return urllib.request.build_opener(_Redirects(follow), *handlers).open(req, timeout=timeout)
+    opener = urllib.request.build_opener(_Redirects(follow), *handlers)
+    if deadline is None:
+        return opener.open(req, timeout=timeout)
+    box: dict = {}
+    guard = threading.Lock()
+
+    def run() -> None:
+        try:
+            r = opener.open(req, timeout=timeout)
+        except BaseException as e:  # noqa: BLE001 - handed to the caller, which raises it
+            with guard:
+                box.setdefault("error", e)
+            return
+        with guard:
+            if "abandoned" in box:
+                r.close()
+            else:
+                box["response"] = r
+
+    t = threading.Thread(target=run, name="pysacd-http", daemon=True)
+    t.start()
+    t.join(max(0.0, deadline - time.monotonic()))
+    with guard:
+        if "response" in box:
+            return box["response"]
+        if "error" in box:
+            raise box["error"]
+        box["abandoned"] = True
+    raise MBError(f"{req.full_url}: no response in time")
 
 
 def _net_error(e: BaseException) -> str:
@@ -162,9 +197,10 @@ def _get(url: str, contact: str | None, accept: str = "application/json", retrie
     for attempt in range(retries):
         _throttle(url)
         try:
-            # The deadline covers one attempt: connecting, the headers and the whole body
+            # The deadline covers one attempt: connecting, the headers (_open) and the whole
+            # body (_read_capped)
             end = time.monotonic() + deadline
-            with _open(req, timeout=min(SOCKET_TIMEOUT, deadline)) as r:
+            with _open(req, timeout=min(SOCKET_TIMEOUT, deadline), deadline=end) as r:
                 return _read_capped(r, limit, url, end), r.headers.get_content_type()
         except urllib.error.HTTPError as e:
             e.close()

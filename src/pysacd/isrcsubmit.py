@@ -141,7 +141,12 @@ def _open_private(path: Path, flags: int) -> int:
 def check_folder(folder: Path) -> None:
     """Refuse a token folder that group or others can write (POSIX only): whoever can write it
     can replace the token file. mkdir(exist_ok=True) doesn't correct an existing folder's mode."""
-    if os.name == "posix" and os.stat(folder).st_mode & 0o022:
+    if os.name != "posix":
+        return
+    st = os.stat(folder)
+    if st.st_uid != os.geteuid():
+        raise musicbrainz.MBError(f"{folder} belongs to another user; the token is not saved there")
+    if st.st_mode & 0o022:
         raise musicbrainz.MBError(f"{folder} is writable by other users; run chmod go-w on it (or chmod 700)")
 
 
@@ -195,7 +200,7 @@ def _token_request(params: dict, contact: str | None) -> dict:
     try:
         # The body carries the client secret (and a code or refresh token): no redirects
         end = time.monotonic() + musicbrainz.JSON_DEADLINE
-        with musicbrainz._open(req, follow=False) as r:
+        with musicbrainz._open(req, follow=False, deadline=end) as r:
             tok = json.loads(musicbrainz._read_capped(r, 1 << 20, "OAuth token response", end))   # #14
     except urllib.error.HTTPError as e:
         e.close()
@@ -263,7 +268,7 @@ def submit(p: Plan, contact: str | None, user: str | None = None, token_path: Pa
     try:
         # Credentials go with this request: no redirects, so they never reach another URL
         end = time.monotonic() + musicbrainz.JSON_DEADLINE
-        with musicbrainz._open(req, timeout=60, follow=False, handlers=handlers) as r:
+        with musicbrainz._open(req, timeout=60, follow=False, handlers=handlers, deadline=end) as r:
             reply = musicbrainz._read_capped(r, 65536, "submission reply", end)
     except urllib.error.HTTPError as e:
         try:

@@ -237,6 +237,49 @@ class HTTPDeadlinesAndRedirects(unittest.TestCase):
         self.assertLess(time.monotonic() - t0, 5)
         self.assertEqual(len(_Handler.seen), 1)          # not retried
 
+    def test_trickled_headers_hit_the_deadline_too(self):
+        # the status line and headers at one byte per 0.2 s: every socket read succeeds, and the
+        # body loop is never reached
+        import socket
+        srv = socket.create_server(("127.0.0.1", 0))
+        stop = threading.Event()
+
+        def serve():
+            conn, _ = srv.accept()
+            with conn:
+                conn.recv(65536)
+                for b in b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}":
+                    if stop.is_set():
+                        return
+                    try:
+                        conn.sendall(bytes([b]))
+                    except OSError:
+                        return
+                    _real_sleep(0.2)
+
+        threading.Thread(target=serve, daemon=True).start()
+        try:
+            t0 = time.monotonic()
+            with self.assertRaisesRegex(musicbrainz.MBError, "no response in time"):
+                musicbrainz._get(f"http://127.0.0.1:{srv.getsockname()[1]}/h", None, retries=1, deadline=1.0)
+            self.assertLess(time.monotonic() - t0, 4)
+        finally:
+            stop.set()
+            srv.close()
+
+    def test_set_server_takes_https_only(self):
+        for bad in ("http://127.0.0.1:8080", "http://localhost", "ftp://musicbrainz.org", "musicbrainz.org"):
+            with self.assertRaises(musicbrainz.MBError, msg=bad):
+                musicbrainz.set_server(bad)
+        self.assertTrue(musicbrainz.API.startswith(self.srv.base))      # unchanged by the refusals
+
+    def test_ps3_rate_floor_setting(self):
+        from pysacd import remote
+        self.assertEqual(remote._min_fetch_rate(None), 256 * 1024)
+        self.assertEqual(remote._min_fetch_rate("64"), 64 * 1024)
+        for bad in ("", "0", "-5", "abc", "nan", "1e99"):
+            self.assertEqual(remote._min_fetch_rate(bad), 256 * 1024, bad)
+
     def test_truncated_body_is_mberror(self):
         _Handler.routes["/short"] = (200, {"Content-Length": "100"}, [b"x" * 10], 0)
         with self.assertRaises(musicbrainz.MBError):

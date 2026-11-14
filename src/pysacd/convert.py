@@ -130,7 +130,13 @@ def _clean_component(s: str, portable: bool) -> str:
     s = re.sub(r"\s*(\[\s*\]|\(\s*\))", "", s)       # empty [] / () from blank fields
     s = re.sub(r"\s{2,}", " ", s).strip()
     # Cut after sanitising, then tidy what the cut exposed (#47)
-    s = _cut(s.rstrip(" .")).rstrip(" .").lstrip(".") or "_"
+    s = _cut(s.rstrip(" .")).rstrip(" .")
+    # Last, after every edit above: removing an empty "[]" or cutting can expose a leading
+    # '-', '.' or space that name_component() had already dealt with ("[]-rf x").
+    s = s.lstrip(". ")
+    if s.startswith("-"):
+        s = "_" + s
+    s = s or "_"
     if portable and _RESERVED.match(s):
         s = "_" + s
     return s

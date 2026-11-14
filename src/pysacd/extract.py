@@ -651,9 +651,9 @@ def _fetch_remote(addr: tuple[str, int], o: Opts) -> tuple[str, str | None]:
     base = Path(o.output_dir) if o.output_dir else Path()
     if o.output_iso:
         disc, _total = remote.read_remote_toc(host, port)
-        out_dir = base / sbcompat.album_path(disc, o.artist_flag)
+        out_dir = _inside(base, base / sbcompat.album_path(disc, o.artist_flag))
         out_dir.mkdir(parents=True, exist_ok=True)
-        path = Path(sbcompat.unique_filename(str(out_dir), sbcompat.album_dir(disc, o.artist_flag), "iso"))
+        path = _inside(base, Path(sbcompat.unique_filename(str(out_dir), sbcompat.album_dir(disc, o.artist_flag), "iso")))
         say(f"\n Exporting ISO output in file: {path}")
         remote.fetch(host, port, path, None, progress=progress)
         o.output_iso = False        # written; the other outputs read from it
@@ -776,6 +776,17 @@ def _other_disc_in(folder: Path, planned: dict[str, int], disc: Disc, area: Area
     return foreign
 
 
+def _inside(base: Path, path: Path) -> Path:
+    """`path`, which must lie inside `base`: names made from disc text never lead out of the
+    output folder (docs/security.md). The name rules already ensure it; this is the second
+    lock, checked before anything is created. Lexical, so the user's own symlinks still work."""
+    root = os.path.abspath(base)
+    full = os.path.abspath(path)
+    if full != root and os.path.commonpath([root, full]) != root:
+        raise SACDError(f"refusing to write outside the output folder: {safetext.for_terminal(path)}")
+    return path
+
+
 def _avoid_other_discs(disc: Disc, want: list[Area], o: Opts, out_dir: Path) -> Path:
     """Where sacd_extract would mix two discs into one folder (or overwrite one
     disc's tracks with another's), use "<album folder> [<catalogue number>]"
@@ -822,7 +833,7 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
     out_dir = base / sbcompat.album_path(disc, o.artist_flag)
 
     want = _wanted_areas(disc, o)
-    out_dir = _avoid_other_discs(disc, want, o, out_dir)
+    out_dir = _inside(base, _avoid_other_discs(disc, want, o, _inside(base, out_dir)))
 
     if o.export_cue_sheet:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -884,8 +895,9 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
     started = time.time()
     say(f"\n Started at: {time.asctime()}    ")
     specs = [j.spec for j in jobs]
+    base = Path(o.output_dir) if o.output_dir else Path()
     for j in jobs:
-        j.final.parent.mkdir(parents=True, exist_ok=True)
+        _inside(base, j.final).parent.mkdir(parents=True, exist_ok=True)
     try:
         assert o.input is not None
         log.info("%s area: %d output(s)%s", area.kind if area else "no", len(jobs),

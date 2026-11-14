@@ -9,6 +9,19 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Security
+
+- **Disc text could place `pysacd-extract`'s output outside the output folder**
+  ([GHSA-gx45-h8q4-vwmc](https://github.com/aclater/pysacd/security/advisories/GHSA-gx45-h8q4-vwmc)).
+  For some titles made only of dots, spaces and control characters, the folder or file name derived
+  from the title was empty, `.` or `..`. Such names are no longer produced, a relative `-o` starting
+  with `../` is used as given, and every output path is checked against the output folder before
+  anything is created. Names of ordinary discs don't change
+  ([what differs from sacd_extract](docs/sacd_extract.md#compatibility-policy)). Upgrade to 0.5.1.
+  Fixed with it: a `pysacd convert` name could start with `-` after an empty `[]` or `()` was
+  removed, and `pysacd toc --json` wrote non-ASCII control characters from disc text to the terminal
+  as they were (it now writes ASCII, with `\u` escapes).
+
 - **CI builds and tests in Red Hat-derived containers.** The test suite on Python 3.10 to 3.15, the
   ASan/UBSan, leak, fuzz, `sacd_extract` comparison and benchmark jobs, the live MusicBrainz lookup
   and the release's sdist run in a Fedora 44 container; semgrep, zizmor and the private-names check

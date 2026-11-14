@@ -73,7 +73,9 @@ def _toc(args) -> int:
         else:
             _print(disc, path)
     if args.json:
-        json.dump(out if len(out) != 1 else out[0], sys.stdout, ensure_ascii=False, indent=2)
+        # ASCII only: disc text is untrusted, and C1 controls, bidi and tag characters would
+        # otherwise reach the terminal raw. JSON readers decode the \u escapes back.
+        json.dump(out if len(out) != 1 else out[0], sys.stdout, ensure_ascii=True, indent=2)
         print()
     return rc
 

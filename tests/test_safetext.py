@@ -490,5 +490,45 @@ class Properties(unittest.TestCase):
             self.assertEqual(got, [safetext.strip_controls(t, keep_tab_newline=True) for t in titles], i)
 
 
+class LateEdits(unittest.TestCase):
+    """Rules applied after name_component() must not undo it: removing an empty "[]" or "()"
+    or cutting a long name can expose a leading '-', '.' or space."""
+
+    def test_convert_names_never_start_with_dash_dot_or_space(self):
+        from pysacd.convert import _clean_component, render
+        for raw in ("[]-rf x", "()--help", "[] . x", "[ ]-x", "() -x", "[]..x", "[]", "() []", "[]. -x",
+                    "\x01[]-rf", "[]" + "-" * 300):
+            for portable in (False, True):
+                n = _clean_component(raw, portable)
+                self.assertTrue(n, raw)
+                self.assertFalse(n.startswith(("-", ".", " ")), (raw, n))
+                self.assertNotIn(n, (".", ".."))
+        self.assertEqual(_clean_component("[]-rf x", False), "_-rf x")
+        self.assertEqual(render("{a} [{e}]-{t}", {"a": "", "e": "", "t": "rf"}, False), "_-rf")
+        # ordinary names are untouched
+        for t in ("Kind of Blue [SACD]", "Vol. 2 (Live)", "a - b", "x [] y"):
+            self.assertEqual(_clean_component(t, False), t if t != "x [] y" else "x y")
+
+
+class TocJson(unittest.TestCase):
+    """`pysacd toc --json` prints disc text: nothing but ASCII reaches the terminal, and a JSON
+    reader still gets the text back."""
+
+    def test_json_is_ascii_and_round_trips(self):
+        import json
+        import subprocess
+        src = Path(__file__).resolve().parents[1] / "src"
+        title = "Ti\x9b31mtle\x85x \xe9"
+        with tempfile.TemporaryDirectory() as d:
+            iso = Path(d) / "c1.iso"
+            frame = bytes([0x69]) * (4704 * 2)
+            sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [frame] * 4, [4], dst=False, titles=["T\x9b0"])], title=title)
+            r = subprocess.run([sys.executable, "-m", "pysacd", "toc", "--json", str(iso)], capture_output=True,
+                               env=dict(os.environ, PYTHONPATH=str(src)), check=True)
+        self.assertTrue(r.stdout.isascii())
+        self.assertFalse(any(b < 0x20 and b not in (0x0A,) for b in r.stdout), "raw control bytes")
+        self.assertIn("\x9b", json.dumps(json.loads(r.stdout), ensure_ascii=False))
+
+
 if __name__ == "__main__":
     unittest.main()

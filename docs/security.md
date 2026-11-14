@@ -36,8 +36,9 @@ apart; every other invisible character is removed.
 
 | Where | Function | What happens |
 |---|---|---|
-| File and directory names (`convert`, and the `sacd_extract`-compatible names) | `name_component()`, `sbcompat._sanitize()` | invisible characters removed; other spaces (no-break, ideographic, …) become a plain space in `convert` names; `` ` $ \| ; < > `` replaced with `_`; no component starts with `-` or `.`; `/` can't split a component; names stay inside the output directory |
+| File and directory names (`convert`, and the `sacd_extract`-compatible names) | `name_component()`, `sbcompat._sanitize()` | invisible characters removed; other spaces (no-break, ideographic, …) become a plain space in `convert` names; `` ` $ \| ; < > `` replaced with `_`; no component starts with `-` or `.`, whatever is removed or cut before it, and none is empty, `.` or `..`; `/` can't split a component; names stay inside the output directory, which `pysacd-extract` checks again on the finished path before it creates anything |
 | Tags (ID3, Vorbis), cue sheets, XML | `clean_text()`, `strip_controls()` | invisible characters removed (XML keeps tab and newline, escaped); `clean_text()` also makes every space a plain one and normalises to NFC; cue fields can't break onto a new line; XML is escaped |
+| `pysacd toc --json` | `json` with ASCII output | every non-ASCII character is written as a `\u` escape, which JSON readers decode back |
 | Terminal and logs (`-P`, `pysacd toc`, progress, warnings, errors) | `for_terminal()` | invisible characters are shown as escapes (`\x1b`, `\u202e`, `\U000e0041`), so text can't drive the terminal (colour, title, OSC 52 clipboard writes, keystroke injection) or disguise what is shown (Trojan Source bidi tricks, zero-width characters) |
 | Error messages and tracebacks (stderr, log files) | `for_terminal()`, `format_exception()` | one-line failures are escaped; uncaught exceptions and logged tracebacks keep their stack but escape every exception message, newlines included, so an `OSError` on a hostile file name can't forge lines |
 

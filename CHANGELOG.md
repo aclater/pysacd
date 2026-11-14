@@ -9,6 +9,11 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+- **CI builds and tests in Red Hat-derived containers.** The test suite on Python 3.10 to 3.15, the
+  ASan/UBSan, leak, fuzz, `sacd_extract` comparison and benchmark jobs, the live MusicBrainz lookup
+  and the release's sdist run in a Fedora 44 container; semgrep, zizmor and the private-names check
+  in UBI 10, with semgrep and zizmor installed from PyPI by hash instead of their vendors' images.
+  CI only; the wheels and the package are unchanged ([development](docs/development.md#ci)).
 - **Python 3.10 is supported again (#140)**, so pysacd installs with Ubuntu 22.04's own Python. On 3.10 the
   config file is read with `tomli` (installed only there), and CI runs the suite on 3.10 too. The
   wheels are unchanged (one per platform serves every Python).

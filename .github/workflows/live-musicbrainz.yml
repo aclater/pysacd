@@ -18,14 +18,26 @@ jobs:
     name: live MusicBrainz lookup
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    container:
+      # Fedora 44, pinned by digest: the build and the tests run in Red Hat-derived userland;
+      # the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container.
+      image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Python 3.13 and the build packages (Fedora)
+        env:
+          PY: "3.13"
+        run: |
+          dnf -y -q --setopt=install_weak_deps=False install git-core gcc make flac-devel pkgconf-pkg-config findutils binutils diffutils file which \
+            "/usr/bin/python$PY" "/usr/include/python$PY/Python.h"
+          dnf clean all
+          "python$PY" -m venv "$RUNNER_TEMP/venv"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-        with:
-          python-version: "3.13"
 
       - name: Install
         run: python -m pip install --require-hashes -r requirements-test.txt   # hash-locked (#14)

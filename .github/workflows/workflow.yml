@@ -167,7 +167,18 @@ jobs:
   sdist:
     needs: [scarletbook]
     runs-on: ubuntu-latest
+    container:
+      # Fedora 44, pinned by digest: the sdist is built and checked in Red Hat-derived userland.
+      image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Python 3.13 and the build packages (Fedora)
+        run: |
+          dnf -y -q --setopt=install_weak_deps=False install git-core gcc make flac-devel pkgconf-pkg-config \
+            findutils binutils diffutils file which python3.13 python3.13-devel
+          dnf clean all
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -176,7 +187,7 @@ jobs:
       # requirements-dev.txt (#14), so nothing unhashed is downloaded (#70).
       - name: Install the build tools
         run: |
-          python -m venv /tmp/sdist-check
+          python3.13 -m venv /tmp/sdist-check
           /tmp/sdist-check/bin/pip install -q --require-hashes -r requirements-dev.txt
 
       - name: Build the sdist
@@ -184,7 +195,6 @@ jobs:
 
       - name: The sdist builds a working package
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends libflac-dev
           # a wheel built from the sdist alone, then installed without fetching anything;
           # pip check fails if it declares a dependency the lock doesn't provide
           /tmp/sdist-check/bin/python -m pip wheel -q --no-deps --no-build-isolation -w /tmp/sdist-wheel dist/*.tar.gz

@@ -40,6 +40,24 @@ behaviour, and a patch version only adds or fixes. Each release on
   written more than 10 seconds of silence beyond the audio it found. Ordinary discs, and truncated
   rips whose run still has more audio than silence, extract as before, byte for byte
   ([security](docs/security.md#hostile-images), [sacd_extract differences](docs/sacd_extract.md)).
+- **Network and credential hardening**, found in the same review (low severity, no advisory):
+  - MusicBrainz ids (release, release group, track, recording, artist) are kept only when they are
+    MBIDs, and the ISRC plan escapes the release id it prints. A `--mb-release` value (or
+    `mb_release` in the config) that isn't an MBID is now an error before any request.
+  - MusicBrainz, Cover Art Archive and OAuth requests have a deadline for the whole request (60 s,
+    300 s for covers), and network errors while reading a reply are retried and reported as
+    MusicBrainz errors instead of escaping as other exceptions. A malformed ISRC lookup reply no
+    longer raises `AttributeError`, and a token reply's `expires_in` must be a sane number.
+  - Requests use https only and follow at most 5 redirects, each to https; the token exchange and
+    the ISRC submission follow none, so credentials only go where they were meant to
+    ([security](docs/security.md#network-responses)).
+  - The MusicBrainz token is written through a new file with an unpredictable name, mode 0600 from
+    creation, and is not saved in a folder that other users can write.
+  - The log no longer records the value of `mb-login --client-secret`.
+  - An empty or relative `XDG_CONFIG_HOME` is ignored (as the XDG spec says), instead of making
+    pysacd read `pysacd/config.toml` from the current directory.
+  - A copy from a PS3 must average at least 256 KiB/s after a 300 s allowance, so a server can't
+    stretch it out indefinitely; real PS3s read 2-4 MB/s.
 
 ### Other changes
 

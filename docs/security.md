@@ -251,9 +251,10 @@ as hostile:
 - **Reconnects:** a reconnect that reports a different disc size or master TOC fails the
   copy. A server that swapped discs (even another pressing with the same size) can't splice
   another disc into the file.
-- **Temporary files:** the sparse ISO for a partial fetch is created with `mkstemp` (mode
-  0600, unpredictable name) in the output directory. It is removed on success, on error and on
-  Ctrl-C. A SIGKILL, or a SIGTERM with no handler, leaves a `.pysacd-remote-*.iso` behind.
+- **Temporary files:** the sparse ISO for a partial fetch is created like every other
+  output (a new file under an unpredictable `.pysacd-<random>.partial` name) in the output
+  directory. It is removed on success, on error and on
+  Ctrl-C. A SIGKILL, or a SIGTERM with no handler, leaves that `.partial` file behind.
   That is a known limitation.
 - **Text on the disc:** it's still disc text. Names, tags and output are neutralised as
   described under [Hostile text](#hostile-text), and every output path stays inside the output

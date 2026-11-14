@@ -38,7 +38,7 @@ deliberate:
 
 | Where | sacd_extract | pysacd-extract | Why |
 |---|---|---|---|
-| Two discs aimed at one folder (sets mastered as 1/1, e.g. *Live-Evil*) | mixes them silently, and overwrites tracks whose names match | writes the second disc to `<album> [<catalogue no.>]` and warns; `--disc N/M` gives sacd_extract's own `Disc N` layout | silent mixing is a bug (#4) |
+| Two discs aimed at one folder (sets mastered as 1/1, e.g. *Live-Evil*) | mixes them silently, and overwrites tracks whose names match | writes the second disc to `<album> [<catalogue no.>]` and warns; `--disc N/M` gives sacd_extract's own `Disc N` layout | silent mixing is a bug (#4). The discs are told apart by the names and the tags of the files in the folder (album, title, track number and count, ISRC), because `sacd_extract`'s files carry no catalogue number. **A disc for which all of those are equal is taken for the same disc, and its files are replaced, as `sacd_extract` does.** Use a separate `-o` for two masterings of one album |
 | Hostile disc text (invisible characters such as controls, bidi and zero-width characters, tag characters or U+2028; `` ` $ ; ``; a leading `-`) | copied into names, tags, cue, XML and `-P` as is | neutralised: invisible characters removed (a control becomes a space) and shown as escapes in `-P`; ordinary discs are unaffected | [security](security.md#hostile-text) |
 | A title with nothing usable in it (only dots, spaces or control characters), or one whose trimmed form starts with a dot | uses what its trimming leaves: `..`, `.`, a hidden `.name` or an empty name, so the output can land in the parent of the output folder, in the output folder itself or at the filesystem root | never makes `.`, `..` or a name starting with `.`: a leading `.` becomes `_`, an empty album folder is `Unknown Album`, an empty file name is `_`; and it refuses any path outside the output folder | output must stay inside the output folder ([security](security.md#hostile-text)); ordinary titles are unaffected |
 | A relative output folder starting with `./` or `../` (`-o ../out`) | trims the leading dots, which makes it `/out` | uses the folder as given | the folder is the user's choice |
@@ -65,7 +65,9 @@ short ones:
 - `--musicbrainz`: tags and cover art;
 - `--submit-isrcs` (with `--musicbrainz`): offer the disc's ISRCs to the
   matched release, asking first ([details](converting.md#submitting-isrcs-to-musicbrainz));
-- `--templates`: your own folder and file naming;
+- `--templates`: your own folder and file naming. A file that already exists is kept and counted
+  in a closing "skipped" line; `--overwrite` replaces it. (With `sacd_extract`'s own naming, a
+  re-run replaces the files, as `sacd_extract` does.)
 - `--threads`;
 - `--exact`: for a track far into an area, read the area up to it instead of starting
   provisionally ([why](development.md#the-audio-through-scarletbook));

@@ -21,6 +21,15 @@ behaviour, and a patch version only adds or fixes. Each release on
   Fixed with it: a `pysacd convert` name could start with `-` after an empty `[]` or `()` was
   removed, and `pysacd toc --json` wrote non-ASCII control characters from disc text to the terminal
   as they were (it now writes ASCII, with `\u` escapes).
+- **A disc could replace another disc's files without a warning**
+  ([GHSA-whv9-98xg-4xw9](https://github.com/aclater/pysacd/security/advisories/GHSA-whv9-98xg-4xw9)).
+  `pysacd convert` writes a disc to `<folder> [<catalogue number>]` when the folder holds a different
+  disc; with a very long album title the catalogue number was cut off and the disc went into the
+  first folder after all. The number is now always kept, and the run stops if no separate folder can
+  be named. `pysacd-extract --templates` replaced existing files; it now keeps them and reports them
+  as skipped, and the new `--overwrite` replaces them. With `sacd_extract`'s naming nothing changes:
+  a re-run replaces its files, and [the documentation](docs/sacd_extract.md#compatibility-policy) now
+  says what tells two discs apart there. Upgrade to 0.5.1.
 
 - **CI builds and tests in Red Hat-derived containers.** The test suite on Python 3.10 to 3.15, the
   ASan/UBSan, leak, fuzz, `sacd_extract` comparison and benchmark jobs, the live MusicBrainz lookup

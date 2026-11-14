@@ -112,6 +112,21 @@ Where `sacd_extract` differs on such images: it writes a zero-length track as a 
 with no audio, while `pysacd-extract` stops with an error ("empty range") and `pysacd convert`
 skips the track with a warning.
 
+**Another disc's output.** An image can't make pysacd replace the files of a different disc
+without saying so:
+
+- `pysacd convert` never replaces a file unless `--overwrite` is given, and a disc aimed at a
+  folder that holds a different disc (by catalogue number, barcode or MusicBrainz release in the
+  files' tags) goes to `<folder> [<catalogue number>]`. The catalogue number is always part of
+  that name, however long the album title is; if no separate folder can be named, the run stops.
+- `pysacd-extract --templates` keeps files that exist and reports them as skipped, unless
+  `--overwrite` is given.
+- `pysacd-extract` with `sacd_extract`'s naming replaces the files of a re-run, as `sacd_extract`
+  does, and keeps discs apart by the files' names and tags
+  ([the limit of that](sacd_extract.md#compatibility-policy)): an image that copies another
+  disc's album, track titles, track count and ISRCs is taken for that disc. Give untrusted images
+  their own output folder.
+
 ## Running as root
 
 The engine parses attacker-controlled images, and an image that exploited a bug in it would

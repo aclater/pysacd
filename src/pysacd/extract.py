@@ -83,6 +83,8 @@ class Opts:
     submit_isrcs: bool = False
     cover: bool = False
     templates: bool = False            # name files with pysacd's config templates
+    overwrite: bool = False            # --templates: replace files that exist
+    skipped: int = 0                   # --templates: files kept because they exist
     config: str | None = None
     use_cfg: bool = True
     logging: bool = False              # logging=1 in sacd_extract.cfg
@@ -144,6 +146,8 @@ def parse_args(argv: list[str]) -> Opts:
     x.add_argument("--cover", action="store_true", help="embed Cover Art Archive front cover (with --musicbrainz)")
     x.add_argument("--templates", action="store_true", help="name output with pysacd config templates")
     x.add_argument("--config", help="pysacd config file for --templates")
+    x.add_argument("--overwrite", action="store_true",
+                   help="with --templates: replace files that exist (default: keep them and say so)")
     x.add_argument("--no-cfg", dest="no_cfg", action="store_true", help="ignore ./sacd_extract.cfg")
     x.add_argument("--log-file", help="write a diagnostic log here (default level: debug)")
     x.add_argument("--log-level", choices=["debug", "info", "warning", "error"],
@@ -165,7 +169,7 @@ def parse_args(argv: list[str]) -> Opts:
              output_dir=_dirarg(a.output_dir), output_dir_conc=_dirarg(a.output_dir_conc),
              pcm=a.pcm, pcm_rate=a.pcm_rate, gain_db=a.gain_db, flac_level=a.flac_level,
              threads=a.threads, exact=a.exact, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
-             mb_contact=a.mb_contact, submit_isrcs=a.submit_isrcs, cover=a.cover, templates=a.templates, config=a.config,
+             mb_contact=a.mb_contact, submit_isrcs=a.submit_isrcs, cover=a.cover, templates=a.templates, overwrite=a.overwrite, config=a.config,
              use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc), log_file=a.log_file, log_level=a.log_level)
     if a.tracks:
         # like sacd_extract, the last -t wins; 0 and junk are ignored
@@ -405,6 +409,14 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
         if o.templates:
             from .convert import unique_path
             path = unique_path(_template_path(disc, area, first, ext, o, match), seen)
+            if path.exists() and not o.overwrite:
+                # Another disc with the same names would otherwise replace these files, and
+                # nothing in them says which disc they are from. Like pysacd convert: keep them.
+                o.skipped += 1
+                log.info("%s: exists, kept", safetext.for_terminal(path))
+                if kind == "dsf":
+                    prev_end = end
+                continue
         tmp = safeio.temp_name(path)
 
         if idx in chains_refused:
@@ -792,7 +804,9 @@ def _avoid_other_discs(disc: Disc, want: list[Area], o: Opts, out_dir: Path) -> 
     disc's tracks with another's), use "<album folder> [<catalogue number>]"
     instead and warn. A deliberate exception to sacd_extract compatibility (#4)."""
     if o.templates:
-        return out_dir      # pysacd naming: handled like pysacd convert
+        # pysacd naming: the folders come from the templates, and the files don't carry a
+        # catalogue number to compare, so plan_area() never replaces a file that exists
+        return out_dir
     clash: list[str] = []
     for area in want:
         folder = out_dir / sbcompat.area_dir_name(area) if disc.multichannel else out_dir
@@ -883,6 +897,9 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
             iso_path = None     # the image is copied during the first pass only
     if iso_path:
         rc |= _execute(img, disc, None, [], o, iso_path)
+    if o.skipped:
+        say(f"\n Warning: {o.skipped} file{'s' if o.skipped != 1 else ''} skipped (already exist; "
+            "--overwrite replaces them)")
     if o.refused:
         rc = 255        # as when the engine refuses a run
     say("\nProgram terminates!\n")      # with sacd_extract's final empty line

@@ -267,6 +267,26 @@ def _set_hint(labels: list[str], others: list[tagging.Tags], tags: tagging.Tags)
         f"--disc {i}/{total} for {lab}" for i, lab in enumerate(ordered, 1))
 
 
+LABEL_MAX_BYTES = 64
+
+
+def _labelled(name: str, label: str, portable: bool) -> str:
+    """"<name> [<label>]" within the name limit: the name gives way, never the label. Cutting
+    the whole string would drop the label from a long album title, and the "separate" folder
+    would be the one that already holds the other disc."""
+    tail = " [" + _cut(_clean_component(label, portable), LABEL_MAX_BYTES).strip() + "]"
+    head = _cut(name, NAME_MAX_BYTES - len(tail.encode())).rstrip(" .")
+    return _clean_component(head, portable) + tail
+
+
+def _holds_other_disc(d: Path, tags: tagging.Tags) -> bool:
+    if not d.is_dir():
+        return False
+    return any(o and _same_disc_or_set(o, tags) is False
+               for o in (tagging.read_tags(f) for f in sorted(d.iterdir())
+                         if f.suffix.lower() in AUDIO_SUFFIXES and not f.name.startswith(".")))
+
+
 def _avoid_other_discs(plan: list[tuple[Track, tagging.Tags, Path]], portable: bool,
                        ) -> list[tuple[Track, tagging.Tags, Path]]:
     """If a target directory already holds tracks of a different disc, write this
@@ -290,7 +310,10 @@ def _avoid_other_discs(plan: list[tuple[Track, tagging.Tags, Path]], portable: b
         if not label:
             raise SystemExit(f"{_term(d)} already holds a different disc, and this disc has no catalogue number or "
                              "barcode to tell them apart; use --dir-template or --disc")
-        target = d.with_name(_clean_component(f"{d.name} [{label}]", portable))
+        target = d.with_name(_labelled(d.name, label, portable))
+        if name_key(target) == name_key(d) or _holds_other_disc(target, tags):
+            raise SystemExit(f"{_term(d)} already holds a different disc, and no separate folder can be named for "
+                             f"this one ({_term(label)}); use --dir-template or another output folder")
         clash = [o for o in others if o and _same_disc_or_set(o, tags) is False]
         _log(f"warning: {_term(d)} already holds a different disc "
              f"({_term(', '.join(sorted({_disc_label(o) or '?' for o in clash})))}); "

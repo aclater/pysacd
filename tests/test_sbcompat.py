@@ -84,7 +84,9 @@ class Helpers(unittest.TestCase):
     def test_sanitize(self):
         # dots are trimmed before whitespace, as in the C code
         # (a '.' left in front by that order becomes '_': pysacd never makes a hidden name)
-        self.assertEqual(sb.sanitize_filename(' ..A/B: [x] "y"?. '), "_.A_B_ _x_ _y__.")
+        # (and Windows, which can't keep a trailing dot in a name, gets it without)
+        self.assertEqual(sb.sanitize_filename(' ..A/B: [x] "y"?. '),
+                         "_.A_B_ _x_ _y__" if sys.platform == "win32" else "_.A_B_ _x_ _y__.")
         self.assertEqual(sb.sanitize_filename("..A/B.."), "A_B")
         self.assertEqual(sb.sanitize_filepath('a/b:c?'), "a/b:c_")
 

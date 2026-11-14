@@ -136,11 +136,36 @@ def setup(level: str | None = None, path: str | os.PathLike | None = None, argv:
     log_environment(argv if argv is not None else sys.argv)
 
 
+# Options whose value is a secret. Logs get attached to bug reports, so their values are never
+# logged. (Passwords and login codes are asked for or read from PYSACD_MB_PASSWORD, never argv.)
+SECRET_OPTIONS = ("--client-secret",)
+
+
+def redact_argv(argv: list[str]) -> list[str]:
+    """argv with the values of SECRET_OPTIONS replaced by "***", in both the "--opt VALUE" and
+    "--opt=VALUE" forms, and for the abbreviations argparse accepts ("--client-sec")."""
+    def secret(opt: str) -> bool:
+        return len(opt) > 2 and opt.startswith("--") and any(s.startswith(opt) for s in SECRET_OPTIONS)
+
+    out: list[str] = []
+    hide_next = False
+    for a in argv:
+        if hide_next:
+            out.append("***")
+            hide_next = False
+        elif "=" in a and secret(a.split("=", 1)[0]):
+            out.append(a.split("=", 1)[0] + "=***")
+        else:
+            hide_next = secret(a)
+            out.append(a)
+    return out
+
+
 def log_environment(argv: list[str]) -> None:
     log = logging.getLogger(LOGGER)
     log.info("pysacd %s, Python %s (%s), %s", __version__, platform.python_version(),
              platform.python_implementation(), platform.platform())
-    log.info("command line: %s", " ".join(argv))
+    log.info("command line: %s", " ".join(redact_argv(argv)))
     log.info("working directory: %s", os.getcwd())
     log.debug("executable: %s; cpus: %s", sys.executable, os.cpu_count())
     cpu = _cpu_model()

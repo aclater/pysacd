@@ -266,6 +266,30 @@ class LogSafety(unittest.TestCase):
         self.assertNotIn("\x1b", text)
         self.assertNotIn("\nFAKE", text)
 
+    def test_secrets_not_logged(self):
+        # mb-login's --client-secret must not reach the log (logs are attached to bug reports)
+        from unittest import mock
+
+        from pysacd import __main__ as cli
+        from pysacd import isrcsubmit
+        from pysacd import log as pslog
+        path = self.dir / "l.log"
+        for args in (["--client-secret", "SUPERSECRET1"], ["--client-secret=SUPERSECRET2"],
+                     ["--client-sec", "SUPERSECRET3"], ["--client-secr=SUPERSECRET4"]):
+            with self.subTest(args=args), mock.patch("builtins.input", return_value="code"), \
+                    mock.patch.object(isrcsubmit, "finish_login") as login, \
+                    mock.patch("sys.stdout"):
+                self.assertEqual(cli.main(["--log-file", str(path), "mb-login", "--client-id", "CID", *args]), 0)
+                self.assertTrue(login.call_args.args[1].startswith("SUPERSECRET"))    # the secret was used
+        pslog.setup(None, None)
+        text = path.read_text()
+        self.assertIn("command line: pysacd --log-file", text)
+        self.assertIn("--client-id CID --client-secret ***", text)
+        self.assertIn("--client-secret=***", text)
+        self.assertNotIn("SUPERSECRET", text)
+        self.assertEqual(pslog.redact_argv(["x", "--client-id", "a", "--cover-size", "b", "--client-secret"]),
+                         ["x", "--client-id", "a", "--cover-size", "b", "--client-secret"])
+
     @unittest.skipUnless(hasattr(os, "O_NOFOLLOW"), "no O_NOFOLLOW on this platform")
     def test_symlinked_log_path_refused(self):
         from pysacd import log as pslog

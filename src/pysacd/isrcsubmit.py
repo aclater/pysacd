@@ -36,7 +36,7 @@ from . import __version__, musicbrainz
 from .toc import Area
 
 ISRC_RE = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
-MBID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+MBID_RE = musicbrainz.MBID_RE
 TOKEN_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "pysacd" / "musicbrainz-token.json"
 OOB = "urn:ietf:wg:oauth:2.0:oob"
 SCOPE = "submit_isrc"
@@ -249,7 +249,8 @@ def offer(match: musicbrainz.Match, area: Area, contact: str | None, *, dry_run:
     """Show the plan for one area, ask, and submit. Returns the number of ISRCs submitted."""
     from .safetext import for_terminal
     p = plan(match, area, contact)
-    out(f"ISRCs for {musicbrainz.API.rsplit('/ws/2', 1)[0]}/release/{p.release_id} ({for_terminal(p.medium)}):")
+    out(f"ISRCs for {musicbrainz.API.rsplit('/ws/2', 1)[0]}/release/{for_terminal(p.release_id)} "
+        f"({for_terminal(p.medium)}):")
     for i in p.items:
         note = f"  ({for_terminal(i.note)})" if i.note else ""
         out(f"  {i.track:3d}. {i.isrc or '-':12s}  {ACTION_TEXT[i.action]:16s} {for_terminal(i.title)}{note}")

@@ -16,12 +16,16 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
-from . import __version__
+from . import __version__, safetext
 from .toc import Area, Disc
 
 API = "https://musicbrainz.org/ws/2"
 CAA = "https://coverartarchive.org"
 RELEASE_INC = "artist-credits+labels+recordings+release-groups+isrcs"
+# A MusicBrainz identifier (MBID): a lowercase UUID. Release, release-group, track, recording and
+# artist ids are kept only in this form, because they go into request paths, cover URLs, tags and
+# the terminal; anything else a server sends in their place is dropped.
+MBID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 _lock = threading.Lock()
 _last_request = 0.0
@@ -139,7 +143,7 @@ def candidate_ids(disc: Disc, contact: str | None, text_search: bool = False) ->
 
     def add(releases, method):
         for r in _dicts(releases):
-            if _str(r.get("id")) is not None and r["id"] not in seen:
+            if _mbid(r.get("id")) is not None and r["id"] not in seen:
                 seen.add(r["id"])
                 out.append((r["id"], method))
 
@@ -168,7 +172,20 @@ def barcode_of(disc: Disc) -> str | None:
     return None
 
 
+def release_id_arg(value: str) -> str:
+    """A user-supplied release id (--mb-release, the mb_release config key) in canonical form;
+    MBError with a clear message if it isn't an MBID."""
+    rid = value.strip().lower() if isinstance(value, str) else ""
+    if not MBID_RE.fullmatch(rid):
+        shown = safetext.for_terminal(str(value)[:80])
+        raise MBError(f"--mb-release '{shown}' is not a MusicBrainz release id "
+                      "(expected the 36-character id from the release's URL, like 0a1b2c3d-...-...)")
+    return rid
+
+
 def lookup_release(release_id: str, contact: str | None) -> dict:
+    if _mbid(release_id) is None:
+        raise MBError("release id is not a MusicBrainz id")
     rel = clean_release(_json(f"release/{release_id}", contact, inc=RELEASE_INC))
     if rel is None:
         raise MBError(f"release {release_id}: malformed response")
@@ -182,6 +199,10 @@ def lookup_release(release_id: str, contact: str | None) -> dict:
 
 def _str(v) -> str | None:
     return v if isinstance(v, str) else None
+
+
+def _mbid(v) -> str | None:
+    return v if isinstance(v, str) and MBID_RE.fullmatch(v) else None
 
 
 def _num(v) -> float | None:
@@ -216,7 +237,7 @@ def _credits(v) -> list[dict]:
     out = []
     for c in _dicts(v):
         artist = c.get("artist")
-        if not isinstance(artist, dict) or _str(artist.get("id")) is None or _str(artist.get("name")) is None:
+        if not isinstance(artist, dict) or _mbid(artist.get("id")) is None or _str(artist.get("name")) is None:
             continue
         out.append({"name": _str(c.get("name")) or artist["name"], "joinphrase": _str(c.get("joinphrase")) or "",
                     "artist": {"id": artist["id"], "name": artist["name"]}})
@@ -226,14 +247,14 @@ def _credits(v) -> list[dict]:
 def _recording(v) -> dict | None:
     if not isinstance(v, dict):
         return None
-    r = _pick(v, id=_str, title=_str, length=_num)
+    r = _pick(v, id=_mbid, title=_str, length=_num)
     r["isrcs"] = [x for x in v.get("isrcs") or [] if isinstance(x, str)] if isinstance(v.get("isrcs"), list) else []
     r["artist-credit"] = _credits(v.get("artist-credit"))
     return r
 
 
 def _track(v: dict) -> dict:
-    t = _pick(v, id=_str, title=_str, number=_str, length=_num, position=_int)
+    t = _pick(v, id=_mbid, title=_str, number=_str, length=_num, position=_int)
     t["artist-credit"] = _credits(v.get("artist-credit"))
     rec = _recording(v.get("recording"))
     if rec is not None:
@@ -242,14 +263,14 @@ def _track(v: dict) -> dict:
 
 
 def clean_release(v) -> dict | None:
-    """A release with only well-typed fields (see above), or None without a string id."""
-    if not isinstance(v, dict) or _str(v.get("id")) is None:
+    """A release with only well-typed fields (see above), or None without an MBID."""
+    if not isinstance(v, dict) or _mbid(v.get("id")) is None:
         return None
-    rel = _pick(v, id=_str, title=_str, date=_str, barcode=_str, country=_str, status=_str)
+    rel = _pick(v, id=_mbid, title=_str, date=_str, barcode=_str, country=_str, status=_str)
     rel["artist-credit"] = _credits(v.get("artist-credit"))
     rg = v.get("release-group")
     if isinstance(rg, dict):
-        rel["release-group"] = _pick(rg, id=_str, first_release_date=_str, primary_type=_str)
+        rel["release-group"] = _pick(rg, id=_mbid, first_release_date=_str, primary_type=_str)
     rel["label-info"] = [
         {**({"label": {"name": li["label"]["name"]}} if isinstance(li.get("label"), dict)
             and _str(li["label"].get("name")) is not None else {}),
@@ -299,7 +320,7 @@ def score_medium(release: dict, medium: dict, disc: Disc, area: Area) -> tuple[f
 
 def find_release(disc: Disc, area: Area, contact: str | None, release_id: str | None = None,
                  text_search: bool = False, max_mean_diff: float = 3.0) -> Match | None:
-    cands = [(release_id, "release-id")] if release_id else candidate_ids(disc, contact, text_search)
+    cands = [(release_id_arg(release_id), "release-id")] if release_id else candidate_ids(disc, contact, text_search)
     best: Match | None = None
     best_rank = 0.0
     for rid, method in cands:
@@ -338,8 +359,10 @@ def find_release(disc: Disc, area: Area, contact: str | None, release_id: str | 
 def fetch_cover(release: dict, contact: str | None, size: str = "1200") -> tuple[bytes, str] | None:
     """Front cover from the Cover Art Archive (release, then release group)."""
     suffix = "front" if size == "full" else f"front-{size}"
-    urls = [f"{CAA}/release/{release['id']}/{suffix}"]
-    rg = release.get("release-group", {}).get("id")
+    urls = []
+    if _mbid(release.get("id")):
+        urls.append(f"{CAA}/release/{release['id']}/{suffix}")
+    rg = _mbid(release.get("release-group", {}).get("id"))
     if rg:
         urls.append(f"{CAA}/release-group/{rg}/{suffix}")
     for url in urls:

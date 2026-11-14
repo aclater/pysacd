@@ -85,6 +85,18 @@ class Planning(unittest.TestCase):
         self.assertNotIn("\x1b", "\n".join(out))
         self.assertIn("would be submitted", out[-1])
 
+    def test_offer_escapes_release_id(self, _):
+        # clean_release() keeps only MBIDs; offer() escapes the id as well, whatever the Match holds
+        bad = "abc\x1b]0;owned\x07\x1b[31m"
+        self.assertIsNone(musicbrainz.clean_release(
+            {"id": bad, "media": [{"format": "SACD", "tracks": [{"title": "t"}]}]}))
+        m = match([("a", R[0], [])])
+        m.release["id"] = bad
+        out: list[str] = []
+        isrcsubmit.offer(m, area(None), None, dry_run=True, out=out.append)
+        self.assertNotIn("\x1b", out[0])
+        self.assertNotIn("\x07", out[0])
+
     def test_offer_asks(self, _):
         m = match([("a", R[0], [])])
         with mock.patch.object(isrcsubmit, "submit") as sub, mock.patch("os.isatty", return_value=True):

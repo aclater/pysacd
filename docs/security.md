@@ -160,6 +160,12 @@ and with every output name pre-planted as a symlink to a file outside the direct
 MusicBrainz responses are read in chunks and capped at 8 MB, and cover art at 25 MB. A cover is
 embedded only if its first bytes say JPEG or PNG, whatever the server's `Content-Type`.
 
+MusicBrainz ids (release, release group, track, recording, artist) are kept only if they are
+MBIDs (lowercase UUIDs), because they go into request paths, Cover Art Archive URLs, tags and
+the terminal; anything else a server sends in their place is dropped. A `--mb-release` value
+(or `mb_release` in the config file) that isn't an MBID is an error before anything is
+requested; upper case and surrounding spaces are accepted.
+
 ## Extra isolation
 
 pysacd's defence against hostile images is validating its input: bounded lengths and

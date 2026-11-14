@@ -121,7 +121,7 @@ class HTTPLimits(unittest.TestCase):
             self.assertEqual(musicbrainz._get("https://example.invalid/x", None, limit=100)[0], b"x" * 100)
 
     def test_cover_magic_bytes(self):
-        release = {"id": "r", "release-group": {"id": "g"}}
+        release = {"id": "00000000-0000-4000-8000-000000000001", "release-group": {"id": "00000000-0000-4000-8000-000000000002"}}
         jpeg, png = b"\xff\xd8\xff\xe0" + bytes(20), b"\x89PNG\r\n\x1a\n" + bytes(20)
         for body, want in ((jpeg, "image/jpeg"), (png, "image/png"), (b"<html>", None), (b"MZ\x90\x00", None)):
             with self.subTest(body=body[:4]), \

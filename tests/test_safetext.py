@@ -208,6 +208,23 @@ class HostileMusicBrainz(unittest.TestCase):
             isrcsubmit.offer(m, area, None, dry_run=True, out=out.append)
         self.assertFalse(re.search(r"[\x00-\x08\x0a-\x1f\x7f-\x9f\u202a-\u202e]", "".join(out)))
 
+    def test_release_id_shown_escaped(self):
+        # The release id is printed in the ISRC plan and in the error for a bad --mb-release
+        import types
+        from unittest import mock
+
+        from pysacd import isrcsubmit, musicbrainz
+        bad = "abc\x1b]0;owned\x07\x1b[31m\u202e"
+        m = musicbrainz.Match({"id": bad}, {"format": "SACD", "tracks": [{"title": "t"}]}, 0.0, 0, "barcode")
+        out: list[str] = []
+        area = types.SimpleNamespace(tracks=[types.SimpleNamespace(isrc=None)])
+        with mock.patch.object(isrcsubmit, "_isrc_recordings", return_value=[]):
+            isrcsubmit.offer(m, area, None, dry_run=True, out=out.append)
+        with self.assertRaises(musicbrainz.MBError) as cm:
+            musicbrainz.release_id_arg(bad)
+        for text in (*out, str(cm.exception)):
+            self.assertFalse(re.search(r"[\x00-\x1f\x7f-\x9f\u202a-\u202e]", text), text)
+
 # ---------------------------------------------------------------- #47 part A
 
 INVISIBLE = safetext.INVISIBLE_CATEGORIES

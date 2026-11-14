@@ -9,6 +9,19 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+## 0.5.1 (2026-11-14)
+
+A security release. A private review of 0.5.0, asked for by the maintainer, found three problems
+that a crafted disc image can trigger, and a number of smaller ones; all are fixed here. **Upgrade
+if you convert images you did not rip yourself.** Two defaults change with the fixes:
+
+- a run now stops when it would write mostly silence or filler for audio the image lacks (more than
+  10 seconds beyond the audio it found). `--allow-silence` gives the old behaviour for a run, to
+  rescue what a damaged rip still holds;
+- `pysacd-extract --templates` keeps files that already exist; `--overwrite` replaces them.
+
+Output for ordinary discs is unchanged, byte for byte (release checks, below).
+
 ### Security
 
 - **Disc text could place `pysacd-extract`'s output outside the output folder**
@@ -70,6 +83,20 @@ behaviour, and a patch version only adds or fixes. Each release on
     when a folder already holds another disc's tracks; a run that skipped every file exits with 1;
   - before reopening a temporary file by name, pysacd checks it is still its own regular file;
   - an engine call that returns no result is a failure, not a success.
+
+Release checks for 0.5.1 (docs/development.md, "To release"): `tools/extract_compare.py
+--require-sacd-extract` against `sacd_extract` built from CI's pinned commit, 0.5.0 against the
+fixes, on three real discs (stereo and 6-channel DST; plain stereo with 6-channel DST; plain stereo)
+in all 35 modes (105 runs, 597 files): no difference between 0.5.0 and the fixes in any run. Against
+`sacd_extract`, of its 319 files 191 are identical and 128 differ only where docs/sacd_extract.md
+says they do; none differs otherwise, and `-P` matches on all three. That run was made before the
+one-worker default below (#137) was merged in; with it, the seven plain-DSD and mixed modes were run
+again on the two discs with plain areas (14 runs): no difference. The fixes were developed
+privately, where CI doesn't run, so these were run by hand on the release tree before it was
+published: the full suite (311 passed, the 16 expected skips), the whole suite under ASan and UBSan
+(clang), the `sacd_extract` comparison tests, the engine leak check (memcheck), ruff and mypy. The
+beets-pysacd test suite passes against this release's code. Not run by hand: macOS and Windows,
+CodeQL, semgrep and TSan, which the release pull request's CI ran.
 
 ### Other changes
 

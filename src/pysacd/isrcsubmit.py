@@ -118,7 +118,8 @@ def _isrc_recordings(isrc: str, contact: str | None) -> list[str]:
         if str(e).startswith("not found"):
             return []
         raise
-    return [r["id"] for r in data.get("recordings") or [] if isinstance(r.get("id"), str) and MBID_RE.fullmatch(r["id"])]
+    recs = musicbrainz._dicts(data.get("recordings")) if isinstance(data, dict) else []    # any shape may come back
+    return [r["id"] for r in recs if musicbrainz._mbid(r.get("id"))]
 
 
 def body(p: Plan) -> bytes:

@@ -113,6 +113,15 @@ class Planning(unittest.TestCase):
             sub.assert_not_called()
 
 
+class IsrcLookup(unittest.TestCase):
+    def test_malformed_replies(self):
+        for reply in ({"recordings": ["not-a-dict"]}, {"recordings": "x"}, {"recordings": [None, 5, {"id": 7}]},
+                      ["not", "a", "dict"], {"recordings": [{"id": "x\x1b"}, {"id": R[1]}]}):
+            with self.subTest(reply=reply), mock.patch.object(musicbrainz, "_json", return_value=reply):
+                want = [R[1]] if isinstance(reply, dict) and reply["recordings"][-1] == {"id": R[1]} else []
+                self.assertEqual(isrcsubmit._isrc_recordings("USABC1234567", None), want)
+
+
 class Tokens(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

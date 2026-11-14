@@ -7,6 +7,8 @@ track durations and ISRCs.
 
 from __future__ import annotations
 
+import http.client
+import ipaddress
 import json
 import re
 import threading
@@ -43,15 +45,90 @@ MAX_JSON = 8 << 20          # largest MusicBrainz response read (a big release i
 MAX_COVER = 25 << 20        # largest cover image read ("full" size covers can be ~10 MB)
 _IMAGE_MAGIC = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
 
+# Each socket operation times out after SOCKET_TIMEOUT, but that alone lets a server trickle a
+# response a byte at a time for as long as it likes. These deadlines bound a whole request,
+# from connecting to the last byte. A large release (~1 MB of JSON) arrives in a second or two;
+# 60 s leaves room for a slow link. A 25 MB "full" cover needs 300 s at ~85 kB/s, far below any
+# broadband or mobile link, and covers are usually 1200 px images of a few hundred kB.
+SOCKET_TIMEOUT = 30.0
+JSON_DEADLINE = 60.0
+COVER_DEADLINE = 300.0
+MAX_REDIRECTS = 5           # Cover Art Archive redirects once or twice (to archive.org)
 
-def _read_capped(r, limit: int, url: str) -> bytes:
-    """The response body, read in chunks; MBError beyond `limit` bytes (#14)."""
+
+def _read_capped(r, limit: int, url: str, deadline: float | None = None) -> bytes:
+    """The response body, read in chunks; MBError beyond `limit` bytes (#14) or after the
+    monotonic `deadline`. read1() returns what one socket read brings, so the deadline is
+    checked at least every SOCKET_TIMEOUT seconds however slowly the data comes."""
     out = bytearray()
-    while chunk := r.read(min(1 << 16, limit + 1 - len(out))):
+    read = getattr(r, "read1", None) or r.read
+    while True:
+        if deadline is not None and time.monotonic() > deadline:
+            raise MBError(f"{url}: response not complete in time")
+        chunk = read(min(1 << 16, limit + 1 - len(out)))
+        if not chunk:
+            left = getattr(r, "length", None)       # http.client: bytes of Content-Length still due
+            if isinstance(left, int) and left > 0:
+                raise http.client.IncompleteRead(bytes(out), left)
+            return bytes(out)
         out += chunk
         if len(out) > limit:
             raise MBError(f"{url}: response larger than {limit} bytes")
-    return bytes(out)
+
+
+def _loopback(host: str | None) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host or "").is_loopback
+    except ValueError:
+        return False
+
+
+def _allowed_url(url: str) -> bool:
+    """https only. Plain http is allowed only to a loopback address, and only when API itself is
+    an http URL on a loopback address (the tests' local servers); set_server() takes https only."""
+    u = urllib.parse.urlsplit(url)
+    if u.scheme == "https":
+        return True
+    api = urllib.parse.urlsplit(API)
+    return u.scheme == "http" and api.scheme == "http" and _loopback(api.hostname) and _loopback(u.hostname)
+
+
+class _Redirects(urllib.request.HTTPRedirectHandler):
+    """Follow at most MAX_REDIRECTS redirects, and only to URLs _allowed_url() accepts. With
+    follow=False (requests that carry credentials) refuse every redirect, so an Authorization
+    header or a password never reaches another URL, whatever the Python version does."""
+
+    max_redirections = MAX_REDIRECTS
+
+    def __init__(self, follow: bool = True):
+        super().__init__()
+        self.follow = follow
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not self.follow or not _allowed_url(newurl):
+            fp.close()
+            why = "redirect refused for an authenticated request" if not self.follow else \
+                "redirect to a non-https URL refused"
+            raise MBError(f"{req.full_url}: HTTP {code}: {why}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open(req: urllib.request.Request, timeout: float = SOCKET_TIMEOUT, follow: bool = True,
+          handlers: tuple = ()):
+    """Open `req` with the redirect rules above (every MusicBrainz, Cover Art Archive and OAuth
+    request goes through here)."""
+    if not _allowed_url(req.full_url):
+        raise MBError(f"{req.full_url}: only https:// URLs are used")
+    return urllib.request.build_opener(_Redirects(follow), *handlers).open(req, timeout=timeout)
+
+
+def _net_error(e: BaseException) -> str:
+    """A short description of a network failure (OSError, http.client.HTTPException, URLError)."""
+    if isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError):
+        return str(e.reason)[:200]
+    return f"{type(e).__name__}: {str(e)[:200]}" if str(e) else type(e).__name__
 
 
 def image_type(data: bytes) -> str | None:
@@ -80,25 +157,30 @@ def _throttle(url: str) -> None:
 
 
 def _get(url: str, contact: str | None, accept: str = "application/json", retries: int = 5,
-         limit: int = MAX_JSON) -> tuple[bytes, str]:
+         limit: int = MAX_JSON, deadline: float = JSON_DEADLINE) -> tuple[bytes, str]:
     req = urllib.request.Request(url, headers={"User-Agent": _user_agent(contact), "Accept": accept})
     for attempt in range(retries):
         _throttle(url)
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return _read_capped(r, limit, url), r.headers.get_content_type()
+            # The deadline covers one attempt: connecting, the headers and the whole body
+            end = time.monotonic() + deadline
+            with _open(req, timeout=min(SOCKET_TIMEOUT, deadline)) as r:
+                return _read_capped(r, limit, url, end), r.headers.get_content_type()
         except urllib.error.HTTPError as e:
+            e.close()
             if e.code == 404:
                 raise MBError(f"not found: {url}") from None
             if e.code in (429, 503) and attempt + 1 < retries:
                 time.sleep(2 ** (attempt + 1))  # rate limited: back off
                 continue
             raise MBError(f"HTTP {e.code} for {url}") from None
-        except urllib.error.URLError as e:
+        except (OSError, http.client.HTTPException) as e:
+            # URLError, and what reading the body raises: timeouts, resets, TLS errors,
+            # IncompleteRead. All are retried, then reported as MBError.
             if attempt + 1 < retries:
                 time.sleep(2)
                 continue
-            raise MBError(f"{url}: {e.reason}") from None
+            raise MBError(f"{url}: {_net_error(e)}") from None
     raise MBError(f"giving up on {url}")
 
 
@@ -367,7 +449,7 @@ def fetch_cover(release: dict, contact: str | None, size: str = "1200") -> tuple
         urls.append(f"{CAA}/release-group/{rg}/{suffix}")
     for url in urls:
         try:
-            data, _ = _get(url, contact, accept="image/*", limit=MAX_COVER)
+            data, _ = _get(url, contact, accept="image/*", limit=MAX_COVER, deadline=COVER_DEADLINE)
         except MBError:
             continue
         # Embed only what is really a JPEG or PNG, whatever the Content-Type says (#14)

@@ -160,6 +160,22 @@ and with every output name pre-planted as a symlink to a file outside the direct
 MusicBrainz responses are read in chunks and capped at 8 MB, and cover art at 25 MB. A cover is
 embedded only if its first bytes say JPEG or PNG, whatever the server's `Content-Type`.
 
+Each request also has a deadline for the whole exchange, from connecting to the last byte: 60 s
+for MusicBrainz JSON and OAuth replies (a large release is about 1 MB), 300 s for a cover (25 MB
+at about 85 kB/s). The 30 s socket timeout alone bounds only each read, so a server could
+otherwise trickle a reply for as long as it liked. Timeouts, resets, TLS errors and truncated
+bodies are retried like other network errors and then reported as a MusicBrainz error; a reply
+that runs past its deadline or its size cap is not retried.
+
+Requests use https only, and follow at most 5 redirects, each to an https URL (the Cover Art
+Archive redirects to archive.org hosts, so other hosts are allowed). Requests that carry
+credentials (the OAuth token exchange and the ISRC submission, with a Bearer token or digest
+auth) follow no redirect at all, so a token, client secret or password can only reach the URL it
+was meant for, on every supported Python. The one exception to https is for tests: when the
+MusicBrainz base URL itself is `http://` on a loopback address (tests point
+`pysacd.musicbrainz.API` at a local server), plain http to loopback addresses is allowed.
+`--mb-server` accepts only https URLs.
+
 MusicBrainz ids (release, release group, track, recording, artist) are kept only if they are
 MBIDs (lowercase UUIDs), because they go into request paths, Cover Art Archive URLs, tags and
 the terminal; anything else a server sends in their place is dropped. A `--mb-release` value

@@ -21,7 +21,9 @@ Safety rules:
 from __future__ import annotations
 
 import getpass
+import http.client
 import json
+import math
 import os
 import re
 import time
@@ -165,17 +167,32 @@ def _oauth_base() -> str:
     return musicbrainz.API.rsplit("/ws/2", 1)[0] + "/oauth2"
 
 
+def _expires_in(v) -> float:
+    """The token lifetime in seconds: a finite number, clamped to between 2 minutes and a year;
+    1 hour (MusicBrainz's usual) if the server sent none or something else."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return 3600.0
+    return min(max(float(v), 120.0), 365 * 86400.0)
+
+
 def _token_request(params: dict, contact: str | None) -> dict:
     req = urllib.request.Request(_oauth_base() + "/token", data=urllib.parse.urlencode(params).encode(),
                                  headers={"User-Agent": musicbrainz._user_agent(contact)})
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            tok = json.loads(musicbrainz._read_capped(r, 1 << 20, "OAuth token response"))   # #14
+        # The body carries the client secret (and a code or refresh token): no redirects
+        end = time.monotonic() + musicbrainz.JSON_DEADLINE
+        with musicbrainz._open(req, follow=False) as r:
+            tok = json.loads(musicbrainz._read_capped(r, 1 << 20, "OAuth token response", end))   # #14
     except urllib.error.HTTPError as e:
+        e.close()
         raise musicbrainz.MBError(f"OAuth token request failed: HTTP {e.code}") from None
+    except (OSError, http.client.HTTPException) as e:
+        raise musicbrainz.MBError(f"OAuth token request failed: {musicbrainz._net_error(e)}") from None
+    except ValueError:
+        raise musicbrainz.MBError("OAuth token response is not JSON") from None
     if not isinstance(tok, dict) or not isinstance(tok.get("access_token"), str):
         raise musicbrainz.MBError("OAuth token response has no access_token")
-    tok["expires_at"] = time.time() + float(tok.get("expires_in") or 3600) - 60
+    tok["expires_at"] = time.time() + _expires_in(tok.get("expires_in")) - 60
     return tok
 
 
@@ -216,7 +233,7 @@ def submit(p: Plan, contact: str | None, user: str | None = None, token_path: Pa
         return
     url = f"{musicbrainz.API}/recording/?client=pysacd-{__version__}"
     headers = {"User-Agent": musicbrainz._user_agent(contact), "Content-Type": "application/xml; charset=utf-8"}
-    opener = urllib.request.build_opener()
+    handlers: tuple = ()
     bearer = _bearer(contact, token_path)
     if bearer:
         headers["Authorization"] = f"Bearer {bearer}"
@@ -224,19 +241,28 @@ def submit(p: Plan, contact: str | None, user: str | None = None, token_path: Pa
         password = os.environ.get("PYSACD_MB_PASSWORD") or getpass.getpass(f"MusicBrainz password for {user}: ")
         mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
         mgr.add_password(None, musicbrainz.API, user, password)
-        opener = urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(mgr))
+        handlers = (urllib.request.HTTPDigestAuthHandler(mgr),)
     else:
         raise musicbrainz.MBError("not signed in: run `pysacd mb-login`, or pass --mb-user for digest auth")
     musicbrainz._throttle(url)
     req = urllib.request.Request(url, data=body(p), headers=headers, method="POST")
     try:
-        with opener.open(req, timeout=60) as r:
-            reply = r.read(65536)
+        # Credentials go with this request: no redirects, so they never reach another URL
+        end = time.monotonic() + musicbrainz.JSON_DEADLINE
+        with musicbrainz._open(req, timeout=60, follow=False, handlers=handlers) as r:
+            reply = musicbrainz._read_capped(r, 65536, "submission reply", end)
     except urllib.error.HTTPError as e:
-        detail = e.read(2048).decode("utf-8", "replace")
+        try:
+            detail = e.read(2048).decode("utf-8", "replace")
+        except (OSError, http.client.HTTPException):
+            detail = ""
+        e.close()
         m = re.search(r"<text>(.*?)</text>", detail, re.DOTALL)
         raise musicbrainz.MBError(f"submission refused: HTTP {e.code}"
                                   + (f": {m.group(1)[:200]}" if m else "")) from None
+    except (OSError, http.client.HTTPException) as e:
+        raise musicbrainz.MBError(f"submission failed: {musicbrainz._net_error(e)}; "
+                                  "check on MusicBrainz whether it was applied before retrying") from None
     if b"<text>OK</text>" not in reply:
         raise musicbrainz.MBError("unexpected reply from MusicBrainz: " + reply[:200].decode("utf-8", "replace"))
 

@@ -210,5 +210,146 @@ class ExtractDiscCollisions(DiscCollisions):
             self.assertEqual(a[k], b[k], k)
 
 
+@unittest.skipUnless(dst.HAVE_NATIVE, "native helper not built (make)")
+class NoSilentReplacement(unittest.TestCase):
+    """A second disc never replaces the first disc's files without saying so, even when its
+    album and track names are the same (docs/security.md, "Hostile images")."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.out = self.dir / "out"
+        self.out.mkdir()
+        self.env = dict(os.environ, PYTHONPATH=str(SRC))
+
+    def iso(self, name: str, seed: int, title: str = "Same", **info) -> Path:
+        path = self.dir / f"{name}.iso"
+        frames = [sacdgen._dsd_frame(2, seed + i) for i in range(6)]
+        sacdgen.build_iso(path, [sacdgen.AreaSpec(2, frames, [3, 3], dst=False, titles=["One", "Two"])],
+                          info=sacdgen.DiscInfo(title=title, artist="A", **info))
+        return path
+
+    def hashes(self) -> dict[str, str]:
+        import hashlib
+        return {p.relative_to(self.out).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in sorted(self.out.rglob("*.dsf"))}
+
+    def convert(self, iso: Path) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, "-m", "pysacd", "convert", "--config", os.devnull, "--no-musicbrainz",
+                               "-o", str(self.out), str(iso)], env=self.env, capture_output=True, text=True, check=False)
+
+    def extract(self, iso: Path, *extra: str) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, "-m", "pysacd.extract", "--no-cfg", "--templates", "--config", os.devnull,
+                               "-s", "-o", str(self.out), "-i", str(iso), *extra],
+                              env=self.env, capture_output=True, text=True, check=False)
+
+    def test_convert_long_title_keeps_the_label(self):
+        # 250 bytes of title: the folder name is cut, and the cut must not take the label
+        for title in ("A" * 250, "\u00e9" * 120):
+            with self.subTest(title=title[:3]):
+                for p in self.out.iterdir():
+                    __import__("shutil").rmtree(p)
+                a = self.iso("a", 0, title=title, album_catalog="CAT-A", disc_catalog="DISC-A")
+                b = self.iso("b", 50, title=title, album_catalog="CAT-B", disc_catalog="DISC-B")
+                r = self.convert(a)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                first = self.hashes()
+                self.assertEqual(len(first), 2)
+                r = self.convert(b)
+                self.assertEqual(r.returncode, 0, r.stderr)
+                self.assertIn("already holds a different disc", r.stderr)
+                after = self.hashes()
+                self.assertEqual({k: after[k] for k in first}, first)       # the first disc is untouched
+                self.assertEqual(len(after), 4)
+                folders = {Path(k).parent.name for k in after}
+                self.assertEqual(len(folders), 2)
+                self.assertTrue(any(f.endswith("]") and "DISC-B" in f or "CAT-B" in f for f in folders), folders)
+                for f in folders:
+                    self.assertLessEqual(len(f.encode()), 255)
+
+    def test_labelled(self):
+        from pysacd.convert import NAME_MAX_BYTES, _labelled
+        self.assertEqual(_labelled("Album", "CAT 1", False), "Album [CAT 1]")
+        n = _labelled("A" * 400, "CAT-B", False)
+        self.assertTrue(n.endswith(" [CAT-B]"))
+        self.assertLessEqual(len(n.encode()), NAME_MAX_BYTES)
+        n = _labelled("\u00e9" * 400, "L" * 300, False)
+        self.assertTrue(n.endswith("]"))
+        self.assertLessEqual(len(n.encode()), NAME_MAX_BYTES)
+        self.assertNotEqual(n, "\u00e9" * 120)
+
+    def test_extract_templates_keeps_existing_files(self):
+        a = self.iso("a", 0, album_catalog="CAT-A", disc_catalog="DISC-A")
+        b = self.iso("b", 50, album_catalog="CAT-B", disc_catalog="DISC-B")
+        r = self.extract(a)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        first = self.hashes()
+        self.assertEqual(len(first), 2)
+        r = self.extract(b)
+        self.assertEqual(self.hashes(), first)
+        self.assertIn("2 files skipped (already exist; --overwrite replaces them)", r.stdout)
+        self.assertEqual(r.returncode, 1)          # nothing written: not a finished extraction
+        r = self.extract(b, "--overwrite")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(sorted(self.hashes()), sorted(first))
+        self.assertNotEqual(self.hashes(), first)
+
+    def test_extract_templates_warns_about_a_mixed_folder(self):
+        a = self.iso("a", 0)
+        self.extract(a)
+        c = self.dir / "c.iso"
+        frames = [sacdgen._dsd_frame(2, 90 + i) for i in range(6)]
+        sacdgen.build_iso(c, [sacdgen.AreaSpec(2, frames, [2, 2, 2], dst=False, titles=["Uno", "Dos", "Tres"])],
+                          info=sacdgen.DiscInfo(title="Same", artist="A"))
+        r = self.extract(c)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("already holds tracks of another disc", r.stderr)
+        self.assertEqual(len(self.hashes()), 5)
+
+    def test_replacing_files_of_another_size_is_said(self):
+        # sacd_extract's naming: a re-run replaces, silently when the sizes are the same
+        run = lambda iso: subprocess.run([sys.executable, "-m", "pysacd.extract", "--no-cfg", "-s", "-o",
+                                          str(self.out), "-i", str(iso)], env=self.env, capture_output=True,
+                                         text=True, check=False)
+        a = self.iso("a", 0)
+        self.assertNotIn("WARNING", run(a).stderr)
+        self.assertNotIn("WARNING", run(a).stderr)
+        # the same names and tags, longer tracks
+        d = self.dir / "d.iso"
+        frames = [sacdgen._dsd_frame(2, 70 + i) for i in range(16)]
+        sacdgen.build_iso(d, [sacdgen.AreaSpec(2, frames, [8, 8], dst=False, titles=["One", "Two"])],
+                          info=sacdgen.DiscInfo(title="Same", artist="A"))
+        r = run(d)
+        self.assertIn("replacing 2 existing files of a different size", r.stderr)
+
+    def test_convert_refuses_a_path_outside_the_output_folder(self):
+        from unittest import mock
+
+        from pysacd import convert as cv
+        a = self.iso("a", 0)
+        with mock.patch.object(cv, "render", return_value="../../escape"), self.assertRaises(SystemExit) as e:
+            cv.convert(str(a), cv.Options(output_dir=str(self.out), format="dsf", musicbrainz=False, cover=False,
+                                          cover_file=""))
+        self.assertIn("outside the output folder", str(e.exception))
+        self.assertEqual(list(self.dir.rglob("*.dsf")), [])
+
+    def test_check_own_file(self):
+        from pysacd import safeio
+        f = self.dir / "f"
+        f.write_bytes(b"x")
+        safeio.check_own_file(f)
+        if os.name == "posix":
+            link = self.dir / "l"
+            link.symlink_to(f)
+            with self.assertRaises(OSError):
+                safeio.check_own_file(link)
+            os.link(f, self.dir / "hard")
+            with self.assertRaises(OSError):
+                safeio.check_own_file(f)
+        self.assertTrue(safeio.inside("out", "out/a/../b"))
+        self.assertFalse(safeio.inside("out", "out/../b"))
+
+
 if __name__ == "__main__":
     unittest.main()

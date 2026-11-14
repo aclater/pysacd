@@ -4,11 +4,14 @@ No test talks to MusicBrainz. Lookups are patched, and the submission goes to a
 local HTTP server that records the request.
 """
 
+import http.client
 import http.server
+import io
 import os
 import stat
 import tempfile
 import threading
+import time
 import types
 import typing
 import unittest
@@ -85,6 +88,18 @@ class Planning(unittest.TestCase):
         self.assertNotIn("\x1b", "\n".join(out))
         self.assertIn("would be submitted", out[-1])
 
+    def test_offer_escapes_release_id(self, _):
+        # clean_release() keeps only MBIDs; offer() escapes the id as well, whatever the Match holds
+        bad = "abc\x1b]0;owned\x07\x1b[31m"
+        self.assertIsNone(musicbrainz.clean_release(
+            {"id": bad, "media": [{"format": "SACD", "tracks": [{"title": "t"}]}]}))
+        m = match([("a", R[0], [])])
+        m.release["id"] = bad
+        out: list[str] = []
+        isrcsubmit.offer(m, area(None), None, dry_run=True, out=out.append)
+        self.assertNotIn("\x1b", out[0])
+        self.assertNotIn("\x07", out[0])
+
     def test_offer_asks(self, _):
         m = match([("a", R[0], [])])
         with mock.patch.object(isrcsubmit, "submit") as sub, mock.patch("os.isatty", return_value=True):
@@ -99,6 +114,15 @@ class Planning(unittest.TestCase):
             with self.assertRaisesRegex(musicbrainz.MBError, "--yes"):
                 isrcsubmit.offer(m, area("GBAAA0400001"), None, out=lambda s: None)
             sub.assert_not_called()
+
+
+class IsrcLookup(unittest.TestCase):
+    def test_malformed_replies(self):
+        for reply in ({"recordings": ["not-a-dict"]}, {"recordings": "x"}, {"recordings": [None, 5, {"id": 7}]},
+                      ["not", "a", "dict"], {"recordings": [{"id": "x\x1b"}, {"id": R[1]}]}):
+            with self.subTest(reply=reply), mock.patch.object(musicbrainz, "_json", return_value=reply):
+                want = [R[1]] if isinstance(reply, dict) and reply["recordings"][-1] == {"id": R[1]} else []
+                self.assertEqual(isrcsubmit._isrc_recordings("USABC1234567", None), want)
 
 
 class Tokens(unittest.TestCase):
@@ -124,6 +148,34 @@ class Tokens(unittest.TestCase):
         with self.assertRaises(OSError):
             isrcsubmit.load_token(self.path)
 
+    def test_no_predictable_temp_name(self):
+        # A file (or symlink) planted at the old fixed temp name is neither used nor followed
+        self.path.parent.mkdir(mode=0o700)
+        planted = self.path.with_name(self.path.name + ".tmp")
+        planted.write_text("planted")
+        with mock.patch("os.open", wraps=os.open) as op:
+            isrcsubmit.save_token({"access_token": "t"}, self.path)
+        flags = [c.args[1] for c in op.call_args_list]
+        self.assertTrue(flags and all(f & os.O_EXCL and f & os.O_CREAT for f in flags))
+        self.assertEqual(planted.read_text(), "planted")
+        self.assertEqual(sorted(p.name for p in self.path.parent.iterdir()), sorted([self.path.name, planted.name]))
+
+    @unittest.skipUnless(os.name == "posix", "POSIX permissions")
+    def test_writable_folder_refused(self):
+        self.path.parent.mkdir(mode=0o700)
+        for mode in (0o770, 0o707, 0o777):
+            os.chmod(self.path.parent, mode)
+            with self.subTest(mode=oct(mode)), self.assertRaisesRegex(musicbrainz.MBError, "writable by other"):
+                isrcsubmit.save_token({"access_token": "t"}, self.path)
+            self.assertFalse(self.path.exists())
+        os.chmod(self.path.parent, 0o755)
+        with mock.patch.object(os, "geteuid", return_value=os.geteuid() + 1), \
+                self.assertRaisesRegex(musicbrainz.MBError, "another user"):
+            isrcsubmit.save_token({"access_token": "t"}, self.path)
+        self.assertFalse(self.path.exists())
+        isrcsubmit.save_token({"access_token": "t"}, self.path)
+        self.assertEqual(stat.S_IMODE(os.stat(self.path).st_mode), 0o600)
+
     @unittest.skipUnless(os.name == "posix", "POSIX permissions")
     def test_readable_by_others_refused(self):
         for mode in (0o100640, 0o100604, 0o100620):
@@ -139,14 +191,48 @@ class _Server(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
         type(self).seen.append((self.path, dict(self.headers), self.rfile.read(n)))
-        code, body = type(self).reply
+        code, body, *extra = type(self).reply
         self.send_response(code)
+        for k, v in (extra[0] if extra else {}).items():
+            self.send_header(k, v)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def log_message(self, *a):
         pass
+
+
+class TokenResponses(unittest.TestCase):
+    def reply(self, body: bytes):
+        r = mock.MagicMock()
+        stream = io.BytesIO(body)
+        r.read1.side_effect = stream.read1
+        r.__enter__.return_value = r
+        return r
+
+    def test_expires_in_validated(self):
+        for v, want in ((3600, 3600), (None, 3600), ("abc", 3600), (True, 3600), (float("nan"), 3600),
+                        (float("inf"), 3600), (-5, 120), (1e300, 365 * 86400), (86400.5, 86400.5)):
+            with self.subTest(v=v):
+                self.assertEqual(isrcsubmit._expires_in(v), want)
+        # through the request: a JSON reply whose expires_in isn't a number
+        for raw in (b'"abc"', b"1e999", b"NaN", b"[1]"):
+            body = b'{"access_token": "t", "expires_in": ' + raw + b"}"
+            with self.subTest(raw=raw), mock.patch.object(musicbrainz, "_open", return_value=self.reply(body)):
+                tok = isrcsubmit._token_request({}, None)
+                self.assertLess(tok["expires_at"] - time.time(), 3600)
+
+    def test_network_errors_are_mberror(self):
+        for exc in (TimeoutError("t"), ConnectionResetError(104, "reset"), http.client.IncompleteRead(b"", 3)):
+            r = self.reply(b"")
+            r.read1.side_effect = exc
+            with self.subTest(exc=type(exc).__name__), mock.patch.object(musicbrainz, "_open", return_value=r), \
+                    self.assertRaisesRegex(musicbrainz.MBError, "OAuth token request failed"):
+                isrcsubmit._token_request({}, None)
+        with mock.patch.object(musicbrainz, "_open", return_value=self.reply(b"<html>")), \
+                self.assertRaisesRegex(musicbrainz.MBError, "not JSON"):
+            isrcsubmit._token_request({}, None)
 
 
 class Submission(unittest.TestCase):
@@ -182,11 +268,42 @@ class Submission(unittest.TestCase):
         with self.assertRaisesRegex(musicbrainz.MBError, "HTTP 400: Invalid ISRC"):
             isrcsubmit.submit(self.plan, None, token_path=self.token)
 
+    def test_a_timed_out_submission_says_to_check_first(self):
+        isrcsubmit.save_token({"access_token": "abc", "expires_at": 4e9, "server": musicbrainz.API}, self.token)
+        with mock.patch.object(musicbrainz, "_open", side_effect=musicbrainz.MBError("x: no response in time")), \
+                self.assertRaisesRegex(musicbrainz.MBError, "no response in time; check on MusicBrainz"):
+            isrcsubmit.submit(self.plan, None, token_path=self.token)
+
     def test_token_for_another_server_not_used(self):
         isrcsubmit.save_token({"access_token": "abc", "expires_at": 4e9, "server": "https://x/ws/2"}, self.token)
         with self.assertRaisesRegex(musicbrainz.MBError, "not signed in"):
             isrcsubmit.submit(self.plan, None, token_path=self.token)
         self.assertEqual(_Server.seen, [])
+
+    def test_authenticated_requests_never_redirected(self):
+        # A redirect (even to the same loopback server) is refused: credentials go to one URL only
+        isrcsubmit.save_token({"access_token": "abc", "expires_at": 4e9, "server": musicbrainz.API}, self.token)
+        for code in (301, 302, 303, 307, 308):
+            _Server.seen = []
+            _Server.reply = (code, b"", {"Location": f"http://127.0.0.1:{self.httpd.server_port}/elsewhere"})
+            # Python 3.10's urllib doesn't treat 308 as a redirect at all: it comes back as an
+            # ordinary HTTP error. Either way the request is not followed, which is the point.
+            with self.subTest(code=code), self.assertRaisesRegex(
+                    musicbrainz.MBError, "redirect refused|submission refused: HTTP 308"):
+                isrcsubmit.submit(self.plan, None, token_path=self.token)
+            self.assertEqual([p for p, _, _ in _Server.seen], [_Server.seen[0][0]])    # one request, no follow-up
+        _Server.seen = []
+        _Server.reply = (307, b"", {"Location": f"http://127.0.0.1:{self.httpd.server_port}/elsewhere"})
+        with self.assertRaisesRegex(musicbrainz.MBError, "redirect refused"):
+            isrcsubmit.finish_login("id", "secret", "code", None, path=self.token)
+        self.assertEqual(len(_Server.seen), 1)
+
+    def test_digest_request_never_redirected(self):
+        _Server.reply = (307, b"", {"Location": f"http://127.0.0.1:{self.httpd.server_port}/elsewhere"})
+        with mock.patch.dict(os.environ, {"PYSACD_MB_PASSWORD": "pw"}), \
+                self.assertRaisesRegex(musicbrainz.MBError, "redirect refused"):
+            isrcsubmit.submit(self.plan, None, user="u", token_path=self.token)
+        self.assertEqual(len(_Server.seen), 1)
 
     def test_set_server_https_only(self):
         with self.assertRaises(musicbrainz.MBError):

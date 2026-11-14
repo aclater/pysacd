@@ -21,8 +21,9 @@ Requirements:
   WAV still work.
 - `mutagen`, for tagging.
 
-The defaults are set in `~/.config/pysacd/config.toml`, using the same names
-as the long options with underscores; command-line flags override them:
+The defaults are set in `~/.config/pysacd/config.toml` (`$XDG_CONFIG_HOME/pysacd/config.toml`
+when `XDG_CONFIG_HOME` is an absolute path; an empty or relative one is ignored), using the same
+names as the long options with underscores; command-line flags override them:
 
 ```toml
 dir_template = "{albumartist}/{year} - {album} [{edition}]"
@@ -91,8 +92,9 @@ How it works:
     threads decodes DST ahead of it, and groups them into batches of 32 frames. Where a DSDIFF
     output keeps the DST frames as stored (edit master, `-p` without `-c`), scarletbook hands
     out each position's stored frame next to its decoded audio, from the same read.
-  - **Worker pool** (`-j` or `--threads`, defaulting to the CPU count): converts DSD to PCM
-    and lays out DSF blocks. scarletbook's decoding pool has one thread fewer, so the reader,
+  - **Worker pool** (`-j` or `--threads`, defaulting to the CPU count; one worker when plain
+    DSD goes to DSF or DSDIFF, where there is nothing to decode or filter, #137): converts DSD
+    to PCM and lays out DSF blocks. scarletbook's decoding pool has one thread fewer, so the reader,
     which works on every frame, has a CPU of its own (#94).
   - **Writer thread:** writes every overlapping output in order. That covers
     DSF, DSDIFF (DSD or DST passthrough), WAV and FLAC.

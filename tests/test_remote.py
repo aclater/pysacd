@@ -187,6 +187,33 @@ class Simulator(_SimBase):
             c2.close()
 
 
+class OddServers(unittest.TestCase):
+    def test_bytes_type_field_not_dumped(self):
+        # A response type sent as ~1 MB of bytes: the error names its size, not its contents
+        import socket
+        import threading
+
+        from pysacd.remote import encode_message
+        srv = socket.create_server(("127.0.0.1", 0))
+
+        def serve():
+            conn, _ = srv.accept()
+            with conn:
+                conn.recv(64)
+                conn.sendall(encode_message([(1, b"\x1b" * 1_000_000), (2, 0)]))
+                conn.recv(64)
+        threading.Thread(target=serve, daemon=True).start()
+        try:
+            c = PS3Client(*srv.getsockname(), timeout=5)
+            with self.assertRaises(RemoteError) as cm, self.assertLogs("pysacd.remote", "ERROR"):
+                c.size()
+            c.sock.close()
+        finally:
+            srv.close()
+        self.assertIn("<1000000 bytes>", str(cm.exception))
+        self.assertLess(len(str(cm.exception)), 200)
+
+
 class Fetch(_SimBase):
     def test_whole_disc_copy_is_identical(self):
         with self.sim() as s, tempfile.TemporaryDirectory() as d:
@@ -275,6 +302,34 @@ class Fetch(_SimBase):
         finally:
             stop.set()
             srv.close()
+
+    def test_slow_server_abandoned(self):
+        # Every reply is well inside the per-request timeout, but the copy as a whole is far too
+        # slow: 8 KiB per 0.4 s against a required 100 kB/s average.
+        import time
+        with self.sim(rate=20_000) as s, tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "c.iso")
+            t0 = time.monotonic()
+            with self.assertRaisesRegex(RemoteError, "too slow"), self.assertLogs("pysacd.remote", "ERROR"):
+                fetch(*s.address, out, [(0, 100)], chunk=4, min_rate=100_000, grace=0.5, backoff=0)
+            self.assertLess(time.monotonic() - t0, 10)
+            self.assertFalse(os.path.exists(out))
+            self.assertEqual(os.listdir(d), [])            # the temporary file is gone too
+
+    def test_slow_server_within_rate_is_fine(self):
+        with self.sim(rate=2_000_000) as s, tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "c.iso")
+            fetch(*s.address, out, [(0, 100)], chunk=4, min_rate=100_000, grace=0.5, backoff=0)
+            with open(out, "rb") as f:
+                self.assertEqual(f.read(100 * 2048), self.data[:100 * 2048])
+
+    def test_resume_counts_toward_the_same_deadline(self):
+        # Reconnecting does not reset the clock, and a resumed copy that keeps pace still succeeds
+        with self.sim(drop_after=3) as s, tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "c.iso")
+            fetch(*s.address, out, chunk=300, retries=1, backoff=0, min_rate=1_000_000, grace=5)
+            with open(out, "rb") as f:
+                self.assertEqual(f.read(), self.data)
 
     def test_needed_ranges_skip_unwanted_area_audio(self):
         with self.sim() as s:

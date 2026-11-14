@@ -317,6 +317,20 @@ def _audio_case(fn, which: int = 0) -> bytes:
     return bytes(img)
 
 
+def overlapping_tracks(frames: int, tracks: int = 3) -> bytes:
+    """The base image with a stereo area whose audio range runs to LSN 2^32-1, a play time of
+    `frames` frames, and `tracks` tracks that each cover all of it from frame 0. Only the image
+    bounds what the area can hold, so a caller extends the file (sparsely) to give it room."""
+    def fn(a):
+        _set(a, 76, ">I", 0xFFFFFFFF)
+        a[64:67] = _tc(frames)
+        a[69] = tracks
+        for i in range(tracks):
+            a[5 * S + 8 + i * 4:5 * S + 11 + i * 4] = _tc(0)
+            a[5 * S + 8 + 255 * 4 + i * 4:5 * S + 11 + 255 * 4 + i * 4] = _tc(frames)
+    return _area_case(fn)
+
+
 def _custom_audio(spec_fn) -> bytes:
     """An image built from base_areas() after spec_fn(areas) rewrote them."""
     areas = base_areas()
@@ -448,6 +462,8 @@ def hostile_corpus() -> list[Hostile]:
         _set(a, 76, ">I", 0xFFFFFFFF), a.__setitem__(slice(64, 67), b"\xff\xff\xff"),
         durations([b"\xff\xff\xff"] * 3)(a))),
         "hours-long tracks in an area that claims to run to LSN 2^32-1: only the image bounds them")
+    add("tracks-255-overlap-area-past-end", overlapping_tracks(1000, 255),
+        "255 tracks that each claim the same 1000 frames: each fits the image, together they don't")
 
     def lsns(values):
         def fn(a):

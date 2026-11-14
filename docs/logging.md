@@ -22,7 +22,9 @@ otherwise. `--log-level` without a file sends the log to stderr. `logging=1` in
 The log contains:
 
 - **The environment:** pysacd and Python versions, OS and CPU, the engine's
-  compiler and features, and the command line.
+  compiler and features, and the command line. Secret option values
+  (`mb-login --client-secret`) are written as `***`; passwords and login codes
+  are never on the command line, and no environment variable is logged.
 - **The input:** its kind (file, block device or server), its size and sector
   layout, every TOC warning, and the planned outputs with their frame ranges.
 - **PS3 traffic:** every request and response with its timing, short reads,

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import struct
+import sys
 
 from . import __version__, safetext
 from .toc import CATEGORIES, GENRES, START_OF_MASTER_TOC, Area, Disc, SACDImage
@@ -82,6 +83,7 @@ def _trim_whitespace(b: bytes) -> bytes:
 
 
 _NAME_UNSAFE = frozenset(safetext.NAME_UNSAFE.encode())
+_WINDOWS = sys.platform == "win32"
 
 
 def _sanitize(b: bytes, unsafe: frozenset) -> bytes:
@@ -91,7 +93,14 @@ def _sanitize(b: bytes, unsafe: frozenset) -> bytes:
     # redirection, a leading '-'): a deliberate deviation that never changes ordinary names.
     b = bytes(0x5F if c in unsafe or c in _NAME_UNSAFE else c for c in b)
     b = _trim_whitespace(_trim_dots(b))
-    return b"_" + b[1:] if b.startswith(b"-") else b
+    # sacd_extract trims dots, then whitespace, and uses what is left: " .. " would become
+    # "..", and " .x" a hidden ".x". A name never starts with '.' or '-' here, so it is never
+    # "." or ".."; it may be empty (nothing usable in the text), which each caller handles.
+    b = b"_" + b[1:] if b[:1] in (b"-", b".") else b
+    # Windows drops trailing dots and spaces from a path component, so the folder it creates for
+    # "_ ." is "_", and the next step can't find "_ .". Drop them here instead, on Windows only:
+    # elsewhere the names stay sacd_extract's.
+    return b.rstrip(b". ") if _WINDOWS else b
 
 
 def sanitize_filename(name: str) -> str:
@@ -135,13 +144,16 @@ def make_filename(directory: str | None, name: str | None, ext: str | None) -> s
     """fileutils.c make_filename(NULL, dir, filename, ext)."""
     buf = b""
     if directory:
-        d = _b(directory)
-        buf = d[:MAX_BUFF_FULL_PATH_LEN - 5]
+        # The directory is the caller's: the user's -o and components this module already
+        # sanitised one by one. sacd_extract sanitises it again as one string, which trims the
+        # dots of a leading "./" or "../" and so turns a relative path into one at the root;
+        # pysacd leaves it as it is (docs/sacd_extract.md).
+        buf = directory.encode("utf-8", "surrogateescape")[:MAX_BUFF_FULL_PATH_LEN - 5]
         if not buf.endswith(b"/"):
             buf += b"/"
-    buf = _sanitize(buf, _UNSAFE_FILEPATH)
     if name:
-        n = _sanitize(_b(name)[:MAX_FILENAME_LEN - 1], _UNSAFE_FILENAME)
+        # never an empty name: "dir/.ext" would be a hidden file
+        n = _sanitize(_b(name)[:MAX_FILENAME_LEN - 1], _UNSAFE_FILENAME) or b"_"
         buf += n[:max(0, MAX_BUFF_FULL_PATH_LEN - len(buf) - 5)]
     if ext:
         buf += b"." + _b(ext)[:max(0, MAX_BUFF_FULL_PATH_LEN - len(buf) - 2)]
@@ -215,7 +227,10 @@ def album_path(disc: Disc, artist_flag: bool = False) -> str:
     """get_path_disc_album(): album directory, "Title/Disc N" for multi-disc sets."""
     title = _set_album_title(disc)
     if title is not None:
-        t = _sanitize(title[:MAX_ALBUM_TITLE_LEN], _UNSAFE_FILENAME)
+        # A title with nothing usable in it (only dots, spaces or control characters) would
+        # give sacd_extract an empty folder name: the tracks would land in the output folder
+        # itself, or "/Disc N" at the filesystem root for a set. Name it like album_dir() does.
+        t = _sanitize(title[:MAX_ALBUM_TITLE_LEN], _UNSAFE_FILENAME) or b"Unknown Album"
     else:
         t = b"unknown album title"
     artist = _disc_artist(disc)

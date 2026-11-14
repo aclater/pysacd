@@ -244,17 +244,24 @@ class Decoding(unittest.TestCase):
                 self.assertEqual(self.audio(py), self.audio(se))
 
 
+def _mbid(n: int) -> str:
+    return f"{n:08d}-abcd-4000-8000-0000000000ef"
+
+
+REL, ART, RG, TRK, REC = (_mbid(n) for n in range(1, 6))
+
+
 class MusicBrainzTypes(unittest.TestCase):
     """Malformed MusicBrainz fields are dropped, and the disc's text is used instead."""
 
     GOOD: ClassVar[dict] = {
-        "id": "r1", "title": "Album", "date": "2004", "barcode": "123", "country": "JP", "status": "Official",
-        "artist-credit": [{"name": "A", "joinphrase": "", "artist": {"id": "a1", "name": "A"}}],
-        "release-group": {"id": "g1", "first-release-date": "2003", "primary-type": "Album"},
+        "id": REL, "title": "Album", "date": "2004", "barcode": "123", "country": "JP", "status": "Official",
+        "artist-credit": [{"name": "A", "joinphrase": "", "artist": {"id": ART, "name": "A"}}],
+        "release-group": {"id": RG, "first-release-date": "2003", "primary-type": "Album"},
         "label-info": [{"label": {"name": "L"}, "catalog-number": "C-1"}],
         "media": [{"format": "Hybrid SACD (SACD layer, 2 channels)", "position": 1, "tracks": [
-            {"id": "t1", "title": "One", "length": 1000, "position": 1,
-             "recording": {"id": "rec1", "title": "One", "isrcs": ["XX0000000001"]}}]}],
+            {"id": TRK, "title": "One", "length": 1000, "position": 1,
+             "recording": {"id": REC, "title": "One", "isrcs": ["XX0000000001"]}}]}],
     }
 
     def test_integer_fields(self):
@@ -274,7 +281,7 @@ class MusicBrainzTypes(unittest.TestCase):
         bad = json.loads(json.dumps(self.GOOD))
         bad["title"] = ["not", "a", "string"]
         bad["date"] = None
-        bad["artist-credit"] = [None, "x", {"name": 5, "artist": {"id": "a1", "name": "A"}, "joinphrase": None},
+        bad["artist-credit"] = [None, "x", {"name": 5, "artist": {"id": ART, "name": "A"}, "joinphrase": None},
                                 {"artist": None}]
         bad["release-group"] = "nope"
         bad["label-info"] = [None, {"label": "L"}, {"label": {"name": None}, "catalog-number": 7}]
@@ -299,6 +306,52 @@ class MusicBrainzTypes(unittest.TestCase):
     def test_no_id_rejected(self):
         for v in (None, [], {"id": 5}, {"title": "x"}):
             self.assertIsNone(musicbrainz.clean_release(v))
+
+    # Ids go into request paths, cover URLs, tags and the terminal: only MBIDs are kept.
+    BAD_IDS = ("abc\x1b]0;owned\x07\x1b[31m", "../../x", "r1", REL.upper(), REL + "/x", REL + "\n", " " + REL)
+
+    def test_release_id_must_be_mbid(self):
+        for bad in self.BAD_IDS:
+            with self.subTest(bad=bad):
+                self.assertIsNone(musicbrainz.clean_release({**self.GOOD, "id": bad}))
+
+    def test_nested_ids_must_be_mbids(self):
+        for bad in self.BAD_IDS:
+            with self.subTest(bad=bad):
+                v = json.loads(json.dumps(self.GOOD))
+                v["release-group"]["id"] = bad
+                v["artist-credit"][0]["artist"]["id"] = bad
+                t = v["media"][0]["tracks"][0]
+                t["id"] = t["recording"]["id"] = bad
+                rel = musicbrainz.clean_release(v)
+                assert rel is not None
+                self.assertNotIn("id", rel["release-group"])
+                self.assertEqual(rel["artist-credit"], [])
+                tr = rel["media"][0]["tracks"][0]
+                self.assertNotIn("id", tr)
+                self.assertNotIn("id", tr["recording"])
+
+    def test_search_results_keep_only_mbids(self):
+        disc = mock.Mock(album_catalog_number="4988001234567", disc_catalog_number="")
+        found = {"releases": [{"id": bad} for bad in self.BAD_IDS] + [{"id": REL}]}
+        with mock.patch.object(musicbrainz, "_json", return_value=found):
+            self.assertEqual(musicbrainz.candidate_ids(disc, None), [(REL, "barcode")])
+
+    def test_mb_release_option_validated(self):
+        with mock.patch.object(musicbrainz, "_json") as get:
+            for bad in ("abc\x1b]0;owned\x07", "../release", "r1", ""):
+                with self.subTest(bad=bad), self.assertRaisesRegex(musicbrainz.MBError, "not a MusicBrainz release id"):
+                    musicbrainz.find_release(mock.Mock(), mock.Mock(), None, release_id=bad or " ")
+            get.assert_not_called()                             # nothing was requested
+            with self.assertRaisesRegex(musicbrainz.MBError, r"\\x1b") as cm:
+                musicbrainz.release_id_arg("x\x1b[2J")
+            self.assertNotIn("\x1b", str(cm.exception))         # the bad value is shown escaped
+        self.assertEqual(musicbrainz.release_id_arg(f" {REL.upper()} "), REL)
+
+    def test_cover_urls_only_for_mbids(self):
+        with mock.patch.object(musicbrainz, "_get") as get:
+            self.assertIsNone(musicbrainz.fetch_cover({"id": "../x", "release-group": {"id": "a?b"}}, None))
+            get.assert_not_called()
 
     def test_string_track_numbers_and_tags_fall_back(self):
         with tempfile.TemporaryDirectory() as d:
@@ -340,7 +393,7 @@ class MusicBrainzTypes(unittest.TestCase):
     def test_find_release_survives_hostile_json(self):
         def fake(path, contact, **params):
             if path == "release":
-                return {"releases": [None, {"id": 5}, {"id": "r1"}]}
+                return {"releases": [None, {"id": 5}, {"id": REL}]}
             bad = json.loads(json.dumps(self.GOOD))
             bad["media"][0]["tracks"][0]["length"] = "x"
             return bad

@@ -93,10 +93,13 @@ says they do; none differs otherwise, and `-P` matches on all three. That run wa
 one-worker default below (#137) was merged in; with it, the seven plain-DSD and mixed modes were run
 again on the two discs with plain areas (14 runs): no difference. The fixes were developed
 privately, where CI doesn't run, so these were run by hand on the release tree before it was
-published: the full suite (311 passed, the 16 expected skips), the whole suite under ASan and UBSan
+published: the full suite (312 passed, the 16 expected skips), the whole suite under ASan and UBSan
 (clang), the `sacd_extract` comparison tests, the engine leak check (memcheck), ruff and mypy. The
 beets-pysacd test suite passes against this release's code. Not run by hand: macOS and Windows,
-CodeQL, semgrep and TSan, which the release pull request's CI ran.
+CodeQL, semgrep and TSan, which the release pull request's CI ran. That CI found one defect the
+private checks could not: on Windows, a title that sanitises to a name ending in a dot or space
+made the run fail (Windows drops them from folder names); such names lose them on Windows now. It
+also found three tests that assumed POSIX or Python 3.11.
 
 ### Other changes
 

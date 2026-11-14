@@ -76,6 +76,7 @@ class Opts:
     flac_level: int = 5
     threads: int = 0
     exact: bool = False                 # --exact: no provisional range starts (#85)
+    allow_silence: bool = False         # --allow-silence: no limit on silence for missing audio
     refused: int = 0                    # files scarletbook couldn't lay out (#94)
     musicbrainz: bool = False
     mb_release: str | None = None
@@ -83,6 +84,9 @@ class Opts:
     submit_isrcs: bool = False
     cover: bool = False
     templates: bool = False            # name files with pysacd's config templates
+    overwrite: bool = False            # --templates: replace files that exist
+    skipped: int = 0                   # --templates: files kept because they exist
+    written: int = 0                   # files written by this run
     config: str | None = None
     use_cfg: bool = True
     logging: bool = False              # logging=1 in sacd_extract.cfg
@@ -132,6 +136,9 @@ def parse_args(argv: list[str]) -> Opts:
     x.add_argument("--gain-db", type=float, default=0.0, help="PCM gain (default 0)")
     x.add_argument("--flac-level", type=int, choices=range(9), metavar="0-8", default=5)
     x.add_argument("--threads", type=int, default=0, help="worker threads (default: CPU count)")
+    x.add_argument("--allow-silence", action="store_true",
+                   help="write the tracks even when most of their audio is missing from the image or doesn't "
+                        "decode, as silence, like sacd_extract (default: such a run stops)")
     x.add_argument("--exact", action="store_true",
                    help="for a track far into an area, read the area up to it instead of starting "
                         "provisionally (exact on a well-formed disc; slower from a network share)")
@@ -144,6 +151,8 @@ def parse_args(argv: list[str]) -> Opts:
     x.add_argument("--cover", action="store_true", help="embed Cover Art Archive front cover (with --musicbrainz)")
     x.add_argument("--templates", action="store_true", help="name output with pysacd config templates")
     x.add_argument("--config", help="pysacd config file for --templates")
+    x.add_argument("--overwrite", action="store_true",
+                   help="with --templates: replace files that exist (default: keep them and say so)")
     x.add_argument("--no-cfg", dest="no_cfg", action="store_true", help="ignore ./sacd_extract.cfg")
     x.add_argument("--log-file", help="write a diagnostic log here (default level: debug)")
     x.add_argument("--log-level", choices=["debug", "info", "warning", "error"],
@@ -164,8 +173,8 @@ def parse_args(argv: list[str]) -> Opts:
              input=a.input.lstrip("=") if a.input else None,
              output_dir=_dirarg(a.output_dir), output_dir_conc=_dirarg(a.output_dir_conc),
              pcm=a.pcm, pcm_rate=a.pcm_rate, gain_db=a.gain_db, flac_level=a.flac_level,
-             threads=a.threads, exact=a.exact, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
-             mb_contact=a.mb_contact, submit_isrcs=a.submit_isrcs, cover=a.cover, templates=a.templates, config=a.config,
+             threads=a.threads, exact=a.exact, allow_silence=a.allow_silence, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
+             mb_contact=a.mb_contact, submit_isrcs=a.submit_isrcs, cover=a.cover, templates=a.templates, overwrite=a.overwrite, config=a.config,
              use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc), log_file=a.log_file, log_level=a.log_level)
     if a.tracks:
         # like sacd_extract, the last -t wins; 0 and junk are ignored
@@ -396,6 +405,7 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
     if kind == "dsf" and o.dsf_nopad and not o.concatenate:
         chains, chains_refused = _dsf_chains(img, area, groups, o)
     seen: set[str] = set()         # --templates: names equal case-folded/NFC get " (2)" (#47)
+    template_dirs: dict[Path, dict[str, int]] = {}
     prev_end = None
     for idx, (tracks, name) in enumerate(groups):
         first, last = tracks[0], tracks[-1]
@@ -405,6 +415,15 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
         if o.templates:
             from .convert import unique_path
             path = unique_path(_template_path(disc, area, first, ext, o, match), seen)
+            template_dirs.setdefault(path.parent, {})[path.stem] = first
+            if path.exists() and not o.overwrite:
+                # Another disc with the same names would otherwise replace these files, and
+                # nothing in them says which disc they are from. Like pysacd convert: keep them.
+                o.skipped += 1
+                log.info("%s: exists, kept", safetext.for_terminal(path))
+                if kind == "dsf":
+                    prev_end = end
+                continue
         tmp = safeio.temp_name(path)
 
         if idx in chains_refused:
@@ -440,6 +459,15 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
             assert tags is not None     # PCM outputs always carry tags
             spec.flac_padding = tagging.flac_metadata_size(tags, cover)
         jobs.append(Job(spec, path, kind, first, tags=tags, cover=cover, size=lay.size if kind == "dsf" else None))
+    for folder, planned in template_dirs.items():
+        # --templates: the folder is the user's template's, so nothing is moved; but two discs
+        # in one folder are worth a line (by names and tags, as with sacd_extract's naming)
+        foreign = _other_disc_in(folder, planned, disc, area)
+        if foreign:
+            print(f"WARNING: {safetext.for_terminal(folder)} already holds tracks of another disc "
+                  f"({safetext.for_terminal(', '.join(foreign[:3]))}{', ...' if len(foreign) > 3 else ''}); this "
+                  "disc's tracks are written next to them. Use another -o, or a template that tells the discs "
+                  "apart, to keep them separate.", file=sys.stderr)
     return jobs
 
 
@@ -651,9 +679,9 @@ def _fetch_remote(addr: tuple[str, int], o: Opts) -> tuple[str, str | None]:
     base = Path(o.output_dir) if o.output_dir else Path()
     if o.output_iso:
         disc, _total = remote.read_remote_toc(host, port)
-        out_dir = base / sbcompat.album_path(disc, o.artist_flag)
+        out_dir = _inside(base, base / sbcompat.album_path(disc, o.artist_flag))
         out_dir.mkdir(parents=True, exist_ok=True)
-        path = Path(sbcompat.unique_filename(str(out_dir), sbcompat.album_dir(disc, o.artist_flag), "iso"))
+        path = _inside(base, Path(sbcompat.unique_filename(str(out_dir), sbcompat.album_dir(disc, o.artist_flag), "iso")))
         say(f"\n Exporting ISO output in file: {path}")
         remote.fetch(host, port, path, None, progress=progress)
         o.output_iso = False        # written; the other outputs read from it
@@ -776,12 +804,23 @@ def _other_disc_in(folder: Path, planned: dict[str, int], disc: Disc, area: Area
     return foreign
 
 
+def _inside(base: Path, path: Path) -> Path:
+    """`path`, which must lie inside `base`: names made from disc text never lead out of the
+    output folder (docs/security.md). The name rules already ensure it; this is the second
+    lock, checked before anything is created. Lexical, so the user's own symlinks still work."""
+    if not safeio.inside(base, path):
+        raise SACDError(f"refusing to write outside the output folder: {safetext.for_terminal(path)}")
+    return path
+
+
 def _avoid_other_discs(disc: Disc, want: list[Area], o: Opts, out_dir: Path) -> Path:
     """Where sacd_extract would mix two discs into one folder (or overwrite one
     disc's tracks with another's), use "<album folder> [<catalogue number>]"
     instead and warn. A deliberate exception to sacd_extract compatibility (#4)."""
     if o.templates:
-        return out_dir      # pysacd naming: handled like pysacd convert
+        # pysacd naming: the folders come from the templates, and the files don't carry a
+        # catalogue number to compare, so plan_area() never replaces a file that exists
+        return out_dir
     clash: list[str] = []
     for area in want:
         folder = out_dir / sbcompat.area_dir_name(area) if disc.multichannel else out_dir
@@ -822,7 +861,7 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
     out_dir = base / sbcompat.album_path(disc, o.artist_flag)
 
     want = _wanted_areas(disc, o)
-    out_dir = _avoid_other_discs(disc, want, o, out_dir)
+    out_dir = _inside(base, _avoid_other_discs(disc, want, o, _inside(base, out_dir)))
 
     if o.export_cue_sheet:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -872,6 +911,11 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
             iso_path = None     # the image is copied during the first pass only
     if iso_path:
         rc |= _execute(img, disc, None, [], o, iso_path)
+    if o.skipped:
+        say(f"\n Warning: {o.skipped} file{'s' if o.skipped != 1 else ''} skipped (already exist; "
+            "--overwrite replaces them)")
+        if not o.written:
+            rc |= 1     # nothing was written: a script must not take this for a finished extraction
     if o.refused:
         rc = 255        # as when the engine refuses a run
     say("\nProgram terminates!\n")      # with sacd_extract's final empty line
@@ -884,8 +928,21 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
     started = time.time()
     say(f"\n Started at: {time.asctime()}    ")
     specs = [j.spec for j in jobs]
+    base = Path(o.output_dir) if o.output_dir else Path()
     for j in jobs:
-        j.final.parent.mkdir(parents=True, exist_ok=True)
+        _inside(base, j.final).parent.mkdir(parents=True, exist_ok=True)
+    # like every other output, the ISO copy is written under a temporary name and renamed when
+    # it is complete
+    iso_tmp = safeio.temp_name(_inside(base, iso_path)) if iso_path else None
+    replaced = [j.final for j in jobs if j.size is not None and j.final.is_file()
+                and j.final.stat().st_size != j.size]
+    if replaced:
+        # sacd_extract's naming replaces the files of a re-run, as sacd_extract does. A re-run of
+        # the same disc writes the same sizes; a different size means other audio or options.
+        # A tripwire only: a disc made to match another's sizes passes it.
+        print(f"WARNING: replacing {len(replaced)} existing file{'s' if len(replaced) != 1 else ''} of a different "
+              f"size ({safetext.for_terminal(replaced[0].name)}{', ...' if len(replaced) > 1 else ''}): if this "
+              "is another disc with the same names, give it its own output folder", file=sys.stderr)
     try:
         assert o.input is not None
         log.info("%s area: %d output(s)%s", area.kind if area else "no", len(jobs),
@@ -894,11 +951,16 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
             log.debug("  %s -> %s (track %s, frames %d-%d)", j.kind, safetext.for_terminal(j.final), j.track,
                       j.spec.tc_start, j.spec.tc_end)
         run = _native.run_area(img, o.input, area, specs, o.pcm_rate, o.gain_db, o.threads,
-                               iso_out=iso_path, progress=_progress, exact=o.exact)
+                               iso_out=iso_tmp, progress=_progress, exact=o.exact,
+                               allow_silence=o.allow_silence)
     except BaseException:
         for s in specs:
             Path(s.path).unlink(missing_ok=True)
+        if iso_tmp:
+            iso_tmp.unlink(missing_ok=True)     # a failed or cancelled copy leaves nothing behind
         raise
+    if iso_tmp:
+        os.replace(iso_tmp, iso_path)
     rc = 0
     # WORKAROUND (#93), for what was seen on early Sony discs (Master TOC 1.00, pressed
     # 2000-2001; four discs of four titles): the area's last sector holds no audio sector header,
@@ -922,6 +984,7 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
               file=sys.stderr)
     for j in jobs:
         s = j.spec
+        safeio.check_own_file(s.path)       # reopened by name below
         if j.dst:
             try:
                 finish_dff(img, disc, area, j, o)
@@ -939,6 +1002,7 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
             assert j.tags is not None
             tagging.write_tags(str(s.path), j.kind, j.tags, j.cover, 4 if o.id3_mode >= 4 else 3)
         os.replace(s.path, j.final)
+        o.written += 1
         log.info("wrote track %s: %d frames, %d missing, %d DST errors", j.track, s.frames_written,
                  s.frames_missing, s.dst_errors)
         if s.dst_errors or s.frames_missing and not (last_frame_padded and s.frames_missing == 1):

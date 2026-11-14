@@ -9,6 +9,100 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+## 0.5.1 (2026-11-14)
+
+A security release. A private review of 0.5.0, asked for by the maintainer, found three problems
+that a crafted disc image can trigger, and a number of smaller ones; all are fixed here. **Upgrade
+if you convert images you did not rip yourself.** Two defaults change with the fixes:
+
+- a run now stops when it would write mostly silence or filler for audio the image lacks (more than
+  10 seconds beyond the audio it found). `--allow-silence` gives the old behaviour for a run, to
+  rescue what a damaged rip still holds;
+- `pysacd-extract --templates` keeps files that already exist; `--overwrite` replaces them.
+
+Output for ordinary discs is unchanged, byte for byte (release checks, below).
+
+### Security
+
+- **Disc text could place `pysacd-extract`'s output outside the output folder**
+  (advisory GHSA-gx45-h8q4-vwmc).
+  For some titles made only of dots, spaces and control characters, the folder or file name derived
+  from the title was empty, `.` or `..`. Such names are no longer produced, a relative `-o` starting
+  with `../` is used as given, and every output path is checked against the output folder before
+  anything is created. Names of ordinary discs don't change
+  ([what differs from sacd_extract](docs/sacd_extract.md#compatibility-policy)). Upgrade to 0.5.1.
+  Fixed with it: a `pysacd convert` name could start with `-` after an empty `[]` or `()` was
+  removed, and `pysacd toc --json` wrote non-ASCII control characters from disc text to the terminal
+  as they were (it now writes ASCII, with `\u` escapes).
+- **A disc could replace another disc's files without a warning**
+  (advisory GHSA-whv9-98xg-4xw9).
+  `pysacd convert` writes a disc to `<folder> [<catalogue number>]` when the folder holds a different
+  disc; with a very long album title the catalogue number was cut off and the disc went into the
+  first folder after all. The number is now always kept, and the run stops if no separate folder can
+  be named. `pysacd-extract --templates` replaced existing files; it now keeps them and reports them
+  as skipped, and the new `--overwrite` replaces them. With `sacd_extract`'s naming nothing changes:
+  a re-run replaces its files, and [the documentation](docs/sacd_extract.md#compatibility-policy) now
+  says what tells two discs apart there. Upgrade to 0.5.1.
+- **A crafted image could make one run write far more than the image could hold**
+  (advisory GHSA-q45f-7qmf-37x3).
+  The bound added for #17 held each output to what the image's sectors could hold, but not the whole
+  run, and frames missing from the image were written as silence without limit, so a small image
+  could fill a disk. Affects 0.5.0 and earlier; 0.5.1 fixes
+  it. The outputs of one format in a run may now cover the area at most twice (an edit master and its
+  tracks), checked before anything is written and again in the engine, and a run stops once it has
+  written more than 10 seconds of silence beyond the audio it found. Ordinary discs, and truncated
+  rips whose run still has more audio than silence, extract as before, byte for byte
+  ([security](docs/security.md#hostile-images), [sacd_extract differences](docs/sacd_extract.md)).
+- **Network and credential hardening**, found in the same review (low severity, no advisory):
+  - MusicBrainz ids (release, release group, track, recording, artist) are kept only when they are
+    MBIDs, and the ISRC plan escapes the release id it prints. A `--mb-release` value (or
+    `mb_release` in the config) that isn't an MBID is now an error before any request.
+  - MusicBrainz, Cover Art Archive and OAuth requests have a deadline for the whole request (60 s,
+    300 s for covers), and network errors while reading a reply are retried and reported as
+    MusicBrainz errors instead of escaping as other exceptions. A malformed ISRC lookup reply no
+    longer raises `AttributeError`, and a token reply's `expires_in` must be a sane number.
+  - Requests use https only and follow at most 5 redirects, each to https; the token exchange and
+    the ISRC submission follow none, so credentials only go where they were meant to
+    ([security](docs/security.md#network-responses)).
+  - The MusicBrainz token is written through a new file with an unpredictable name, mode 0600 from
+    creation, and is not saved in a folder that other users can write.
+  - The log no longer records the value of `mb-login --client-secret`.
+  - An empty or relative `XDG_CONFIG_HOME` is ignored (as the XDG spec says), instead of making
+    pysacd read `pysacd/config.toml` from the current directory.
+  - A copy from a PS3 must average at least 256 KiB/s after a 300 s allowance, so a server can't
+    stretch it out indefinitely; real PS3s read 2-4 MB/s.
+- **Output hardening**, found in the same review (low severity, no advisory):
+  - frames that don't decode now count with the silence in the limit above, and the new
+    `--allow-silence` (`pysacd-extract` and `pysacd convert`) lifts that limit for a run, to rescue
+    what a damaged rip still holds;
+  - a failed or cancelled `-I` no longer leaves a partial `.iso` under its final name;
+  - a WAV track over 4 GiB is refused before the run starts, instead of failing at the end and
+    taking the run's finished tracks with it;
+  - `pysacd convert` checks every output path against the output folder, as `pysacd-extract` does;
+  - `pysacd-extract` warns when a re-run replaces files of a different size, and with `--templates`
+    when a folder already holds another disc's tracks; a run that skipped every file exits with 1;
+  - before reopening a temporary file by name, pysacd checks it is still its own regular file;
+  - an engine call that returns no result is a failure, not a success.
+
+Release checks for 0.5.1 (docs/development.md, "To release"): `tools/extract_compare.py
+--require-sacd-extract` against `sacd_extract` built from CI's pinned commit, 0.5.0 against the
+fixes, on three real discs (stereo and 6-channel DST; plain stereo with 6-channel DST; plain stereo)
+in all 35 modes (105 runs, 597 files): no difference between 0.5.0 and the fixes in any run. Against
+`sacd_extract`, of its 319 files 191 are identical and 128 differ only where docs/sacd_extract.md
+says they do; none differs otherwise, and `-P` matches on all three. That run was made before the
+one-worker default below (#137) was merged in; with it, the seven plain-DSD and mixed modes were run
+again on the two discs with plain areas (14 runs): no difference. The fixes were developed
+privately, where CI doesn't run, so these were run by hand on the release tree before it was
+published: the full suite (312 passed, the 16 expected skips), the whole suite under ASan and UBSan
+(clang), the `sacd_extract` comparison tests, the engine leak check (memcheck), ruff and mypy. The
+beets-pysacd test suite passes against this release's code. Not run by hand: macOS and Windows,
+CodeQL, semgrep and TSan, which the release pull request's CI ran. That CI found one defect the
+private checks could not: on Windows, a title that sanitises to a name ending in a dot or space
+made the run fail (Windows drops them from folder names); such names lose them on Windows now. It
+also found three tests that assumed POSIX or Python 3.11.
+
+### Other changes
+
 - **CI builds and tests in Red Hat-derived containers.** The test suite on Python 3.10 to 3.15, the
   ASan/UBSan, leak, fuzz, `sacd_extract` comparison and benchmark jobs, the live MusicBrainz lookup
   and the release's sdist run in a Fedora 44 container; semgrep, zizmor and the private-names check

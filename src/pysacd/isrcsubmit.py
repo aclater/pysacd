@@ -21,7 +21,9 @@ Safety rules:
 from __future__ import annotations
 
 import getpass
+import http.client
 import json
+import math
 import os
 import re
 import time
@@ -32,12 +34,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
-from . import __version__, musicbrainz
+from . import __version__, musicbrainz, safeio
 from .toc import Area
 
 ISRC_RE = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
-MBID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
-TOKEN_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "pysacd" / "musicbrainz-token.json"
+MBID_RE = musicbrainz.MBID_RE
+TOKEN_FILE = safeio.config_dir() / "musicbrainz-token.json"
 OOB = "urn:ietf:wg:oauth:2.0:oob"
 SCOPE = "submit_isrc"
 
@@ -118,7 +120,8 @@ def _isrc_recordings(isrc: str, contact: str | None) -> list[str]:
         if str(e).startswith("not found"):
             return []
         raise
-    return [r["id"] for r in data.get("recordings") or [] if isinstance(r.get("id"), str) and MBID_RE.fullmatch(r["id"])]
+    recs = musicbrainz._dicts(data.get("recordings")) if isinstance(data, dict) else []    # any shape may come back
+    return [r["id"] for r in recs if musicbrainz._mbid(r.get("id"))]
 
 
 def body(p: Plan) -> bytes:
@@ -135,13 +138,32 @@ def _open_private(path: Path, flags: int) -> int:
     return os.open(path, flags | getattr(os, "O_NOFOLLOW", 0), 0o600)    # no O_NOFOLLOW on Windows
 
 
+def check_folder(folder: Path) -> None:
+    """Refuse a token folder that group or others can write (POSIX only): whoever can write it
+    can replace the token file. mkdir(exist_ok=True) doesn't correct an existing folder's mode."""
+    if os.name != "posix":
+        return
+    st = os.stat(folder)
+    if st.st_uid != os.geteuid():
+        raise musicbrainz.MBError(f"{folder} belongs to another user; the token is not saved there")
+    if st.st_mode & 0o022:
+        raise musicbrainz.MBError(f"{folder} is writable by other users; run chmod go-w on it (or chmod 700)")
+
+
 def save_token(token: dict, path: Path = TOKEN_FILE) -> None:
+    """Write the token owner-only: a new file under an unpredictable name (O_EXCL, O_NOFOLLOW,
+    mode 0600 from creation, as safeio does), then moved into place."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    tmp = path.with_name(path.name + ".tmp")
-    with open(tmp, "w", opener=lambda p, f: _open_private(Path(p), f)) as f:
-        json.dump(token, f)
-    os.chmod(tmp, 0o600)
-    os.replace(tmp, path)
+    check_folder(path.parent)
+    tmp = safeio.temp_name(path)
+    fd = os.open(tmp, safeio.FLAGS, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(token, f)
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def check_private(mode: int, path: Path) -> None:
@@ -164,17 +186,32 @@ def _oauth_base() -> str:
     return musicbrainz.API.rsplit("/ws/2", 1)[0] + "/oauth2"
 
 
+def _expires_in(v) -> float:
+    """The token lifetime in seconds: a finite number, clamped to between 2 minutes and a year;
+    1 hour (MusicBrainz's usual) if the server sent none or something else."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return 3600.0
+    return min(max(float(v), 120.0), 365 * 86400.0)
+
+
 def _token_request(params: dict, contact: str | None) -> dict:
     req = urllib.request.Request(_oauth_base() + "/token", data=urllib.parse.urlencode(params).encode(),
                                  headers={"User-Agent": musicbrainz._user_agent(contact)})
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            tok = json.loads(musicbrainz._read_capped(r, 1 << 20, "OAuth token response"))   # #14
+        # The body carries the client secret (and a code or refresh token): no redirects
+        end = time.monotonic() + musicbrainz.JSON_DEADLINE
+        with musicbrainz._open(req, follow=False, deadline=end) as r:
+            tok = json.loads(musicbrainz._read_capped(r, 1 << 20, "OAuth token response", end))   # #14
     except urllib.error.HTTPError as e:
+        e.close()
         raise musicbrainz.MBError(f"OAuth token request failed: HTTP {e.code}") from None
+    except (OSError, http.client.HTTPException) as e:
+        raise musicbrainz.MBError(f"OAuth token request failed: {musicbrainz._net_error(e)}") from None
+    except ValueError:
+        raise musicbrainz.MBError("OAuth token response is not JSON") from None
     if not isinstance(tok, dict) or not isinstance(tok.get("access_token"), str):
         raise musicbrainz.MBError("OAuth token response has no access_token")
-    tok["expires_at"] = time.time() + float(tok.get("expires_in") or 3600) - 60
+    tok["expires_at"] = time.time() + _expires_in(tok.get("expires_in")) - 60
     return tok
 
 
@@ -215,7 +252,7 @@ def submit(p: Plan, contact: str | None, user: str | None = None, token_path: Pa
         return
     url = f"{musicbrainz.API}/recording/?client=pysacd-{__version__}"
     headers = {"User-Agent": musicbrainz._user_agent(contact), "Content-Type": "application/xml; charset=utf-8"}
-    opener = urllib.request.build_opener()
+    handlers: tuple = ()
     bearer = _bearer(contact, token_path)
     if bearer:
         headers["Authorization"] = f"Bearer {bearer}"
@@ -223,19 +260,32 @@ def submit(p: Plan, contact: str | None, user: str | None = None, token_path: Pa
         password = os.environ.get("PYSACD_MB_PASSWORD") or getpass.getpass(f"MusicBrainz password for {user}: ")
         mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
         mgr.add_password(None, musicbrainz.API, user, password)
-        opener = urllib.request.build_opener(urllib.request.HTTPDigestAuthHandler(mgr))
+        handlers = (urllib.request.HTTPDigestAuthHandler(mgr),)
     else:
         raise musicbrainz.MBError("not signed in: run `pysacd mb-login`, or pass --mb-user for digest auth")
     musicbrainz._throttle(url)
     req = urllib.request.Request(url, data=body(p), headers=headers, method="POST")
     try:
-        with opener.open(req, timeout=60) as r:
-            reply = r.read(65536)
+        # Credentials go with this request: no redirects, so they never reach another URL
+        end = time.monotonic() + musicbrainz.JSON_DEADLINE
+        with musicbrainz._open(req, timeout=60, follow=False, handlers=handlers, deadline=end) as r:
+            reply = musicbrainz._read_capped(r, 65536, "submission reply", end)
     except urllib.error.HTTPError as e:
-        detail = e.read(2048).decode("utf-8", "replace")
+        try:
+            detail = e.read(2048).decode("utf-8", "replace")
+        except (OSError, http.client.HTTPException):
+            detail = ""
+        e.close()
         m = re.search(r"<text>(.*?)</text>", detail, re.DOTALL)
         raise musicbrainz.MBError(f"submission refused: HTTP {e.code}"
                                   + (f": {m.group(1)[:200]}" if m else "")) from None
+    except (OSError, http.client.HTTPException) as e:
+        raise musicbrainz.MBError(f"submission failed: {musicbrainz._net_error(e)}; "
+                                  "check on MusicBrainz whether it was applied before retrying") from None
+    except musicbrainz.MBError as e:
+        # the deadline or the size cap: the request went out, so it may have been applied
+        raise musicbrainz.MBError(f"submission failed: {e}; "
+                                  "check on MusicBrainz whether it was applied before retrying") from None
     if b"<text>OK</text>" not in reply:
         raise musicbrainz.MBError("unexpected reply from MusicBrainz: " + reply[:200].decode("utf-8", "replace"))
 
@@ -249,7 +299,8 @@ def offer(match: musicbrainz.Match, area: Area, contact: str | None, *, dry_run:
     """Show the plan for one area, ask, and submit. Returns the number of ISRCs submitted."""
     from .safetext import for_terminal
     p = plan(match, area, contact)
-    out(f"ISRCs for {musicbrainz.API.rsplit('/ws/2', 1)[0]}/release/{p.release_id} ({for_terminal(p.medium)}):")
+    out(f"ISRCs for {musicbrainz.API.rsplit('/ws/2', 1)[0]}/release/{for_terminal(p.release_id)} "
+        f"({for_terminal(p.medium)}):")
     for i in p.items:
         note = f"  ({for_terminal(i.note)})" if i.note else ""
         out(f"  {i.track:3d}. {i.isrc or '-':12s}  {ACTION_TEXT[i.action]:16s} {for_terminal(i.title)}{note}")

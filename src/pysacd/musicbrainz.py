@@ -7,6 +7,8 @@ track durations and ISRCs.
 
 from __future__ import annotations
 
+import http.client
+import ipaddress
 import json
 import re
 import threading
@@ -16,12 +18,16 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 
-from . import __version__
+from . import __version__, safetext
 from .toc import Area, Disc
 
 API = "https://musicbrainz.org/ws/2"
 CAA = "https://coverartarchive.org"
 RELEASE_INC = "artist-credits+labels+recordings+release-groups+isrcs"
+# A MusicBrainz identifier (MBID): a lowercase UUID. Release, release-group, track, recording and
+# artist ids are kept only in this form, because they go into request paths, cover URLs, tags and
+# the terminal; anything else a server sends in their place is dropped.
+MBID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 _lock = threading.Lock()
 _last_request = 0.0
@@ -39,15 +45,125 @@ MAX_JSON = 8 << 20          # largest MusicBrainz response read (a big release i
 MAX_COVER = 25 << 20        # largest cover image read ("full" size covers can be ~10 MB)
 _IMAGE_MAGIC = ((b"\xff\xd8\xff", "image/jpeg"), (b"\x89PNG\r\n\x1a\n", "image/png"))
 
+# Each socket operation times out after SOCKET_TIMEOUT, but that alone lets a server trickle a
+# response a byte at a time for as long as it likes. These deadlines bound a whole request,
+# from connecting to the last byte. A large release (~1 MB of JSON) arrives in a second or two;
+# 60 s leaves room for a slow link. A 25 MB "full" cover needs 300 s at ~85 kB/s, far below any
+# broadband or mobile link, and covers are usually 1200 px images of a few hundred kB.
+SOCKET_TIMEOUT = 30.0
+JSON_DEADLINE = 60.0
+COVER_DEADLINE = 300.0
+MAX_REDIRECTS = 5           # Cover Art Archive redirects once or twice (to archive.org)
 
-def _read_capped(r, limit: int, url: str) -> bytes:
-    """The response body, read in chunks; MBError beyond `limit` bytes (#14)."""
+
+def _read_capped(r, limit: int, url: str, deadline: float | None = None) -> bytes:
+    """The response body, read in chunks; MBError beyond `limit` bytes (#14) or after the
+    monotonic `deadline`. read1() returns what one socket read brings, so the deadline is
+    checked at least every SOCKET_TIMEOUT seconds however slowly the data comes."""
     out = bytearray()
-    while chunk := r.read(min(1 << 16, limit + 1 - len(out))):
+    read = getattr(r, "read1", None) or r.read
+    while True:
+        if deadline is not None and time.monotonic() > deadline:
+            raise MBError(f"{url}: response not complete in time")
+        chunk = read(min(1 << 16, limit + 1 - len(out)))
+        if not chunk:
+            left = getattr(r, "length", None)       # http.client: bytes of Content-Length still due
+            if isinstance(left, int) and left > 0:
+                raise http.client.IncompleteRead(bytes(out), left)
+            return bytes(out)
         out += chunk
         if len(out) > limit:
             raise MBError(f"{url}: response larger than {limit} bytes")
-    return bytes(out)
+
+
+def _loopback(host: str | None) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host or "").is_loopback
+    except ValueError:
+        return False
+
+
+def _allowed_url(url: str) -> bool:
+    """https only. Plain http is allowed only to a loopback address, and only when API itself is
+    an http URL on a loopback address. That exception is test scaffolding: the tests point API
+    at local servers by patching it; set_server(), the only way a user sets it, takes https only."""
+    u = urllib.parse.urlsplit(url)
+    if u.scheme == "https":
+        return True
+    api = urllib.parse.urlsplit(API)
+    return u.scheme == "http" and api.scheme == "http" and _loopback(api.hostname) and _loopback(u.hostname)
+
+
+class _Redirects(urllib.request.HTTPRedirectHandler):
+    """Follow at most MAX_REDIRECTS redirects, and only to URLs _allowed_url() accepts. With
+    follow=False (requests that carry credentials) refuse every redirect, so an Authorization
+    header or a password never reaches another URL, whatever the Python version does."""
+
+    max_redirections = MAX_REDIRECTS
+
+    def __init__(self, follow: bool = True):
+        super().__init__()
+        self.follow = follow
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not self.follow or not _allowed_url(newurl):
+            fp.close()
+            why = "redirect refused for an authenticated request" if not self.follow else \
+                "redirect to a non-https URL refused"
+            raise MBError(f"{req.full_url}: HTTP {code}: {why}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open(req: urllib.request.Request, timeout: float = SOCKET_TIMEOUT, follow: bool = True,
+          handlers: tuple = (), deadline: float | None = None):
+    """Open `req` with the redirect rules above (every MusicBrainz, Cover Art Archive and OAuth
+    request goes through here).
+
+    `timeout` bounds each socket operation only, so a server that sends its status line and
+    headers a byte at a time could hold the call for as long as the headers last. With the
+    monotonic `deadline`, connecting, redirects and headers together end by then: the request
+    runs in a thread, and if it has no response in time the caller gets MBError and moves on.
+    The abandoned connection is closed when its own next read returns or times out."""
+    if not _allowed_url(req.full_url):
+        raise MBError(f"{req.full_url}: only https:// URLs are used")
+    opener = urllib.request.build_opener(_Redirects(follow), *handlers)
+    if deadline is None:
+        return opener.open(req, timeout=timeout)
+    box: dict = {}
+    guard = threading.Lock()
+
+    def run() -> None:
+        try:
+            r = opener.open(req, timeout=timeout)
+        except BaseException as e:  # noqa: BLE001 - handed to the caller, which raises it
+            with guard:
+                box.setdefault("error", e)
+            return
+        with guard:
+            if "abandoned" in box:
+                r.close()
+            else:
+                box["response"] = r
+
+    t = threading.Thread(target=run, name="pysacd-http", daemon=True)
+    t.start()
+    t.join(max(0.0, deadline - time.monotonic()))
+    with guard:
+        if "response" in box:
+            return box["response"]
+        if "error" in box:
+            raise box["error"]
+        box["abandoned"] = True
+    raise MBError(f"{req.full_url}: no response in time")
+
+
+def _net_error(e: BaseException) -> str:
+    """A short description of a network failure (OSError, http.client.HTTPException, URLError)."""
+    if isinstance(e, urllib.error.URLError) and not isinstance(e, urllib.error.HTTPError):
+        return str(e.reason)[:200]
+    return f"{type(e).__name__}: {str(e)[:200]}" if str(e) else type(e).__name__
 
 
 def image_type(data: bytes) -> str | None:
@@ -76,25 +192,31 @@ def _throttle(url: str) -> None:
 
 
 def _get(url: str, contact: str | None, accept: str = "application/json", retries: int = 5,
-         limit: int = MAX_JSON) -> tuple[bytes, str]:
+         limit: int = MAX_JSON, deadline: float = JSON_DEADLINE) -> tuple[bytes, str]:
     req = urllib.request.Request(url, headers={"User-Agent": _user_agent(contact), "Accept": accept})
     for attempt in range(retries):
         _throttle(url)
         try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return _read_capped(r, limit, url), r.headers.get_content_type()
+            # The deadline covers one attempt: connecting, the headers (_open) and the whole
+            # body (_read_capped)
+            end = time.monotonic() + deadline
+            with _open(req, timeout=min(SOCKET_TIMEOUT, deadline), deadline=end) as r:
+                return _read_capped(r, limit, url, end), r.headers.get_content_type()
         except urllib.error.HTTPError as e:
+            e.close()
             if e.code == 404:
                 raise MBError(f"not found: {url}") from None
             if e.code in (429, 503) and attempt + 1 < retries:
                 time.sleep(2 ** (attempt + 1))  # rate limited: back off
                 continue
             raise MBError(f"HTTP {e.code} for {url}") from None
-        except urllib.error.URLError as e:
+        except (OSError, http.client.HTTPException) as e:
+            # URLError, and what reading the body raises: timeouts, resets, TLS errors,
+            # IncompleteRead. All are retried, then reported as MBError.
             if attempt + 1 < retries:
                 time.sleep(2)
                 continue
-            raise MBError(f"{url}: {e.reason}") from None
+            raise MBError(f"{url}: {_net_error(e)}") from None
     raise MBError(f"giving up on {url}")
 
 
@@ -139,7 +261,7 @@ def candidate_ids(disc: Disc, contact: str | None, text_search: bool = False) ->
 
     def add(releases, method):
         for r in _dicts(releases):
-            if _str(r.get("id")) is not None and r["id"] not in seen:
+            if _mbid(r.get("id")) is not None and r["id"] not in seen:
                 seen.add(r["id"])
                 out.append((r["id"], method))
 
@@ -168,7 +290,20 @@ def barcode_of(disc: Disc) -> str | None:
     return None
 
 
+def release_id_arg(value: str) -> str:
+    """A user-supplied release id (--mb-release, the mb_release config key) in canonical form;
+    MBError with a clear message if it isn't an MBID."""
+    rid = value.strip().lower() if isinstance(value, str) else ""
+    if not MBID_RE.fullmatch(rid):
+        shown = safetext.for_terminal(str(value)[:80])
+        raise MBError(f"--mb-release '{shown}' is not a MusicBrainz release id "
+                      "(expected the 36-character id from the release's URL, like 0a1b2c3d-...-...)")
+    return rid
+
+
 def lookup_release(release_id: str, contact: str | None) -> dict:
+    if _mbid(release_id) is None:
+        raise MBError("release id is not a MusicBrainz id")
     rel = clean_release(_json(f"release/{release_id}", contact, inc=RELEASE_INC))
     if rel is None:
         raise MBError(f"release {release_id}: malformed response")
@@ -182,6 +317,10 @@ def lookup_release(release_id: str, contact: str | None) -> dict:
 
 def _str(v) -> str | None:
     return v if isinstance(v, str) else None
+
+
+def _mbid(v) -> str | None:
+    return v if isinstance(v, str) and MBID_RE.fullmatch(v) else None
 
 
 def _num(v) -> float | None:
@@ -216,7 +355,7 @@ def _credits(v) -> list[dict]:
     out = []
     for c in _dicts(v):
         artist = c.get("artist")
-        if not isinstance(artist, dict) or _str(artist.get("id")) is None or _str(artist.get("name")) is None:
+        if not isinstance(artist, dict) or _mbid(artist.get("id")) is None or _str(artist.get("name")) is None:
             continue
         out.append({"name": _str(c.get("name")) or artist["name"], "joinphrase": _str(c.get("joinphrase")) or "",
                     "artist": {"id": artist["id"], "name": artist["name"]}})
@@ -226,14 +365,14 @@ def _credits(v) -> list[dict]:
 def _recording(v) -> dict | None:
     if not isinstance(v, dict):
         return None
-    r = _pick(v, id=_str, title=_str, length=_num)
+    r = _pick(v, id=_mbid, title=_str, length=_num)
     r["isrcs"] = [x for x in v.get("isrcs") or [] if isinstance(x, str)] if isinstance(v.get("isrcs"), list) else []
     r["artist-credit"] = _credits(v.get("artist-credit"))
     return r
 
 
 def _track(v: dict) -> dict:
-    t = _pick(v, id=_str, title=_str, number=_str, length=_num, position=_int)
+    t = _pick(v, id=_mbid, title=_str, number=_str, length=_num, position=_int)
     t["artist-credit"] = _credits(v.get("artist-credit"))
     rec = _recording(v.get("recording"))
     if rec is not None:
@@ -242,14 +381,14 @@ def _track(v: dict) -> dict:
 
 
 def clean_release(v) -> dict | None:
-    """A release with only well-typed fields (see above), or None without a string id."""
-    if not isinstance(v, dict) or _str(v.get("id")) is None:
+    """A release with only well-typed fields (see above), or None without an MBID."""
+    if not isinstance(v, dict) or _mbid(v.get("id")) is None:
         return None
-    rel = _pick(v, id=_str, title=_str, date=_str, barcode=_str, country=_str, status=_str)
+    rel = _pick(v, id=_mbid, title=_str, date=_str, barcode=_str, country=_str, status=_str)
     rel["artist-credit"] = _credits(v.get("artist-credit"))
     rg = v.get("release-group")
     if isinstance(rg, dict):
-        rel["release-group"] = _pick(rg, id=_str, first_release_date=_str, primary_type=_str)
+        rel["release-group"] = _pick(rg, id=_mbid, first_release_date=_str, primary_type=_str)
     rel["label-info"] = [
         {**({"label": {"name": li["label"]["name"]}} if isinstance(li.get("label"), dict)
             and _str(li["label"].get("name")) is not None else {}),
@@ -299,7 +438,7 @@ def score_medium(release: dict, medium: dict, disc: Disc, area: Area) -> tuple[f
 
 def find_release(disc: Disc, area: Area, contact: str | None, release_id: str | None = None,
                  text_search: bool = False, max_mean_diff: float = 3.0) -> Match | None:
-    cands = [(release_id, "release-id")] if release_id else candidate_ids(disc, contact, text_search)
+    cands = [(release_id_arg(release_id), "release-id")] if release_id else candidate_ids(disc, contact, text_search)
     best: Match | None = None
     best_rank = 0.0
     for rid, method in cands:
@@ -338,13 +477,15 @@ def find_release(disc: Disc, area: Area, contact: str | None, release_id: str | 
 def fetch_cover(release: dict, contact: str | None, size: str = "1200") -> tuple[bytes, str] | None:
     """Front cover from the Cover Art Archive (release, then release group)."""
     suffix = "front" if size == "full" else f"front-{size}"
-    urls = [f"{CAA}/release/{release['id']}/{suffix}"]
-    rg = release.get("release-group", {}).get("id")
+    urls = []
+    if _mbid(release.get("id")):
+        urls.append(f"{CAA}/release/{release['id']}/{suffix}")
+    rg = _mbid(release.get("release-group", {}).get("id"))
     if rg:
         urls.append(f"{CAA}/release-group/{rg}/{suffix}")
     for url in urls:
         try:
-            data, _ = _get(url, contact, accept="image/*", limit=MAX_COVER)
+            data, _ = _get(url, contact, accept="image/*", limit=MAX_COVER, deadline=COVER_DEADLINE)
         except MBError:
             continue
         # Embed only what is really a JPEG or PNG, whatever the Content-Type says (#14)

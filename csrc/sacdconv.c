@@ -66,7 +66,27 @@ _Static_assert(MAX_FRAME_SIZE >= SB_MAX_FRAME_BYTES, "a stage slot holds any sto
 #define OUT_BUFFER     (1 << 20)
 #define FILL_CHUNK     (1 << 20)       /* DSF bytes per sb_output_layout_fill call */
 
-enum { OUT_DSF = 0, OUT_FLAC = 1, OUT_WAV = 2, OUT_DFF_DSD = 3, OUT_DFF_DST = 4 };
+enum { OUT_DSF = 0, OUT_FLAC = 1, OUT_WAV = 2, OUT_DFF_DSD = 3, OUT_DFF_DST = 4, OUT_FORMATS = 5 };
+
+/* How much a run may write, whatever the TOC says (GHSA-q45f-7qmf-37x3). _native.py refuses
+   such runs before the engine starts, against the area's own sectors; these hold the line here
+   too, against the whole image, so that a caller that skips that check can't lift them.
+   - Frames: per output format, the outputs' ranges may add up to at most RUN_COVERS times the
+     most frames the image's sectors could hold (MAX_FRAMES_PER_SECTOR each). An edit master
+     and the tracks in the same format cover the area twice; overlapping tracks count each
+     time they are written.
+   - Silence: frames the image lacks are written as silence. Over the whole run, the frames
+     written as silence may exceed the frames written with audio by at most SILENCE_FLOOR
+     (10 seconds), checked as they are written. A truncated image still gets its missing tail
+     filled, as sacd_extract does, as long as the run has more audio than silence; a run that
+     would be mostly silence stops, so an image of holes can't turn into gigabytes of it.
+     Frames that don't decode (written as 0x55) count as silence here. sc_area_t.allow_filler
+     lifts this bound for a run (rescuing a damaged rip), never the frame bound.
+   The frame bound is per format: a caller that asks for every format in one run can write
+   OUT_FORMATS times as much. pysacd's tools ask for at most two. */
+#define MAX_FRAMES_PER_SECTOR 7
+#define RUN_COVERS            2
+#define SILENCE_FLOOR         (10 * 75)
 
 #include "sacdconv_api.h"
 
@@ -104,6 +124,7 @@ typedef struct {
     int             reader_done;
     uint64_t        total_batches;
     _Atomic int     failed;
+    uint64_t        silence_written, audio_written;    /* frames, over all outputs (writer) */
 } engine_t;
 
 static void sc_log(sc_area_t *a, int level, const char *fmt, ...)
@@ -1170,6 +1191,13 @@ static int write_output(engine_t *e, sc_output_t *o, out_state_t *st, batch_t *b
         int i = b->pre + (int)(tc - lo);
         if (b->missing[i])
             o->frames_missing++;
+        /* a DSDIFF DST output writes nothing for a missing frame */
+        /* filler of either kind: silence for a missing frame, 0x55 for one that doesn't decode
+           (an image of garbage "frames" must not count as audio) */
+        if ((b->missing[i] && o->format != OUT_DFF_DST) || (!b->missing[i] && b->bad[i]))
+            e->silence_written++;
+        else if (!b->missing[i])
+            e->audio_written++;
         if (b->bad[i])
             o->dst_errors++;
 
@@ -1246,6 +1274,13 @@ static int writer_run(engine_t *e)
             if (write_output(e, &e->outs[i], &st[i], b) < 0) {
                 set_error(e, "%s", e->outs[i].error);
                 rc = -1;
+            } else if (!e->a->allow_filler && e->silence_written > e->audio_written + SILENCE_FLOOR) {
+                set_error(e, "the image lacks most of the audio its TOC describes: %llu frames written as "
+                          "silence or filler against %llu with audio, more than the %u frames allowed beyond "
+                          "the audio; refusing to write more (--allow-silence writes them anyway)",
+                          (unsigned long long)e->silence_written, (unsigned long long)e->audio_written,
+                          (unsigned)SILENCE_FLOOR);
+                rc = -1;
             }
         }
         e->a->frames_done += b->n;
@@ -1279,12 +1314,13 @@ static int writer_run(engine_t *e)
  * _load() refuses a library whose version, struct sizes or field offsets differ from its
  * ctypes mirrors. Bump SACDCONV_ABI whenever a struct or an exported signature changes.
  */
-#define SACDCONV_ABI 6     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
+#define SACDCONV_ABI 7     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
                               3: provisional range starts (exact, provisional, refuted_from);
                               4: the old engine's scan range and ISO sector count removed;
                               5: missing frames and the #93 silence check;
                               6: DSF through scarletbook's layout (layout; head_bytes, tail_bytes
-                                 removed: #114) */
+                                 removed: #114);
+                              7: allow_filler */
 
 #define OFF(T, f) (uint32_t)offsetof(T, f)
 static const uint32_t area_layout[] = {
@@ -1300,6 +1336,7 @@ static const uint32_t area_layout[] = {
     OFF(sc_area_t, exact), OFF(sc_area_t, provisional), OFF(sc_area_t, refuted_from),
     OFF(sc_area_t, seek_min_gap), OFF(sc_area_t, check_frame), OFF(sc_area_t, check_silent),
     OFF(sc_area_t, missing_count), OFF(sc_area_t, missing_first), OFF(sc_area_t, missing_last),
+    OFF(sc_area_t, allow_filler),
 };
 static const uint32_t output_layout[] = {
     sizeof(sc_output_t),
@@ -1477,6 +1514,8 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
     e.need_lo = UINT32_MAX;
     e.need_hi = 0;
     int want_pcm = 0;
+    uint64_t per_format[OUT_FORMATS] = {0};
+    uint64_t run_cap = (uint64_t)RUN_COVERS * MAX_FRAMES_PER_SECTOR * a->image_sectors;
     for (int i = 0; i < nouts; i++) {
         sc_output_t *o = &outs[i];
         o->frames_written = o->frames_missing = o->dst_errors = o->dst_count = 0;
@@ -1484,6 +1523,17 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
         o->error[0] = 0;
         if (o->tc_end <= o->tc_start) {
             snprintf(a->error, sizeof(a->error), "%s: empty range", o->path);
+            return -1;
+        }
+        if (o->format < 0 || o->format >= OUT_FORMATS) {
+            snprintf(a->error, sizeof(a->error), "%s: unknown output format %d", o->path, o->format);
+            return -1;
+        }
+        per_format[o->format] += o->tc_end - o->tc_start;
+        if (per_format[o->format] > run_cap) {
+            snprintf(a->error, sizeof(a->error), "the outputs need more than %llu frames in one format, "
+                     "more than %d times what the image's %llu sectors could hold",
+                     (unsigned long long)run_cap, RUN_COVERS, (unsigned long long)a->image_sectors);
             return -1;
         }
         uint32_t lo = o->head_frame >= 0 && (uint32_t)o->head_frame < o->tc_start ? (uint32_t)o->head_frame : o->tc_start;

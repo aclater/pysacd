@@ -49,6 +49,23 @@ MAX_FIELDS = 16                                 # the protocol's messages have 3
 # A larger DISC_SIZE would let a server make the client create an enormous sparse file.
 MAX_DISC_SECTORS = 1 << 22
 
+# A copy must average at least MIN_FETCH_RATE after a FETCH_GRACE allowance, or it is abandoned.
+# The per-request deadline alone would let a server return one sector just inside each timeout
+# and stretch a copy over weeks. A real PS3 reads 2-4 MB/s; 256 KiB/s is 8-16 times below
+# that, so a slow network or a few reconnects (each at most 10 s of back-off) never trip it.
+# The grace covers connecting and the TOC reads. A full dual-layer disc may take up to ~9 h.
+# Someone on a link that really is slower can lower the floor: PYSACD_PS3_MIN_KIBPS=64.
+def _min_fetch_rate(value: str | None, default: float = 256 * 1024) -> float:
+    try:
+        kib = float(value) if value else 0.0
+    except ValueError:
+        return default
+    return kib * 1024 if 1 <= kib <= 1 << 20 else default
+
+
+MIN_FETCH_RATE = _min_fetch_rate(os.environ.get("PYSACD_PS3_MIN_KIBPS"))   # bytes per second, over the whole copy
+FETCH_GRACE = 300.0             # seconds
+
 REQ_OPEN, REQ_CLOSE, REQ_READ, REQ_SIZE = 1, 2, 3, 4
 RESP_OPENED, RESP_CLOSED, RESP_READ, RESP_SIZE = 1, 2, 3, 4
 
@@ -214,7 +231,9 @@ class PS3Client:
         if resp.get(1) != want:
             log.error("%s: unexpected response (wanted type %d): %r", name, want,
                       {k: (v if not isinstance(v, bytes) else f"<{len(v)} bytes>") for k, v in resp.items()})
-            raise RemoteError(f"{self.address}: unexpected response type {resp.get(1)!r} (wanted {want})")
+            got = resp.get(1)
+            shown = f"<{len(got)} bytes>" if isinstance(got, bytes) else repr(got)   # not megabytes of escapes
+            raise RemoteError(f"{self.address}: unexpected response type {shown} (wanted {want})")
         if not isinstance(result, int):
             log.error("%s: malformed result field", name)
             raise RemoteError(f"{self.address}: malformed result field")
@@ -388,13 +407,16 @@ def needed_ranges(disc, total_sectors: int, areas: list | None) -> list[tuple[in
 
 
 def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int, int]] | None = None,
-          retries: int = 3, progress=None, chunk: int = MAX_BLOCK * 4, backoff: float = 1.0) -> int:
+          retries: int = 3, progress=None, chunk: int = MAX_BLOCK * 4, backoff: float = 1.0,
+          min_rate: float = MIN_FETCH_RATE, grace: float = FETCH_GRACE) -> int:
     """Copy sectors from a SACD Ripper server into a local plain (2048-byte) ISO file.
 
     `ranges` defaults to the whole disc; sectors outside them are left as holes (zeros).
     A dropped connection is reopened and the copy resumes where it stopped, up to `retries`
     times in a row, waiting backoff * 2**(n-1) seconds (at most 10) before the n-th retry.
     `progress(done, total)` is called after each reply (in sectors).
+    The whole copy must finish within `grace` seconds plus the requested size at `min_rate`
+    bytes/s (see MIN_FETCH_RATE), reconnects included; a slower one fails with RemoteError.
     Returns the disc size in sectors.
     """
     disc = RemoteDisc(host, port)
@@ -407,6 +429,15 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
         log.warning("fetch ranges clamped to the disc's %d sectors: %r -> %r", total, asked, ranges)
     todo = sum(e - s for s, e in ranges)
     done = failures = 0
+    started = time.monotonic()
+    deadline = started + grace + todo * SECTOR_SIZE / min_rate
+
+    def check_pace() -> None:
+        if time.monotonic() > deadline:
+            elapsed = time.monotonic() - started
+            log.error("copy too slow: %d of %d sectors in %.0f s (%.1f kB/s; at least %.0f kB/s needed)",
+                      done, todo, elapsed, done * SECTOR_SIZE / elapsed / 1e3, min_rate / 1e3)
+            raise RemoteError(f"{host}:{port}: copy too slow ({done} of {todo} sectors in {elapsed:.0f} s)")
     tmp = safeio.temp_name(path)    # written under a new, unpredictable name; moved into place at the end
     try:
         with safeio.open_new(tmp) as out:
@@ -414,6 +445,7 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
             for start, end in ranges:
                 lsn = start
                 while lsn < end:
+                    check_pace()            # outside the try: a slow server is not retried
                     n = min(chunk, end - lsn)
                     try:
                         data = disc.client.read_some(lsn, n)     # write each reply as it arrives

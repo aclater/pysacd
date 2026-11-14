@@ -18,7 +18,7 @@ else:                       # Python 3.10: the same parser, from PyPI
 from . import _native, musicbrainz, safeio, safetext, sbwriter, tagging
 from .toc import FRAME_RATE, Area, Disc, SACDImage, Track, track_range
 
-CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pysacd" / "config.toml"
+CONFIG_PATH = safeio.config_dir() / "config.toml"
 EXTENSIONS = {"dsf": "dsf", "flac": "flac", "wav": "wav"}
 
 
@@ -39,6 +39,7 @@ class Options:
     pauses: bool = False                      # include the pauses between tracks, as pysacd-extract -b
     jobs: int = 0                             # worker threads, 0 = CPU count
     exact: bool = False                       # read the area up to a track far into it, never provisionally (#85)
+    allow_silence: bool = False               # no limit on silence written for audio the image lacks
     musicbrainz: bool = True
     mb_release: str | None = None
     mb_text_search: bool = False
@@ -130,7 +131,13 @@ def _clean_component(s: str, portable: bool) -> str:
     s = re.sub(r"\s*(\[\s*\]|\(\s*\))", "", s)       # empty [] / () from blank fields
     s = re.sub(r"\s{2,}", " ", s).strip()
     # Cut after sanitising, then tidy what the cut exposed (#47)
-    s = _cut(s.rstrip(" .")).rstrip(" .").lstrip(".") or "_"
+    s = _cut(s.rstrip(" .")).rstrip(" .")
+    # Last, after every edit above: removing an empty "[]" or cutting can expose a leading
+    # '-', '.' or space that name_component() had already dealt with ("[]-rf x").
+    s = s.lstrip(". ")
+    if s.startswith("-"):
+        s = "_" + s
+    s = s or "_"
     if portable and _RESERVED.match(s):
         s = "_" + s
     return s
@@ -261,6 +268,26 @@ def _set_hint(labels: list[str], others: list[tagging.Tags], tags: tagging.Tags)
         f"--disc {i}/{total} for {lab}" for i, lab in enumerate(ordered, 1))
 
 
+LABEL_MAX_BYTES = 64
+
+
+def _labelled(name: str, label: str, portable: bool) -> str:
+    """"<name> [<label>]" within the name limit: the name gives way, never the label. Cutting
+    the whole string would drop the label from a long album title, and the "separate" folder
+    would be the one that already holds the other disc."""
+    tail = " [" + _cut(_clean_component(label, portable), LABEL_MAX_BYTES).strip() + "]"
+    head = _cut(name, NAME_MAX_BYTES - len(tail.encode())).rstrip(" .")
+    return _clean_component(head, portable) + tail
+
+
+def _holds_other_disc(d: Path, tags: tagging.Tags) -> bool:
+    if not d.is_dir():
+        return False
+    return any(o and _same_disc_or_set(o, tags) is False
+               for o in (tagging.read_tags(f) for f in sorted(d.iterdir())
+                         if f.suffix.lower() in AUDIO_SUFFIXES and not f.name.startswith(".")))
+
+
 def _avoid_other_discs(plan: list[tuple[Track, tagging.Tags, Path]], portable: bool,
                        ) -> list[tuple[Track, tagging.Tags, Path]]:
     """If a target directory already holds tracks of a different disc, write this
@@ -284,7 +311,10 @@ def _avoid_other_discs(plan: list[tuple[Track, tagging.Tags, Path]], portable: b
         if not label:
             raise SystemExit(f"{_term(d)} already holds a different disc, and this disc has no catalogue number or "
                              "barcode to tell them apart; use --dir-template or --disc")
-        target = d.with_name(_clean_component(f"{d.name} [{label}]", portable))
+        target = d.with_name(_labelled(d.name, label, portable))
+        if name_key(target) == name_key(d) or _holds_other_disc(target, tags):
+            raise SystemExit(f"{_term(d)} already holds a different disc, and no separate folder can be named for "
+                             f"this one ({_term(label)}); use --dir-template or another output folder")
         clash = [o for o in others if o and _same_disc_or_set(o, tags) is False]
         _log(f"warning: {_term(d)} already holds a different disc "
              f"({_term(', '.join(sorted({_disc_label(o) or '?' for o in clash})))}); "
@@ -395,6 +425,11 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     plan = _avoid_other_discs(plan, opts.portable_names)
     seen: set[str] = set()
     plan = [(t, tags, unique_path(p, seen)) for t, tags, p in plan]
+    # The second lock, as in pysacd-extract: the name rules keep every path inside the output
+    # folder; this checks the finished paths before anything is created.
+    for _, _, p in plan:
+        if not safeio.inside(opts.output_dir, p):
+            raise SystemExit(f"refusing to write outside the output folder: {_term(p)}")
     dirs = sorted({p.parent for _, _, p in plan})
     _log(f"{label}: {len(plan)} tracks -> {', '.join(map(str, dirs))}")
     if opts.dry_run:
@@ -438,7 +473,8 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     start = time.monotonic()
     try:
         run = _native.run_area(img, iso, area, specs, opts.pcm_rate, opts.gain_db, opts.jobs,
-                               progress=_progress_printer(label), exact=opts.exact)
+                               progress=_progress_printer(label), exact=opts.exact,
+                               allow_silence=opts.allow_silence)
     except BaseException as e:
         for spec in specs:
             Path(spec.path).unlink(missing_ok=True)
@@ -456,6 +492,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     for t, tags, path, spec in todo:
         try:
             if fmt != "dsf":
+                safeio.check_own_file(spec.path)        # reopened by name
                 tagging.write_tags(str(spec.path), fmt, tags, embed, opts.id3_version)
             os.replace(spec.path, path)
         except Exception as e:  # noqa: BLE001 - one track's tagging failure mustn't abort the disc

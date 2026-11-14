@@ -79,6 +79,8 @@ typedef struct {
     uint32_t        missing_count;
     uint32_t        missing_first;
     uint32_t        missing_last;
+    /* 1: no limit on frames written as silence or filler in this run (the frame bound stays) */
+    int             allow_filler;
 } sc_area_t;
 
 int sacdconv_abi(void);

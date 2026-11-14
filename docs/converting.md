@@ -21,8 +21,9 @@ Requirements:
   WAV still work.
 - `mutagen`, for tagging.
 
-The defaults are set in `~/.config/pysacd/config.toml`, using the same names
-as the long options with underscores; command-line flags override them:
+The defaults are set in `~/.config/pysacd/config.toml` (`$XDG_CONFIG_HOME/pysacd/config.toml`
+when `XDG_CONFIG_HOME` is an absolute path; an empty or relative one is ignored), using the same
+names as the long options with underscores; command-line flags override them:
 
 ```toml
 dir_template = "{albumartist}/{year} - {album} [{edition}]"

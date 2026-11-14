@@ -36,8 +36,9 @@ apart; every other invisible character is removed.
 
 | Where | Function | What happens |
 |---|---|---|
-| File and directory names (`convert`, and the `sacd_extract`-compatible names) | `name_component()`, `sbcompat._sanitize()` | invisible characters removed; other spaces (no-break, ideographic, …) become a plain space in `convert` names; `` ` $ \| ; < > `` replaced with `_`; no component starts with `-` or `.`; `/` can't split a component; names stay inside the output directory |
+| File and directory names (`convert`, and the `sacd_extract`-compatible names) | `name_component()`, `sbcompat._sanitize()` | invisible characters removed; other spaces (no-break, ideographic, …) become a plain space in `convert` names; `` ` $ \| ; < > `` replaced with `_`; no component starts with `-` or `.`, whatever is removed or cut before it, and none is empty, `.` or `..`; `/` can't split a component; names stay inside the output directory, which `pysacd-extract` checks again on the finished path before it creates anything |
 | Tags (ID3, Vorbis), cue sheets, XML | `clean_text()`, `strip_controls()` | invisible characters removed (XML keeps tab and newline, escaped); `clean_text()` also makes every space a plain one and normalises to NFC; cue fields can't break onto a new line; XML is escaped |
+| `pysacd toc --json` | `json` with ASCII output | every non-ASCII character is written as a `\u` escape, which JSON readers decode back |
 | Terminal and logs (`-P`, `pysacd toc`, progress, warnings, errors) | `for_terminal()` | invisible characters are shown as escapes (`\x1b`, `\u202e`, `\U000e0041`), so text can't drive the terminal (colour, title, OSC 52 clipboard writes, keystroke injection) or disguise what is shown (Trojan Source bidi tricks, zero-width characters) |
 | Error messages and tracebacks (stderr, log files) | `for_terminal()`, `format_exception()` | one-line failures are escaped; uncaught exceptions and logged tracebacks keep their stack but escape every exception message, newlines included, so an `OSError` on a hostile file name can't forge lines |
 
@@ -92,7 +93,8 @@ audio sector, and no track ending after its area's playtime.
 | Area TOC size (master TOC) | at most 128 sectors, else the area is skipped |
 | Area TOC and audio positions | read only where the image has sectors; an audio range that ends before it starts drops the area |
 | Track start and duration | cut to the area's playtime, with a warning |
-| Frames an extraction needs | at most 7 (the most a sector header can start) per audio sector the image really has, else the area fails with an error. Frames the disc lacks become silence, so without this a TOC could ask for hours of output from a few sectors |
+| Frames an extraction needs | per output, at most 7 (the most a sector header can start) per audio sector the image really has; per run, the outputs of each format together at most twice that (an edit master and its tracks cover the area twice; overlapping tracks count each time they are written). Otherwise the area fails with an error before anything is written. The engine holds the same per-run bound against the whole image, so a caller that skips the Python check can't lift it |
+| Silence and filler | frames the image lacks become silence, and frames that don't decode become 0x55 filler. Over a run, the frames written as either may exceed those written with audio by at most 10 seconds' worth (750 frames), checked as they are written; past that the engine stops and the run's files are removed. A truncated or hole-filled rip still gets its missing tail filled when the run has more audio than silence. Without this, a sparse file with a few sectors of data could ask for hours of silence, and an image of noise for as much filler. `--allow-silence` lifts this limit for a run, to rescue what a damaged rip still holds; it never lifts the frame limit above |
 | Track LSNs | only narrow where the engine reads, and only when every track's LSN lies inside the area's audio and the tracks are in order; otherwise the whole area is scanned |
 | Text strings and items | 4096 bytes per string, item scans linear in the TOC size |
 | Audio packets and frames | packets must fit their sector, a frame at most 64 KiB; an undecodable DST frame becomes 0x55 bytes and a missing frame becomes silence |
@@ -104,12 +106,31 @@ garbage, tiny, oversized and endless frames, and 2048/2054/2064-byte sector layo
 data offsets. Each image goes through every `pysacd-extract` mode (`-s`, `-p`, `-p -c`, `-e`,
 `-I`, `-P`) and `pysacd convert` (DSF, FLAC, WAV), in-process. Each run must end in a clean
 error or sane output: no other exception, no hang, nothing outside the output directory, no
-partial file left behind, and no file larger than the image's sectors could hold. CI runs it
+partial file left behind, no file larger than the image's sectors could hold, and no run's
+outputs larger than twice that in all. `RunBound` in the same file checks the per-run bounds on
+overlapping tracks and on sparse images that are mostly holes (GHSA-q45f-7qmf-37x3). CI runs it
 under ASan and UBSan. `PYSACD_HOSTILE=name,...` runs only the named images.
 
 Where `sacd_extract` differs on such images: it writes a zero-length track as a DSF header
 with no audio, while `pysacd-extract` stops with an error ("empty range") and `pysacd convert`
 skips the track with a warning.
+
+**Another disc's output.** An image can't make pysacd replace the files of a different disc
+without saying so:
+
+- `pysacd convert` never replaces a file unless `--overwrite` is given, and a disc aimed at a
+  folder that holds a different disc (by catalogue number, barcode or MusicBrainz release in the
+  files' tags) goes to `<folder> [<catalogue number>]`. The catalogue number is always part of
+  that name, however long the album title is; if no separate folder can be named, the run stops.
+- `pysacd-extract --templates` keeps files that exist and reports them as skipped, unless
+  `--overwrite` is given.
+- `pysacd-extract` with `sacd_extract`'s naming replaces the files of a re-run, as `sacd_extract`
+  does, and keeps discs apart by the files' names and tags
+  ([the limit of that](sacd_extract.md#compatibility-policy)): an image that copies another
+  disc's album, track titles, track count and ISRCs is taken for that disc. Give untrusted images
+  their own output folder. As a tripwire, replacing existing files whose size differs from what
+  the run writes prints a warning; a disc made to match the sizes passes it.
+- Both tools check every finished output path against the output folder before creating anything.
 
 ## Running as root
 
@@ -135,11 +156,46 @@ have execute bits. Each file is written under an unpredictable temporary name
 name or a guessable temporary name, and never creates an executable file, whatever the
 umask. `tests/test_confinement.py` checks this for every output mode, with hostile disc text
 and with every output name pre-planted as a symlink to a file outside the directory.
+A failed or cancelled run removes its temporary files, the `-I` copy's included.
+
+Where pysacd reopens its temporary file by name (to write FLAC and WAV tags, or a DSDIFF
+file's final header), it first checks that the name is still one regular file of the user's
+own, not a link. That narrows what another local user with write access to the output folder
+could do in between; it does not make a folder shared with untrusted users safe, which is
+outside what pysacd defends.
+
+A WAV file holds at most 4 GiB of audio (a 6-channel track of about 41 minutes at 88.2 kHz).
+pysacd refuses such an output before the run starts, instead of failing when the file is closed
+and removing the tracks already written with it.
 
 ## Network responses
 
 MusicBrainz responses are read in chunks and capped at 8 MB, and cover art at 25 MB. A cover is
 embedded only if its first bytes say JPEG or PNG, whatever the server's `Content-Type`.
+
+Each request also has a deadline for the whole exchange, from connecting to the last byte: 60 s
+for MusicBrainz JSON and OAuth replies (a large release is about 1 MB), 300 s for a cover (25 MB
+at about 85 kB/s). The 30 s socket timeout alone bounds only each read, so a server could
+otherwise trickle a reply, or its headers, for as long as it liked. If no response has started
+by the deadline, pysacd gives up on the request and carries on; the abandoned connection is
+closed when its next read returns or times out. Timeouts, resets, TLS errors and truncated
+bodies are retried like other network errors and then reported as a MusicBrainz error; a reply
+that runs past its deadline or its size cap is not retried.
+
+Requests use https only, and follow at most 5 redirects, each to an https URL (the Cover Art
+Archive redirects to archive.org hosts, so other hosts are allowed). Requests that carry
+credentials (the OAuth token exchange and the ISRC submission, with a Bearer token or digest
+auth) follow no redirect at all, so a token, client secret or password can only reach the URL it
+was meant for, on every supported Python. The one exception to https is for tests: when the
+MusicBrainz base URL itself is `http://` on a loopback address (tests point
+`pysacd.musicbrainz.API` at a local server), plain http to loopback addresses is allowed.
+`--mb-server` accepts only https URLs.
+
+MusicBrainz ids (release, release group, track, recording, artist) are kept only if they are
+MBIDs (lowercase UUIDs), because they go into request paths, Cover Art Archive URLs, tags and
+the terminal; anything else a server sends in their place is dropped. A `--mb-release` value
+(or `mb_release` in the config file) that isn't an MBID is an error before anything is
+requested; upper case and surrounding spaces are accepted.
 
 ## Extra isolation
 
@@ -160,9 +216,12 @@ podman run --rm --network none --userns=keep-id \
 ISRC submission (`pysacd submit-isrcs`, `--submit-isrcs`) is the only feature
 that writes to a remote service, and it asks before every submission.
 
-- **OAuth token:** `~/.config/pysacd/musicbrainz-token.json`, created with mode
-  0600 and never through a symlink. It's refused if others can read it, and
-  it's used only for the server it was issued by.
+- **OAuth token:** `~/.config/pysacd/musicbrainz-token.json`, written as a new
+  file under an unpredictable name (`O_EXCL`, mode 0600 from creation, never
+  through a symlink) and then moved into place. It's refused if others can read
+  it, and it's used only for the server it was issued by. pysacd refuses to save
+  it in a folder that belongs to another user or that group or others can write (POSIX), since they could
+  replace the file: `chmod go-w` (or `chmod 700`) the folder.
 - **Passwords** (digest auth) are asked for each time or read from
   `PYSACD_MB_PASSWORD`. They're never written anywhere.
 - **What's sent:** only ISRCs that pass validation (`CCXXXYYNNNNN`), with the
@@ -186,13 +245,20 @@ as hostile:
 - **Time:** each request has a deadline: the timeout (60 s) covers the whole response, not
   just each `recv()`, so a server can't trickle a reply a byte at a time. Reconnects are
   bounded (3 in a row, with backoff), and every successful reply moves the copy forward, so
-  the total transferred never exceeds the requested ranges.
+  the total transferred never exceeds the requested ranges. A copy as a whole must also keep
+  an average of 256 KiB/s after a 300 s allowance (reconnects included), or it fails: a
+  server returning one sector just inside each timeout can't stretch a copy over weeks. A
+  real PS3 reads 2-4 MB/s, 8 to 16 times faster, so a full dual-layer disc has about 9 hours.
+  The copy is abandoned only when that time has passed, so this bound is hours, not minutes. On
+  a link that really is slower, `PYSACD_PS3_MIN_KIBPS` (KiB/s, default 256) lowers the floor.
+- **Error messages:** fields of the wrong type are reported by size, never dumped.
 - **Reconnects:** a reconnect that reports a different disc size or master TOC fails the
   copy. A server that swapped discs (even another pressing with the same size) can't splice
   another disc into the file.
-- **Temporary files:** the sparse ISO for a partial fetch is created with `mkstemp` (mode
-  0600, unpredictable name) in the output directory. It is removed on success, on error and on
-  Ctrl-C. A SIGKILL, or a SIGTERM with no handler, leaves a `.pysacd-remote-*.iso` behind.
+- **Temporary files:** the sparse ISO for a partial fetch is created like every other
+  output (a new file under an unpredictable `.pysacd-<random>.partial` name) in the output
+  directory. It is removed on success, on error and on
+  Ctrl-C. A SIGKILL, or a SIGTERM with no handler, leaves that `.partial` file behind.
   That is a known limitation.
 - **Text on the disc:** it's still disc text. Names, tags and output are neutralised as
   described under [Hostile text](#hostile-text), and every output path stays inside the output

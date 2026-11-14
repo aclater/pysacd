@@ -15,6 +15,11 @@ from typing import Any
 
 from .toc import Area, SACDImage, area_frame_capacity
 
+# How often the outputs of one run may cover the area, per output format (csrc/sacdconv.c
+# RUN_COVERS): an edit master plus the tracks
+RUN_COVERS = 2
+WAV_MAX_DATA = 0xFFFFFFFF - 60      # csrc/sacdconv.c write_wav_header
+
 FORMATS = {"dsf": 0, "flac": 1, "wav": 2, "dff": 3, "dff-dst": 4}
 
 
@@ -90,6 +95,7 @@ class _Area(ctypes.Structure):
         ("missing_count", ctypes.c_uint32),
         ("missing_first", ctypes.c_uint32),
         ("missing_last", ctypes.c_uint32),
+        ("allow_filler", ctypes.c_int),
     ]
 
 
@@ -126,7 +132,7 @@ def _load():
     return _lib
 
 
-ABI = 6    # SACDCONV_ABI in csrc/sacdconv.c
+ABI = 7    # SACDCONV_ABI in csrc/sacdconv.c
 
 
 def _layout(struct) -> list[int]:
@@ -265,11 +271,23 @@ class Progress:
     sectors_total: int
 
 
+def check_wav_sizes(specs: list[OutputSpec], channels: int, pcm_rate: int) -> None:
+    """A WAV file holds at most 4 GiB of audio (24-bit: a 6-channel track of about 41 minutes
+    at 88.2 kHz). The engine finds out when it closes the file, after the whole run is written,
+    and the run's other files go with it: refuse before it starts."""
+    for s in specs:
+        if s.format == "wav":
+            size = (s.tc_end - s.tc_start) * (pcm_rate // 75) * channels * 3
+            if size > WAV_MAX_DATA:
+                raise NativeError(f"a WAV file can't hold the {size} bytes of audio of frames {s.tc_start}-"
+                                  f"{s.tc_end} (4 GiB at most); use FLAC for this track")
+
+
 def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, specs: list[OutputSpec],
              pcm_rate: int = 88200, gain_db: float = 0.0, threads: int = 0,
              iso_out: str | os.PathLike | None = None,
              progress: Callable[[Progress], None] | None = None, interval: float = 0.5,
-             source: SectorSource | None = None, exact: bool = False,
+             source: SectorSource | None = None, exact: bool = False, allow_silence: bool = False,
              seek_min_gap: int | None = None) -> RunInfo:
     """Produce all outputs from one area in a single pass. Blocking, multithreaded.
 
@@ -284,6 +302,10 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     `exact` is true. The returned RunInfo says whether it did, and how it was checked.
     `seek_min_gap` (sectors) overrides how far the exact start must lie before the range for
     a provisional start to be used (scarletbook's default, 2048, when None); tests set it to 0.
+
+    A run stops once it has written more silence and filler (frames the image lacks, frames
+    that don't decode) than audio, plus 10 seconds: an image of holes can't turn into gigabytes.
+    `allow_silence` lifts that for a run, to rescue what a damaged rip still holds.
     """
     lib = _load()
     outs = (_Output * max(1, len(specs)))()
@@ -325,12 +347,28 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
             raise NativeError(f"the outputs need frames up to {max(s.tc_end for s in specs)}, but the area's "
                               f"audio in this image (LSN {area.track_start}-{area.track_end}, "
                               f"{image.total_sectors} sectors) holds at most {capacity}")
+        # ... and not per output only: the outputs of one run may add up to RUN_COVERS times that per
+        # format (an edit master and the tracks in the same format cover the area twice), with
+        # overlapping tracks counted each time they are written (GHSA-q45f-7qmf-37x3). The engine
+        # holds the same bound against the whole image, and limits the silence it writes.
+        per_format: dict[str, int] = {}
+        for s in specs:
+            per_format[s.format] = per_format.get(s.format, 0) + s.tc_end - s.tc_start
+        for fmt, total in per_format.items():
+            if total > RUN_COVERS * capacity:
+                n = sum(s.format == fmt for s in specs)
+                raise NativeError(f"the {n} {fmt} outputs need {total} frames in all, more than {RUN_COVERS} times "
+                                  f"the {capacity} the area's audio in this image (LSN {area.track_start}-"
+                                  f"{area.track_end}, {image.total_sectors} sectors) could hold: tracks that "
+                                  f"overlap or claim more than the area's play time")
+        check_wav_sizes(specs, area.channel_count, pcm_rate)
         a.channels = area.channel_count
         a.toc_lsn = area.toc_start      # which area scarletbook reads: the one whose TOC this is
     else:
         a.channels = 2
     a.image_sectors = image.total_sectors
     a.exact = int(exact)
+    a.allow_filler = int(allow_silence)
     a.seek_min_gap = -1 if seek_min_gap is None else seek_min_gap
     # #93 workaround: the frame before the area's last one is tested for DSD silence
     a.check_frame = area.total_playtime.total_frames - 2 if area is not None and \
@@ -397,7 +435,9 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
         if s.format == "dff-dst":
             n = min(o.dst_count, o.dst_cap)
             s.dst_index = [(o.dst_offsets[i], o.dst_lengths[i]) for i in range(n)]
-    if result and result[0] != 0:
+    if not result:
+        raise NativeError("the engine did not return a result")      # the call itself failed
+    if result[0] != 0:
         raise NativeError(a.error.decode(errors="replace"))
     none = lambda v: None if v == 0xFFFFFFFF else v
     info = RunInfo(provisional=a.provisional > 0, confirmed=a.provisional == 2,

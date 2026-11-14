@@ -14,6 +14,12 @@ behaviour, and a patch version only adds or fixes. Each release on
   and the release's sdist run in a Fedora 44 container; semgrep, zizmor and the private-names check
   in UBI 10, with semgrep and zizmor installed from PyPI by hash instead of their vendors' images.
   CI only; the wheels and the package are unchanged ([development](docs/development.md#ci)).
+- **Plain DSD to DSF or DSDIFF uses one worker thread by default (#137).** Nothing is decoded or
+  filtered there, so a pool the size of the CPU only cost wake-ups. On a 32-thread machine, a
+  40-minute stereo disc from the page cache to local NVMe (`-2 -s`, 15 alternating runs, power
+  profile `performance`): engine time 0.17–0.21 s with one worker against 0.20–0.23 s with 32
+  (medians of three series), the same bytes out. `--threads` and `-j` still set the count. Not
+  measured: multichannel plain DSD.
 - **Python 3.10 is supported again (#140)**, so pysacd installs with Ubuntu 22.04's own Python. On 3.10 the
   config file is read with `tomli` (installed only there), and CI runs the suite on 3.10 too. The
   wheels are unchanged (one per platform serves every Python).

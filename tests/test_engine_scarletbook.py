@@ -101,6 +101,27 @@ class Engine(unittest.TestCase):
             _native.run_area(img, iso, area, [spec])
         self.assertEqual(spec.frames_written, 100)
 
+    def test_plain_dsd_to_dsd_files_uses_one_worker(self):
+        # nothing to decode or filter: a pool only costs wake-ups (#137); a chosen count is kept,
+        # and PCM output keeps the pool
+        import logging
+        import re
+        iso = self.image()
+        area = read_toc(iso).stereo
+
+        def workers(fmt: str, name: str, **kw) -> int:
+            with self.assertLogs("pysacd.engine", logging.INFO) as logs, SACDImage(iso) as img:
+                _native.run_area(img, iso, area, [self.spec(area, 0, fmt, name)], **kw)
+            return int(re.search(r"(\d+) worker threads", "\n".join(logs.output)).group(1))
+
+        self.assertEqual(workers("dsf", "a.dsf"), 1)
+        self.assertEqual(workers("dff", "a.dff"), 1)
+        self.assertEqual(workers("dsf", "b.dsf", threads=3), 3)
+        if (os.cpu_count() or 1) > 1:
+            self.assertGreater(workers("wav", "a.wav"), 1)
+        one = (self.dir / "a.dsf").read_bytes()
+        self.assertEqual(one, (self.dir / "b.dsf").read_bytes())
+
     def test_sector_source_matches_the_file(self):
         iso = self.image()
         area = read_toc(iso).stereo

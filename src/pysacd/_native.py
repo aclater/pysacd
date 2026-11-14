@@ -337,6 +337,11 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
         area.total_playtime.total_frames >= 2 else 0xFFFFFFFF
     a.pcm_rate = pcm_rate
     a.gain_db = gain_db
+    if threads <= 0 and area is not None and not area.is_dst and specs and all(
+            s.format in ("dsf", "dff") for s in specs):
+        # Plain DSD copied into DSD files: nothing to decode or filter, so a pool of workers
+        # only costs wake-ups (#137). One worker, unless the caller chose a count.
+        threads = 1
     a.threads = threads
     if iso_out is not None:
         a.iso_out_path = os.fsencode(iso_out)

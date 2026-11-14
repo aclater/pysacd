@@ -113,7 +113,8 @@ class ConfigDir(unittest.TestCase):
 
     def test_helper(self):
         home = Path.home() / ".config" / "pysacd"
-        for value, want in (("", home), ("rel", home), ("./x", home), ("/abs/cfg", Path("/abs/cfg/pysacd"))):
+        absolute = Path(tempfile.gettempdir()).resolve() / "cfg"     # absolute on every platform
+        for value, want in (("", home), ("rel", home), ("./x", home), (str(absolute), absolute / "pysacd")):
             with self.subTest(value=value), mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": value}):
                 self.assertEqual(safeio.config_dir(), want)
         with mock.patch.dict(os.environ):

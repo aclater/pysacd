@@ -543,7 +543,7 @@ class TocJson(unittest.TestCase):
             r = subprocess.run([sys.executable, "-m", "pysacd", "toc", "--json", str(iso)], capture_output=True,
                                env=dict(os.environ, PYTHONPATH=str(src)), check=True)
         self.assertTrue(r.stdout.isascii())
-        self.assertFalse(any(b < 0x20 and b not in (0x0A,) for b in r.stdout), "raw control bytes")
+        self.assertFalse(any(b < 0x20 and b not in (0x0A, 0x0D) for b in r.stdout), "raw control bytes")
         self.assertIn("\x9b", json.dumps(json.loads(r.stdout), ensure_ascii=False))
 
 

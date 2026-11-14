@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import struct
+import sys
 
 from . import __version__, safetext
 from .toc import CATEGORIES, GENRES, START_OF_MASTER_TOC, Area, Disc, SACDImage
@@ -82,6 +83,7 @@ def _trim_whitespace(b: bytes) -> bytes:
 
 
 _NAME_UNSAFE = frozenset(safetext.NAME_UNSAFE.encode())
+_WINDOWS = sys.platform == "win32"
 
 
 def _sanitize(b: bytes, unsafe: frozenset) -> bytes:
@@ -94,7 +96,11 @@ def _sanitize(b: bytes, unsafe: frozenset) -> bytes:
     # sacd_extract trims dots, then whitespace, and uses what is left: " .. " would become
     # "..", and " .x" a hidden ".x". A name never starts with '.' or '-' here, so it is never
     # "." or ".."; it may be empty (nothing usable in the text), which each caller handles.
-    return b"_" + b[1:] if b[:1] in (b"-", b".") else b
+    b = b"_" + b[1:] if b[:1] in (b"-", b".") else b
+    # Windows drops trailing dots and spaces from a path component, so the folder it creates for
+    # "_ ." is "_", and the next step can't find "_ .". Drop them here instead, on Windows only:
+    # elsewhere the names stay sacd_extract's.
+    return b.rstrip(b". ") if _WINDOWS else b
 
 
 def sanitize_filename(name: str) -> str:

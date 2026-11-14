@@ -286,10 +286,14 @@ class Submission(unittest.TestCase):
         for code in (301, 302, 303, 307, 308):
             _Server.seen = []
             _Server.reply = (code, b"", {"Location": f"http://127.0.0.1:{self.httpd.server_port}/elsewhere"})
-            with self.subTest(code=code), self.assertRaisesRegex(musicbrainz.MBError, "redirect refused"):
+            # Python 3.10's urllib doesn't treat 308 as a redirect at all: it comes back as an
+            # ordinary HTTP error. Either way the request is not followed, which is the point.
+            with self.subTest(code=code), self.assertRaisesRegex(
+                    musicbrainz.MBError, "redirect refused|submission refused: HTTP 308"):
                 isrcsubmit.submit(self.plan, None, token_path=self.token)
             self.assertEqual([p for p, _, _ in _Server.seen], [_Server.seen[0][0]])    # one request, no follow-up
         _Server.seen = []
+        _Server.reply = (307, b"", {"Location": f"http://127.0.0.1:{self.httpd.server_port}/elsewhere"})
         with self.assertRaisesRegex(musicbrainz.MBError, "redirect refused"):
             isrcsubmit.finish_login("id", "secret", "code", None, path=self.token)
         self.assertEqual(len(_Server.seen), 1)

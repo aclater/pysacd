@@ -35,6 +35,17 @@ class Names(unittest.TestCase):
                         ("R.E.M.", "R.E.M"), (" x ", "x"), ("...And Justice for All", "And Justice for All")):
             self.assertEqual(sb.sanitize_filename(t), want)
 
+    def test_windows_names_have_no_trailing_dot_or_space(self):
+        from unittest import mock
+        with mock.patch.object(sb, "_WINDOWS", True):
+            for t in [*TITLES, "Title.", "Title. ", "a .", "R.E.M."]:
+                n = sb.sanitize_filename(t)
+                self.assertFalse(n.endswith((".", " ")), repr(t))
+                self.assertNotIn(n, (".", ".."))
+            self.assertEqual(sb.sanitize_filename(" . . "), "_")
+            self.assertEqual(sb.sanitize_filename("Kind of Blue"), "Kind of Blue")
+        self.assertEqual(sb.sanitize_filename(" . . ") if not sb._WINDOWS else "_ .", "_ .")
+
     def test_make_filename_keeps_the_directory(self):
         self.assertEqual(sb.make_filename("../../out", "n", "dsf"), "../../out/n.dsf")
         self.assertEqual(sb.make_filename("../out", "n", "dsf"), "../out/n.dsf")

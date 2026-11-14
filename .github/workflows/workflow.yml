@@ -9,7 +9,8 @@ name: wheels (release)
 on:
   pull_request:
     paths: ["setup.py", "pyproject.toml", "MANIFEST.in", "Makefile", "csrc/**", "tests/wheel_smoke.py",
-            "scarletbook.lock", "tools/scarletbook.py", "tools/check_cet.py", "licenses/**", ".github/workflows/workflow.yml"]
+            "scarletbook.lock", "tools/scarletbook.py", "tools/check_cet.py", "tools/check_release_tag.py",
+            "src/pysacd/__init__.py", "licenses/**", ".github/workflows/workflow.yml"]
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -29,11 +30,31 @@ env:
   FLAC_SHA256: f2c1c76592a82ffff8413ba3c4a1299b6c7ab06c734dee03fd88630485c2b920
 
 jobs:
+  tag:
+    # First, before anything is built: a v* tag must be "v" plus the package version, on a commit
+    # of master or a release/* branch (#154). Tags can't be moved afterwards. Pull requests and
+    # manual runs only check that pyproject.toml and __version__ agree.
+    name: release tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0  # every branch of origin, to see which ones hold the commit
+
+      - name: The tag matches the version and its commit is on a release branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: >-
+          python3 -I tools/check_release_tag.py --ref "$GITHUB_REF" --sha "$GITHUB_SHA"
+          --default-branch "$DEFAULT_BRANCH"
+
   scarletbook:
     # Every wheel links the scarletbook-rs C library pinned in scarletbook.lock (#85), and each
     # build checks its download against the pinned SHA-256. Before building, check that every
     # pinned archive is an attested scarletbook-rs release (tag and commit), as ci.yml does.
     name: scarletbook provenance
+    needs: [tag]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1

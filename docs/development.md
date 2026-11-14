@@ -479,6 +479,13 @@ directory, so your `build/` and `src/pysacd/_sacdconv.so` are left alone. The
 engine is a ctypes library rather than a CPython extension, so one
 `py3-none-<platform>` wheel serves every Python version.
 
+A release is a `v*` tag on a commit of `master` (or of a `release/*` branch, for a fix to an
+older version), named `v` plus the version in `pyproject.toml`, which `src/pysacd/__init__.py`
+repeats. The workflow's first job, `release tag`, checks all of that with
+`tools/check_release_tag.py` and nothing is built, attested or published when it fails (#154): a
+tag on an unmerged commit, or one that doesn't match the version, stops there. On pull requests the
+job only checks that the two version strings agree.
+
 `.github/workflows/workflow.yml` builds wheels for manylinux (x86-64, aarch64),
 musllinux (x86-64), macOS (arm64, x86-64) and Windows (x86-64), plus the sdist,
 whenever packaging or `csrc/` changes. Every wheel's engine has the pinned scarletbook library

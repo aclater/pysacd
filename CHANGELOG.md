@@ -9,6 +9,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Build and release
+- The release workflow refuses a `v*` tag that isn't `v` plus the package version, or whose commit
+  isn't on `master` or a `release/*` branch, before anything is built or published (#154).
+
 ## 0.5.1 (2026-11-14)
 
 A security release. A private review of 0.5.0, asked for by the maintainer, found three problems

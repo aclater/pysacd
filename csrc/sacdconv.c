@@ -79,7 +79,11 @@ enum { OUT_DSF = 0, OUT_FLAC = 1, OUT_WAV = 2, OUT_DFF_DSD = 3, OUT_DFF_DST = 4,
      written as silence may exceed the frames written with audio by at most SILENCE_FLOOR
      (10 seconds), checked as they are written. A truncated image still gets its missing tail
      filled, as sacd_extract does, as long as the run has more audio than silence; a run that
-     would be mostly silence stops, so an image of holes can't turn into gigabytes of it. */
+     would be mostly silence stops, so an image of holes can't turn into gigabytes of it.
+     Frames that don't decode (written as 0x55) count as silence here. sc_area_t.allow_filler
+     lifts this bound for a run (rescuing a damaged rip), never the frame bound.
+   The frame bound is per format: a caller that asks for every format in one run can write
+   OUT_FORMATS times as much. pysacd's tools ask for at most two. */
 #define MAX_FRAMES_PER_SECTOR 7
 #define RUN_COVERS            2
 #define SILENCE_FLOOR         (10 * 75)
@@ -1188,7 +1192,9 @@ static int write_output(engine_t *e, sc_output_t *o, out_state_t *st, batch_t *b
         if (b->missing[i])
             o->frames_missing++;
         /* a DSDIFF DST output writes nothing for a missing frame */
-        if (b->missing[i] && o->format != OUT_DFF_DST)
+        /* filler of either kind: silence for a missing frame, 0x55 for one that doesn't decode
+           (an image of garbage "frames" must not count as audio) */
+        if ((b->missing[i] && o->format != OUT_DFF_DST) || (!b->missing[i] && b->bad[i]))
             e->silence_written++;
         else if (!b->missing[i])
             e->audio_written++;
@@ -1268,10 +1274,10 @@ static int writer_run(engine_t *e)
             if (write_output(e, &e->outs[i], &st[i], b) < 0) {
                 set_error(e, "%s", e->outs[i].error);
                 rc = -1;
-            } else if (e->silence_written > e->audio_written + SILENCE_FLOOR) {
+            } else if (!e->a->allow_filler && e->silence_written > e->audio_written + SILENCE_FLOOR) {
                 set_error(e, "the image lacks most of the audio its TOC describes: %llu frames written as "
-                          "silence against %llu with audio, more than the %u frames of silence allowed beyond "
-                          "the audio; refusing to write more",
+                          "silence or filler against %llu with audio, more than the %u frames allowed beyond "
+                          "the audio; refusing to write more (--allow-silence writes them anyway)",
                           (unsigned long long)e->silence_written, (unsigned long long)e->audio_written,
                           (unsigned)SILENCE_FLOOR);
                 rc = -1;
@@ -1308,12 +1314,13 @@ static int writer_run(engine_t *e)
  * _load() refuses a library whose version, struct sizes or field offsets differ from its
  * ctypes mirrors. Bump SACDCONV_ABI whenever a struct or an exported signature changes.
  */
-#define SACDCONV_ABI 6     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
+#define SACDCONV_ABI 7     /* 2: scarletbook (toc_lsn, image_sectors, sb_cancel; sacdconv_cancel);
                               3: provisional range starts (exact, provisional, refuted_from);
                               4: the old engine's scan range and ISO sector count removed;
                               5: missing frames and the #93 silence check;
                               6: DSF through scarletbook's layout (layout; head_bytes, tail_bytes
-                                 removed: #114) */
+                                 removed: #114);
+                              7: allow_filler */
 
 #define OFF(T, f) (uint32_t)offsetof(T, f)
 static const uint32_t area_layout[] = {
@@ -1329,6 +1336,7 @@ static const uint32_t area_layout[] = {
     OFF(sc_area_t, exact), OFF(sc_area_t, provisional), OFF(sc_area_t, refuted_from),
     OFF(sc_area_t, seek_min_gap), OFF(sc_area_t, check_frame), OFF(sc_area_t, check_silent),
     OFF(sc_area_t, missing_count), OFF(sc_area_t, missing_first), OFF(sc_area_t, missing_last),
+    OFF(sc_area_t, allow_filler),
 };
 static const uint32_t output_layout[] = {
     sizeof(sc_output_t),

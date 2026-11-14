@@ -435,5 +435,60 @@ class RunBound(unittest.TestCase):
         self.assertEqual(files, {})
         self.assertIn("the image lacks most of the audio", said)
 
+    def test_frames_that_do_not_decode_count_as_filler(self):
+        # 1200 "DST frames" of noise, 7 to a sector: present, but none decodes, so each is
+        # written as 0x55 filler. Filler counts like silence: the run stops.
+        frames = [sacdgen._rng_bytes(1000 + i, 40) for i in range(1200)]
+        img, _ = sacdgen.build_image([sacdgen.AreaSpec(2, frames, [1200], titles=["Noise"])],
+                                     sacdgen.DiscInfo(title="noise"))
+        rc, files, said = self._extract(bytes(img), "-2", "-s")
+        self.assertEqual(rc, 255, said)
+        self.assertEqual(files, {})
+        self.assertIn("the image lacks most of the audio", said)
+
+    def test_allow_silence_lifts_the_silence_bound_only(self):
+        # the rescue: the second track alone, 20 frames of audio and 780 of silence
+        rc, files, said = self._extract(self._tail_image(820), "-2", "-s", "-t", "2", "--allow-silence")
+        self.assertEqual(rc, 1, said)
+        self.assertEqual(len(files), 1)
+        self.assertGreaterEqual(next(iter(files.values())), 800 * 2 * 4704)
+        # never the frame bound
+        rc, files, said = self._extract(sacdgen.overlapping_tracks(1000, 3), "-2", "-s", "--allow-silence")
+        self.assertEqual(rc, 255)
+        self.assertEqual(files, {})
+
+    def test_a_failed_iso_copy_leaves_nothing(self):
+        rc, files, _ = self._extract(sacdgen.overlapping_tracks(3000, 1), "-2", "-s", "-I", sectors=1200)
+        self.assertEqual(rc, 255)
+        self.assertEqual(files, {})
+
+    def test_run_covers_is_the_same_on_both_sides(self):
+        import re
+
+        from pysacd import _native
+        src = (Path(__file__).resolve().parents[1] / "csrc" / "sacdconv.c").read_text()
+        self.assertEqual(int(re.search(r"#define RUN_COVERS\s+(\d+)", src).group(1)), _native.RUN_COVERS)
+
+    def test_wav_size_is_checked_before_the_run(self):
+        from pysacd import _native
+        spec = lambda n: [_native.OutputSpec("wav", "x.wav", 0, n)]
+        _native.check_wav_sizes(spec(200_000), 6, 88200)            # 4.23e9 bytes: fits
+        with self.assertRaises(_native.NativeError):
+            _native.check_wav_sizes(spec(203_000), 6, 88200)        # 45 minutes of 6 channels
+        with self.assertRaises(_native.NativeError):
+            _native.check_wav_sizes(spec(102_000), 6, 176400)
+        _native.check_wav_sizes([_native.OutputSpec("flac", "x.flac", 0, 400_000)], 6, 176400)
+
+    def test_no_result_from_the_engine_is_a_failure(self):
+        from unittest import mock
+
+        from pysacd import _native
+        lib = _native._load()
+        with mock.patch.object(lib, "sacdconv_area_run", side_effect=RuntimeError("boom")), \
+                mock.patch("threading.excepthook"):
+            rc, files, said = self._extract(self._tail_image(None), "-2", "-s")
+        self.assertNotEqual(rc, 0, said)
+        self.assertEqual(files, {})
+
 if __name__ == "__main__":
     unittest.main()

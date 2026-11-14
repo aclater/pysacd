@@ -258,6 +258,8 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("-j", "--jobs", type=int, help="worker threads (default: CPU count)")
     _bool(c, "exact", "for a track far into an area, read the area up to it instead of starting provisionally "
                       "(exact on a well-formed disc; slower from a network share) (default off)")
+    _bool(c, "allow-silence", "write the tracks even when most of their audio is missing from the image or "
+                              "doesn't decode, as silence (default off: such a run stops)")
     _bool(c, "musicbrainz", "look up the release on MusicBrainz (default on)")
     c.add_argument("--mb-release", help="use this MusicBrainz release id")
     _bool(c, "mb-text-search", "fall back to title/artist search when barcode/catalog fail (default off)")

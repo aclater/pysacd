@@ -94,7 +94,7 @@ audio sector, and no track ending after its area's playtime.
 | Area TOC and audio positions | read only where the image has sectors; an audio range that ends before it starts drops the area |
 | Track start and duration | cut to the area's playtime, with a warning |
 | Frames an extraction needs | per output, at most 7 (the most a sector header can start) per audio sector the image really has; per run, the outputs of each format together at most twice that (an edit master and its tracks cover the area twice; overlapping tracks count each time they are written). Otherwise the area fails with an error before anything is written. The engine holds the same per-run bound against the whole image, so a caller that skips the Python check can't lift it |
-| Silence | frames the image lacks become silence. Over a run, the frames written as silence may exceed those written with audio by at most 10 seconds' worth (750 frames), checked as they are written; past that the engine stops and the run's files are removed. A truncated or hole-filled rip still gets its missing tail filled when the run has more audio than silence. Without this, a sparse file with a few sectors of data could ask for hours of silence |
+| Silence and filler | frames the image lacks become silence, and frames that don't decode become 0x55 filler. Over a run, the frames written as either may exceed those written with audio by at most 10 seconds' worth (750 frames), checked as they are written; past that the engine stops and the run's files are removed. A truncated or hole-filled rip still gets its missing tail filled when the run has more audio than silence. Without this, a sparse file with a few sectors of data could ask for hours of silence, and an image of noise for as much filler. `--allow-silence` lifts this limit for a run, to rescue what a damaged rip still holds; it never lifts the frame limit above |
 | Track LSNs | only narrow where the engine reads, and only when every track's LSN lies inside the area's audio and the tracks are in order; otherwise the whole area is scanned |
 | Text strings and items | 4096 bytes per string, item scans linear in the TOC size |
 | Audio packets and frames | packets must fit their sector, a frame at most 64 KiB; an undecodable DST frame becomes 0x55 bytes and a missing frame becomes silence |
@@ -128,7 +128,9 @@ without saying so:
   does, and keeps discs apart by the files' names and tags
   ([the limit of that](sacd_extract.md#compatibility-policy)): an image that copies another
   disc's album, track titles, track count and ISRCs is taken for that disc. Give untrusted images
-  their own output folder.
+  their own output folder. As a tripwire, replacing existing files whose size differs from what
+  the run writes prints a warning; a disc made to match the sizes passes it.
+- Both tools check every finished output path against the output folder before creating anything.
 
 ## Running as root
 
@@ -154,6 +156,17 @@ have execute bits. Each file is written under an unpredictable temporary name
 name or a guessable temporary name, and never creates an executable file, whatever the
 umask. `tests/test_confinement.py` checks this for every output mode, with hostile disc text
 and with every output name pre-planted as a symlink to a file outside the directory.
+A failed or cancelled run removes its temporary files, the `-I` copy's included.
+
+Where pysacd reopens its temporary file by name (to write FLAC and WAV tags, or a DSDIFF
+file's final header), it first checks that the name is still one regular file of the user's
+own, not a link. That narrows what another local user with write access to the output folder
+could do in between; it does not make a folder shared with untrusted users safe, which is
+outside what pysacd defends.
+
+A WAV file holds at most 4 GiB of audio (a 6-channel track of about 41 minutes at 88.2 kHz).
+pysacd refuses such an output before the run starts, instead of failing when the file is closed
+and removing the tracks already written with it.
 
 ## Network responses
 

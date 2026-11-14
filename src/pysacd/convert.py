@@ -39,6 +39,7 @@ class Options:
     pauses: bool = False                      # include the pauses between tracks, as pysacd-extract -b
     jobs: int = 0                             # worker threads, 0 = CPU count
     exact: bool = False                       # read the area up to a track far into it, never provisionally (#85)
+    allow_silence: bool = False               # no limit on silence written for audio the image lacks
     musicbrainz: bool = True
     mb_release: str | None = None
     mb_text_search: bool = False
@@ -424,6 +425,11 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     plan = _avoid_other_discs(plan, opts.portable_names)
     seen: set[str] = set()
     plan = [(t, tags, unique_path(p, seen)) for t, tags, p in plan]
+    # The second lock, as in pysacd-extract: the name rules keep every path inside the output
+    # folder; this checks the finished paths before anything is created.
+    for _, _, p in plan:
+        if not safeio.inside(opts.output_dir, p):
+            raise SystemExit(f"refusing to write outside the output folder: {_term(p)}")
     dirs = sorted({p.parent for _, _, p in plan})
     _log(f"{label}: {len(plan)} tracks -> {', '.join(map(str, dirs))}")
     if opts.dry_run:
@@ -467,7 +473,8 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     start = time.monotonic()
     try:
         run = _native.run_area(img, iso, area, specs, opts.pcm_rate, opts.gain_db, opts.jobs,
-                               progress=_progress_printer(label), exact=opts.exact)
+                               progress=_progress_printer(label), exact=opts.exact,
+                               allow_silence=opts.allow_silence)
     except BaseException as e:
         for spec in specs:
             Path(spec.path).unlink(missing_ok=True)
@@ -485,6 +492,7 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     for t, tags, path, spec in todo:
         try:
             if fmt != "dsf":
+                safeio.check_own_file(spec.path)        # reopened by name
                 tagging.write_tags(str(spec.path), fmt, tags, embed, opts.id3_version)
             os.replace(spec.path, path)
         except Exception as e:  # noqa: BLE001 - one track's tagging failure mustn't abort the disc

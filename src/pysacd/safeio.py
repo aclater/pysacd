@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import secrets
+import stat
 from pathlib import Path
 
 FLAGS = (os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
@@ -23,6 +24,25 @@ def temp_name(path: str | os.PathLike) -> Path:
     """An unpredictable name for a temporary file next to `path`. It's short, so a final name
     near the 255-byte limit still leaves room for it."""
     return Path(path).with_name(f".pysacd-{secrets.token_hex(8)}.partial")
+
+
+def inside(base: str | os.PathLike, path: str | os.PathLike) -> bool:
+    """True if `path` is `base` or lies inside it. Lexical (no symlinks resolved), so a user's
+    own links inside the output folder keep working; it catches "..", and an absolute path that
+    a join would let replace the base."""
+    root = os.path.abspath(base)
+    full = os.path.abspath(path)
+    return full == root or os.path.commonpath([root, full]) == root
+
+
+def check_own_file(path: str | os.PathLike) -> None:
+    """Before reopening by name a file pysacd created: it must still be one regular file of
+    ours, not a link put in its place. This narrows the window for someone else who can write
+    to the folder; it can't close it (the reopen is by name), and such a folder is outside what
+    pysacd defends (docs/security.md, "Files pysacd writes")."""
+    st = os.lstat(path)
+    if not stat.S_ISREG(st.st_mode) or st.st_nlink != 1 or (hasattr(os, "geteuid") and st.st_uid != os.geteuid()):
+        raise OSError(f"{os.fspath(path)!r} is no longer the file pysacd created")
 
 
 def create(path: str | os.PathLike) -> int:

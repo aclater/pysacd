@@ -58,6 +58,18 @@ behaviour, and a patch version only adds or fixes. Each release on
     pysacd read `pysacd/config.toml` from the current directory.
   - A copy from a PS3 must average at least 256 KiB/s after a 300 s allowance, so a server can't
     stretch it out indefinitely; real PS3s read 2-4 MB/s.
+- **Output hardening**, found in the same review (low severity, no advisory):
+  - frames that don't decode now count with the silence in the limit above, and the new
+    `--allow-silence` (`pysacd-extract` and `pysacd convert`) lifts that limit for a run, to rescue
+    what a damaged rip still holds;
+  - a failed or cancelled `-I` no longer leaves a partial `.iso` under its final name;
+  - a WAV track over 4 GiB is refused before the run starts, instead of failing at the end and
+    taking the run's finished tracks with it;
+  - `pysacd convert` checks every output path against the output folder, as `pysacd-extract` does;
+  - `pysacd-extract` warns when a re-run replaces files of a different size, and with `--templates`
+    when a folder already holds another disc's tracks; a run that skipped every file exits with 1;
+  - before reopening a temporary file by name, pysacd checks it is still its own regular file;
+  - an engine call that returns no result is a failure, not a success.
 
 ### Other changes
 

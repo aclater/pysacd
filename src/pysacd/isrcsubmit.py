@@ -34,12 +34,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
-from . import __version__, musicbrainz
+from . import __version__, musicbrainz, safeio
 from .toc import Area
 
 ISRC_RE = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
 MBID_RE = musicbrainz.MBID_RE
-TOKEN_FILE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "pysacd" / "musicbrainz-token.json"
+TOKEN_FILE = safeio.config_dir() / "musicbrainz-token.json"
 OOB = "urn:ietf:wg:oauth:2.0:oob"
 SCOPE = "submit_isrc"
 

@@ -18,7 +18,7 @@ else:                       # Python 3.10: the same parser, from PyPI
 from . import _native, musicbrainz, safeio, safetext, sbwriter, tagging
 from .toc import FRAME_RATE, Area, Disc, SACDImage, Track, track_range
 
-CONFIG_PATH = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "pysacd" / "config.toml"
+CONFIG_PATH = safeio.config_dir() / "config.toml"
 EXTENSIONS = {"dsf": "dsf", "flac": "flac", "wav": "wav"}
 
 

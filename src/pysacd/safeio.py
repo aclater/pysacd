@@ -53,3 +53,12 @@ def write_file(path: str | os.PathLike, data: bytes) -> None:
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
+
+
+def config_dir() -> Path:
+    """pysacd's configuration folder: $XDG_CONFIG_HOME/pysacd, or ~/.config/pysacd. As the XDG
+    Base Directory spec says, an empty or relative XDG_CONFIG_HOME is ignored; otherwise the
+    config file would be looked for relative to the current directory, where anyone who can
+    write there could plant one."""
+    base = os.environ.get("XDG_CONFIG_HOME") or ""
+    return (Path(base) if os.path.isabs(base) else Path.home() / ".config") / "pysacd"

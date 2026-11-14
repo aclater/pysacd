@@ -108,6 +108,32 @@ class SafeIO(unittest.TestCase):
         self.assertEqual([p.name for p in self.dir.iterdir() if p.name.endswith(".partial")], [])
 
 
+class ConfigDir(unittest.TestCase):
+    """An empty or relative XDG_CONFIG_HOME is ignored (XDG spec), so no config is read from the cwd."""
+
+    def test_helper(self):
+        home = Path.home() / ".config" / "pysacd"
+        for value, want in (("", home), ("rel", home), ("./x", home), ("/abs/cfg", Path("/abs/cfg/pysacd"))):
+            with self.subTest(value=value), mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": value}):
+                self.assertEqual(safeio.config_dir(), want)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("XDG_CONFIG_HOME", None)
+            self.assertEqual(safeio.config_dir(), home)
+
+    def test_modules_use_it(self):
+        import subprocess
+        import sys
+        code = "from pysacd import convert, isrcsubmit; print(convert.CONFIG_PATH); print(isrcsubmit.TOKEN_FILE)"
+        for value in ("", "relative"):
+            with self.subTest(value=value):
+                env = {**os.environ, "XDG_CONFIG_HOME": value,
+                       "PYTHONPATH": str(Path(__file__).resolve().parent.parent / "src")}
+                out = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                                     check=True).stdout.split("\n")
+                self.assertTrue(Path(out[0]).is_absolute(), out[0])
+                self.assertTrue(Path(out[1]).is_absolute(), out[1])
+
+
 class HTTPLimits(unittest.TestCase):
     def response(self, body: bytes, ctype: str = "application/json"):
         r = mock.MagicMock()

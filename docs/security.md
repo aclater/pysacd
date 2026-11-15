@@ -188,7 +188,9 @@ that runs past its deadline or its size cap is not retried.
 Requests use https only, and follow at most 5 redirects, each to an https URL. A cover download
 follows redirects only to `coverartarchive.org` and `archive.org` and their subdomains (the Cover
 Art Archive hands its images to Internet Archive servers), so a response can't steer the
-download to another host. If the archive ever moves its images elsewhere, covers stop and the
+download to another host. The redirect's address must name the host plainly: no user part,
+percent-escape, backslash, empty label or port other than 443. A redirect whose address can't be
+parsed is refused in the same way. If the archive ever moves its images elsewhere, covers stop and the
 run says why ("cover art: the Cover Art Archive sent the download to a host pysacd doesn't
 follow"); tags and audio are unaffected. MusicBrainz lookups may be redirected to any https
 host. Requests that carry

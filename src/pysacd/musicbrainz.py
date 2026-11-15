@@ -96,24 +96,46 @@ def _loopback(host: str | None) -> bool:
         return False
 
 
+def _split(url: str) -> urllib.parse.SplitResult | None:
+    """urlsplit(), or None for a URL it refuses (an unbalanced or non-address `[...]` host)."""
+    try:
+        return urllib.parse.urlsplit(url)
+    except ValueError:
+        return None
+
+
 def _allowed_url(url: str) -> bool:
     """https only. Plain http is allowed only to a loopback address, and only when API itself is
     an http URL on a loopback address. That exception is test scaffolding: the tests point API
     at local servers by patching it; set_server(), the only way a user sets it, takes https only."""
-    u = urllib.parse.urlsplit(url)
+    u = _split(url)
+    if u is None:
+        return False
     if u.scheme == "https":
         return True
     api = urllib.parse.urlsplit(API)
     return u.scheme == "http" and api.scheme == "http" and _loopback(api.hostname) and _loopback(u.hostname)
 
 
+_HOST_NAME = re.compile(r"[a-z0-9-]+(\.[a-z0-9-]+)*\.?")
+
+
 def _host_allowed(url: str, hosts: tuple[str, ...]) -> bool:
-    """Whether `url`'s host is one of `hosts` or a subdomain of one. A loopback http URL that
-    _allowed_url() let through (test scaffolding only) passes too."""
-    u = urllib.parse.urlsplit(url)
-    host = (u.hostname or "").lower().rstrip(".")
-    if u.scheme == "http":
-        return _loopback(host)
+    """Whether `url` is an https URL whose host is one of `hosts` or a subdomain of one.
+
+    urllib connects to the netloc after percent-decoding it, which is not always the host
+    urlsplit() reports, so only a netloc that is exactly a plain host name, or that name and
+    `:443`, is accepted: no userinfo, `%`, backslash, empty label or other port (#172). Anything
+    but https passes only as the loopback test scaffolding _allowed_url() describes."""
+    u = _split(url)
+    if u is None or any(c <= " " or c == "\x7f" for c in url):    # urlsplit() drops tabs and newlines
+        return False
+    host = (u.hostname or "").lower()
+    if u.scheme != "https":
+        return _allowed_url(url) and _loopback(host)
+    if not _HOST_NAME.fullmatch(host) or u.netloc.lower() not in (host, host + ":443"):
+        return False
+    host = host.rstrip(".")
     return any(host == h or host.endswith("." + h) for h in hosts)
 
 
@@ -134,13 +156,14 @@ class _Redirects(urllib.request.HTTPRedirectHandler):
         if self.follow and _allowed_url(newurl) and self.hosts is not None \
                 and not _host_allowed(newurl, self.hosts):
             fp.close()
-            host = safetext.for_terminal(urllib.parse.urlsplit(newurl).hostname or "")
+            u = _split(newurl)
+            host = safetext.for_terminal((u.netloc if u else "") or "an unreadable address")
             raise RedirectHostError(
                 f"redirect to {host} refused: only {' and '.join(self.hosts)} hosts are followed here")
         if not self.follow or not _allowed_url(newurl):
             fp.close()
             why = "redirect refused for an authenticated request" if not self.follow else \
-                "redirect to a non-https URL refused"
+                "redirect to a non-https or malformed URL refused"
             raise MBError(f"{req.full_url}: HTTP {code}: {why}")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -249,6 +272,10 @@ def _get(url: str, contact: str | None, accept: str = "application/json", retrie
                 time.sleep(2)
                 continue
             raise MBError(f"{url}: {_net_error(e)}") from None
+        except ValueError as e:
+            # a redirect or URL that urllib can't parse (e.g. "https://[x]/"): not retried
+            kind = RedirectHostError if redirect_hosts is not None else MBError
+            raise kind(f"{url}: malformed address in the response ({safetext.for_terminal(e)})") from None
     raise MBError(f"giving up on {url}")
 
 

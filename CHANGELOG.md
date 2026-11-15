@@ -26,7 +26,9 @@ behaviour, and a patch version only adds or fixes. Each release on
 ### Security hardening
 - Cover downloads follow redirects only to `coverartarchive.org` and `archive.org` hosts. A
   redirect anywhere else is refused and reported as a cover-art warning; the run continues
-  without a cover (#155).
+  without a cover (#155). The redirect must name its host plainly (no user part, escapes or other
+  port), and a redirect that can't be parsed is reported as an error instead of ending the run
+  with a traceback (#172).
 - Reading a MusicBrainz or cover response stops with an error on anything that isn't bytes.
   The test suite can run under a memory limit (`PYSACD_TEST_MEMORY_MB`), and CI's `tests` job does.
 

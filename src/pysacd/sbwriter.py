@@ -296,7 +296,7 @@ def _markers(area: Area, track_idx: int | None, first: int, end: int) -> list[_M
             out.append(_Marker(None, 0, 2, _flags4(t.start_flags), 0))
         out.append(_Marker(None, a, 0, _flags4(t.start_flags), 0))
         if i == len(tracks) - 1 or tracks[i + 1].start.total_frames > b:
-            out.append(_Marker(None, b, 1, _flags4(t.flags), 0))
+            out.append(_Marker(None, b, 1, 0, 0))       # TrackFlags only on a TrackStart (DSDIFF 3.7.2)
     # frames past a DST range that lost unreadable frames can't be marked (docs/development.md)
     return [m for m in out if m.frame <= end]
 

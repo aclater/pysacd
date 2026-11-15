@@ -9,12 +9,37 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Fixed
+- `pysacd-extract -z` with a track selection that leaves a track out (`-t 1,3`): the bytes left
+  over at the end of the file before the gap are no longer carried into the next file;
+  `sacd_extract` drops them there, and the next file now starts at its own track, byte-identical
+  to `sacd_extract`'s (#182).
+- `pysacd-extract -z -k`: the concatenation is written without padding, as `sacd_extract` writes
+  it, when it ends before the area's last track. It was padded as without `-z` (#182).
+
+### Known incompatibility
+- With `-z`, where a file's audio ends exactly on a DSF block (4,096 bytes per channel, for
+  example a first track of 128 frames), `sacd_extract` ends the file one block early and moves
+  that block to the next file, or drops it when no file follows. pysacd keeps the block: its DSF
+  layouts come from scarletbook, which can't place a file's end there yet. Tracked in #182 and in
+  docs/sacd_extract.md, with a `-z -k` concatenation that holds the area's last track, which
+  `sacd_extract` doesn't pad.
+
 ### Tests
 - The release comparison (`tools/extract_compare.py`) knows one more documented difference from
   `sacd_extract`, found on a real disc with a 5.1 DST area: in a DSDIFF edited master, `sacd_extract`
   writes the TOC's track mute flags on `TrackStop` markers, where DSDIFF 1.5 wants zero, and
   pysacd writes zero. pysacd's output is unchanged. A generated disc with gaps and mute flags
   reproduces it in the `sacd_extract` comparison job (#179).
+- The release comparison no longer lets the `-b` modes pass without failing: any difference from
+  `sacd_extract` that isn't documented or known fails in every mode. It recognises the `-z` block
+  carry above precisely (one block per channel moved to the next file or dropped, every other byte
+  the same) and reports it as known. The `-b` row of docs/sacd_extract.md is corrected from
+  measurements: `sacd_extract -b` cuts on the TOC's track start sectors; frames repeated in both
+  tracks were not reproduced. Two comparison modes are new: `-z` past a track not selected, and
+  `-z -k` (#182).
+- `TrackStop` markers of a DSDIFF edited master are passed to scarletbook with zero track flags,
+  which it wrote anyway; the files are unchanged.
 
 ## 0.5.2 (2026-11-15)
 

@@ -413,7 +413,7 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
 
     chains: dict = {}
     chains_refused: dict = {}
-    if kind == "dsf" and o.dsf_nopad and not o.concatenate:
+    if kind == "dsf" and o.dsf_nopad:
         chains, chains_refused = _dsf_chains(img, area, groups, o)
     seen: set[str] = set()         # --templates: names equal case-folded/NFC get " (2)" (#47)
     template_dirs: dict[Path, dict[str, int]] = {}
@@ -487,16 +487,23 @@ def _dsf_chains(img, area: Area, groups, o: Opts) -> tuple[dict, dict]:
 
     Selected tracks whose ranges meet end to end form one chain: each file but the area's last
     track ends on a whole DSF block, and the bytes left over open the next file, as
-    sacd_extract writes them. sacd_extract also carries the bytes left over into the next file
-    it writes when its range doesn't start where the previous one ended (a gap between tracks,
-    or a track not selected). A chain can't hold that, so the next file's chain starts with a
-    range of k frames before it, never written, chosen to leave the same bytes over: the
-    layout's header and size are then the file's, and the engine fills the file with the previous
-    file's last frame standing in for the lead range's last (OutputSpec.head_frame, #114)."""
+    sacd_extract writes them. A `-k` concatenation is one range. sacd_extract also carries the
+    bytes left over into the next track's file when that track's range doesn't start where the
+    previous one ended (a pause left out without -b), but not past a track that isn't selected:
+    there they are dropped, and the next file starts at its own range (#182). A chain can't hold
+    a carry across a gap, so the next file's chain starts with a range of k frames before it,
+    never written, chosen to leave the same bytes over: the layout's header and size are then the
+    file's, and the engine fills the file with the previous file's last frame standing in for the
+    lead range's last (OutputSpec.head_frame, #114).
+
+    Not matched (docs/sacd_extract.md, #182): where a file's bytes end on a whole block,
+    sacd_extract ends it one block earlier and carries that block on, or drops it after the last
+    file. scarletbook's layouts can't hold that block, so pysacd's file holds it."""
     ntracks = len(area.tracks)
     playtime = area.total_playtime.total_frames
     ranges = [(track_range(area, t[0], o.trimming)[0], track_range(area, t[-1], o.trimming)[1], t[-1])
               for t, _name in groups]
+    firsts = [t[0] for t, _name in groups]
     out: dict = {}
     refused: dict = {}
     run: list[int] = []
@@ -528,6 +535,8 @@ def _dsf_chains(img, area: Area, groups, o: Opts) -> tuple[dict, dict]:
         except sbwriter.OutputError as e:
             refused.update((k, str(e)) for k in run)
             carry = 0
+        if nxt is not None and firsts[idx + 1] != last + 1:
+            carry = 0       # sacd_extract carries nothing past a track that isn't selected
         run = []
     return out, refused
 

@@ -882,10 +882,13 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
         ref = disc.stereo or disc.areas[0]
         try:
             match = musicbrainz.find_release(disc, ref, o.mb_contact, o.mb_release)
-            if match and o.cover:
-                cover = musicbrainz.fetch_cover(match.release, o.mb_contact)
         except musicbrainz.MBError as e:
             say(f"\n Warning: MusicBrainz lookup failed: {e}")
+        if match and o.cover:
+            try:
+                cover = musicbrainz.fetch_cover(match.release, o.mb_contact)
+            except musicbrainz.MBError as e:
+                say(f"\n Warning: cover art: {e}")
         say(f"\n MusicBrainz: {'https://musicbrainz.org/release/' + match.release_id if match else 'no confident match'}")
         if match and o.submit_isrcs:
             from . import isrcsubmit

@@ -391,6 +391,12 @@ Every pull request runs:
   a stopped skip and a changed reason all fail. To add one, say why it's legitimate there.
   The job names are `tests`, `asan`, `tsan` and `oracle`; the portability and fuzz workflows aren't
   checked.
+- **A memory limit:** the `tests` job runs with `PYSACD_TEST_MEMORY_MB=4096`, which caps the test
+  process's data size (Linux; `tests/conftest.py`), so a test that grows without bound fails with
+  `MemoryError` instead of exhausting the machine. The suite peaks near 0.5 GB and passes with a
+  limit of 2048; not with 1024. Use it for local runs too, with temporary files on a disk
+  (`TMPDIR`) when `/tmp` is a tmpfs. The sanitizer jobs don't set it: their runtimes map far more
+  than they use.
 - **An informational benchmark**, when `src/`, `csrc/`, the `Makefile` or the scarletbook pin changes
   (about 1.5 min; never a required check, so it may be path-filtered). It builds base (the pull
   request's target branch) and head in one job and times `pysacd-extract` to DSF on synthetic discs

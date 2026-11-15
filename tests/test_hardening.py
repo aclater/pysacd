@@ -365,6 +365,47 @@ class HTTPDeadlinesAndRedirects(unittest.TestCase):
             self.assertIsNotNone(musicbrainz._Redirects().redirect_request(
                 req, io.BytesIO(), 302, "Found", {}, "https://example.invalid/x"))
 
+    def test_cover_redirect_host_must_be_a_plain_name(self):
+        # #172: urllib connects to the percent-decoded netloc, not to urlsplit().hostname, so
+        # only an exact host name (optionally :443) passes
+        h = musicbrainz._Redirects(hosts=musicbrainz.COVER_HOSTS)
+        req = urllib.request.Request("https://coverartarchive.org/release/x/front")
+        with mock.patch.object(musicbrainz, "API", "https://musicbrainz.org/ws/2"):
+            for ok in ("https://archive.org:443/x", "https://dn1.ca.archive.org/x", "https://Archive.Org/x"):
+                with self.subTest(ok=ok):
+                    self.assertIsNotNone(h.redirect_request(req, io.BytesIO(), 302, "Found", {}, ok))
+            for bad in ("https://evil.example\\@archive.org/x", "https://evil.example%2f.archive.org/x",
+                        "https://evil.example%23.archive.org/x", "https://evil.example%40archive.org/x",
+                        "https://evil.example%5c.archive.org/x", "https://.archive.org/x",
+                        "https://archive.org../x", "https://a..archive.org/x", "https://archive.org:8443/x",
+                        "https://archive.org:/x", "https://archive.org\t/x", "https://arch\nive.org/x", " https://archive.org/x",
+                        "https://archive.org%09/x",
+                        "https://archive.org%00/x", "https://user@archive.org/x", "https://[::1]/x",
+                        "https://[archive.org]/x", "https://[/x", "https://archive.org\u2100/x"):
+                with self.subTest(bad=bad), self.assertRaises(musicbrainz.MBError):
+                    h.redirect_request(req, io.BytesIO(), 302, "Found", {}, bad)
+
+    def test_host_check_stands_alone(self):
+        with mock.patch.object(musicbrainz, "API", "https://musicbrainz.org/ws/2"):
+            for bad in ("ftp://archive.org/x", "http://archive.org/x", "http://localhost/x",
+                        "http://127.0.0.1/x", "file:///archive.org", "//archive.org/x", "archive.org"):
+                with self.subTest(bad=bad):
+                    self.assertFalse(musicbrainz._host_allowed(bad, musicbrainz.COVER_HOSTS))
+            self.assertTrue(musicbrainz._host_allowed("https://archive.org/x", musicbrainz.COVER_HOSTS))
+        # the loopback http scaffolding, only while API itself is loopback http (setUp)
+        self.assertTrue(musicbrainz._host_allowed("http://127.0.0.1:1/x", musicbrainz.COVER_HOSTS))
+
+    def test_malformed_redirect_is_an_error_not_a_traceback(self):
+        for i, loc in enumerate(("https://[archive.org]/x", "https://[/x", "https://archive.org\u2100/x")):
+            _Handler.routes[f"/m{i}"] = (302, {"Location": loc.encode("utf-8").decode("latin-1")}, [b""], 0)
+            _Handler.seen = []
+            with self.subTest(loc=loc):
+                with self.assertRaises(musicbrainz.MBError):
+                    musicbrainz._get(self.srv.base + f"/m{i}", None)
+                with self.assertRaises(musicbrainz.RedirectHostError):
+                    musicbrainz._get(self.srv.base + f"/m{i}", None, redirect_hosts=musicbrainz.COVER_HOSTS)
+                self.assertEqual(len(_Handler.seen), 2)      # one request each, no retry
+
     def test_cover_redirect_elsewhere_is_reported_not_followed(self):
         # The stub's redirect handler sees a redirect off the archive: nothing is fetched from
         # it, the release-group URL is still tried, and the caller is told why there is no cover

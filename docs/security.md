@@ -188,7 +188,9 @@ that runs past its deadline or its size cap is not retried.
 Requests use https only, and follow at most 5 redirects, each to an https URL. A cover download
 follows redirects only to `coverartarchive.org` and `archive.org` and their subdomains (the Cover
 Art Archive hands its images to Internet Archive servers), so a response can't steer the
-download to another host. If the archive ever moves its images elsewhere, covers stop and the
+download to another host. The redirect's address must name the host plainly: no user part,
+percent-escape, backslash, empty label or port other than 443. A redirect whose address can't be
+parsed is refused in the same way. If the archive ever moves its images elsewhere, covers stop and the
 run says why ("cover art: the Cover Art Archive sent the download to a host pysacd doesn't
 follow"); tags and audio are unaffected. MusicBrainz lookups may be redirected to any https
 host. Requests that carry
@@ -304,10 +306,13 @@ reproduces from the seed in a failure. `PYSACD_FUZZ=N` runs N cases. Fixed when 
 Disc images are parsed by scarletbook-rs since 0.3.0 (#85): sectors, TOCs, frames and DST,
 fuzzed in its own repository. pysacd's engine around it has a libFuzzer harness
 (`fuzz/fuzz_engine.c`, built with ASan and UBSan). It feeds hostile images through
-`sacdconv_area_run()`, every writer included, for 2 minutes on pull requests that touch the
-engine and for 30 minutes weekly. Its seeds are pysacd's hostile corpus. Crashing inputs go
-into `fuzz/regressions/fuzz_engine/`, which `tests/test_fuzz_engine.py` replays on every test
-run. Up to 0.2, pysacd's own demultiplexer and DST decoder had harnesses of their own; their
+`sacdconv_area_run()`, every writer included (FLAC too), for 2 minutes on pull requests that touch
+the engine and for 30 minutes weekly. An input can also carry a run configuration (#157), so the
+fuzzer varies the run along with the image: output ranges anywhere in the area, DSF chains, the
+ISO copy, sector sources, cancellation, 176.4 kHz PCM, thread counts and `allow_filler`. Its
+seeds are pysacd's hostile corpus and configured runs that reach each of those. Crashing inputs go
+into `fuzz/regressions/fuzz_engine/`, which `tests/test_fuzz_engine.py` replays with the seeds on
+every test run, under ASan and UBSan and under TSan in CI. Up to 0.2, pysacd's own demultiplexer and DST decoder had harnesses of their own; their
 first long run (2026-10-28) found nothing. The
 end-to-end hostile-image corpus (see [Hostile images](#hostile-images)) runs every
 extraction path on broken images, also under ASan and UBSan.

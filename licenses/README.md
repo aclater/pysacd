@@ -1,12 +1,14 @@
 # Third-party licences
 
-Wheels built by `.github/workflows/workflow.yml` bundle these libraries next to
-the engine (`pysacd.libs/`), so FLAC output works without installing anything:
+Wheels built by `.github/workflows/workflow.yml` have libFLAC linked into the engine
+statically, so FLAC output works without installing anything. The Linux and macOS wheels
+build it from its release source without Ogg support (#142, #153); the Windows DLL links
+MSYS2's libFLAC, which brings libogg with it:
 
 | Library | Licence | File |
 |---|---|---|
 | libFLAC | BSD-3-Clause (Xiph.Org) | [libFLAC-COPYING.Xiph](libFLAC-COPYING.Xiph) |
-| libogg (a libFLAC dependency) | BSD-3-Clause (Xiph.Org) | [libogg-COPYING](libogg-COPYING) |
+| libogg (a libFLAC dependency; Windows wheel only) | BSD-3-Clause (Xiph.Org) | [libogg-COPYING](libogg-COPYING) |
 
 The engine itself has the [scarletbook-rs](https://github.com/aclater/scarletbook-rs) C library
 linked in statically (#85), in every wheel and every build from source:

@@ -9,6 +9,28 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+## 0.5.2 (2026-11-15)
+
+Fixes for `pysacd-extract` writing into a folder that already holds files, byte-compatibility with
+`sacd_extract` for blank ISRC fields, hardening that followed the review of 0.5.0, and the build
+chain. DSF, DSDIFF, cue, XML and `-P` output is unchanged for a disc with ordinary titles and ISRCs
+written into an empty folder (release checks, below). FLAC files from the Linux wheels are now
+encoded by libFLAC 1.5.0: the audio is the same, the bytes are not.
+
+Release checks for 0.5.2 (docs/development.md, "To release"), on the commit before the version
+bump: `tools/extract_compare.py --require-sacd-extract` against `sacd_extract` built from CI's
+pinned commit, 0.5.1 against this release, on four real discs (stereo and 5.1, both DST; plain
+stereo with 5.1 DST; plain stereo; plain stereo with no disc text) in all 35 modes (140 runs, 872
+files): no difference between 0.5.1 and this release in any run, and `-P` matches `sacd_extract` on
+all four. Of `sacd_extract`'s 450 files, 270 are identical and 177 differ only where
+docs/sacd_extract.md says they do. Three differ otherwise, in 0.5.1 exactly as in this release: the
+multichannel edit master of the disc with a 5.1 DST area (60 bytes in length and about 3,300 bytes,
+from the header on), which is not explained and is tracked as #179; and two DSF files of the
+no-text disc in the `-z -b` mode, a mode the comparison reports without failing because
+`sacd_extract` repeats frames at some boundaries. The full suite passes on a Fedora 44 machine (358
+passed, the 21 expected skips). The changes since 0.5.1 had a security review before the release;
+its three points are fixed in this release.
+
 ### Fixed
 - `pysacd-extract` warns when a file already in the album folder can't be read for its tags: it is
   matched by name only, and replaced if the run writes that file. docs/sacd_extract.md says how
@@ -64,6 +86,8 @@ behaviour, and a patch version only adds or fixes. Each release on
   (#157).
 
 ### Build and release
+- The macOS wheels' support is stated as it was tested: built for macOS 11 (arm64) and 10.13
+  (x86-64), run on macOS 15 on both; older versions are untested (#142).
 - The release-tag check runs in a Fedora container like the other release jobs, and on pull
   requests it also checks its clone, so its set-up is tested before a tag depends on it (#167).
 - `licenses/` names the GCC runtime library (`libgcc_s`) that the musllinux wheel carries, with its

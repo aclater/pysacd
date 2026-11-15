@@ -547,5 +547,19 @@ class TocJson(unittest.TestCase):
         self.assertIn("\x9b", json.dumps(json.loads(r.stdout), ensure_ascii=False))
 
 
+class WindowsDevice(unittest.TestCase):
+    """The device names that pysacd convert (--portable-names) and pysacd-extract (on Windows)
+    prefix with '_' (#156): Microsoft's list, any extension, trailing spaces and dots."""
+
+    def test_reserved(self):
+        for n in ("CON", "prn", "Aux", "NUL", "COM1", "COM9", "LPT1", "LPT9", "COM\u00b9", "COM\u00b2",
+                  "LPT\u00b3", "nul.txt", "NUL.tar.gz", "CON .", "CON .x", "AUX..x"):
+            self.assertTrue(safetext.WINDOWS_DEVICE.match(n), n)
+
+    def test_ordinary(self):
+        for n in ("COM10", "CONSOLE", "COM1 - x", "_CON", "xCON", "LPT", "COM\u2074", "01 - NUL"):
+            self.assertFalse(safetext.WINDOWS_DEVICE.match(n), n)
+
+
 if __name__ == "__main__":
     unittest.main()

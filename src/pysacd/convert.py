@@ -76,9 +76,7 @@ class _Blank(dict):
 
 
 _UNSAFE = re.compile(r'[<>:"\\|?*\x00-\x1f]')
-# Windows device names, reserved with any extension and with trailing spaces or dots, which
-# Windows ignores ("CON", "nul.txt", "CON .", "COM¹"; "COM10" and "COM1 - x" are fine)
-_RESERVED = re.compile(r"(?i)^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])[ .]*(\..*)?$")
+_RESERVED = safetext.WINDOWS_DEVICE       # CON, nul.txt, COM¹...
 
 
 NAME_MAX_BYTES = 240     # per component, leaving room for " (2)" and ".flac" under 255

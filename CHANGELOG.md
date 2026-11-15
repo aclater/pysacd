@@ -9,6 +9,15 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Fixed
+- `pysacd-extract` on Windows: a disc titled with a device name such as `CON` no longer fails the
+  run; its folder and files get a leading `_` (`_CON`), as `pysacd convert` names them. Other
+  systems keep `sacd_extract`'s names (#156).
+- `pysacd-extract` no longer writes one track over another when their `sacd_extract` names would be
+  the same file: titles that differ only in case on a case-insensitive filesystem (Windows, macOS
+  by default), or equal titles of tracks past 99. The later track is written as `<name> (2)`
+  (#156). See [the differences from sacd_extract](docs/sacd_extract.md#compatibility-policy).
+
 ### Security hardening
 - Cover downloads follow redirects only to `coverartarchive.org` and `archive.org` hosts. A
   redirect anywhere else is refused and reported as a cover-art warning; the run continues

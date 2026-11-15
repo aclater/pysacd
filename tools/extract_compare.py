@@ -17,8 +17,8 @@ SHA-256) plus its standard output for -P.
 
 Each run also says, per file format, how the output compares with sacd_extract's, for both
 trees ("vs_sacd_extract"): identical; identical apart from the documented exceptions
-(docs/sacd_extract.md: the DSDIFF creating-machine comment and text pad bytes, the version lines
-of cue and XML); or
+(docs/sacd_extract.md: the DSDIFF creating-machine comment, text pad bytes and TrackStop marker
+flags, the version lines of cue and XML); or
 different, with what differs. Anything in "different" is a difference nobody has explained.
 
 --no-values reports counts and mode names only (no file names), for private discs. Exit
@@ -164,8 +164,9 @@ def _first_difference(a: Path, b: Path) -> dict:
 def _dff_sans_machine(path: Path) -> str:
     """A DSDIFF file's hash without what may differ (docs/sacd_extract.md): the time the file was
     written, the comments after the first (the creating machine), the sizes of COMT and FRM8, which
-    those change (FRM8's must still agree with the file), and the pad bytes after odd-length text
-    and ID3 tags, which sacd_extract leaves uninitialised."""
+    those change (FRM8's must still agree with the file), the pad bytes after odd-length text
+    and ID3 tags, which sacd_extract leaves uninitialised, and the track flags of TrackStop markers
+    (documented_only checks what each side holds there)."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         end = f.seek(0, 2)
@@ -200,7 +201,10 @@ def _dff_sans_machine(path: Path) -> str:
                     n = int.from_bytes(body[q + 4:q + 12], "big")
                     # DIAR and DITI: a 4-byte length, the text, and a pad byte within the chunk's size
                     text = 4 + int.from_bytes(body[q + 12:q + 16], "big") if body[q:q + 4] in (b"DIAR", b"DITI") else n
-                    h.update(body[q:q + 12 + min(n, text)])
+                    sub = body[q:q + 12 + min(n, text)]
+                    if _stop_flags(body[q:q + 12 + n]) is not None:
+                        sub = sub[:12 + _MARK_FLAGS] + b"\0\0" + sub[12 + _MARK_FLAGS + 2:]
+                    h.update(sub)
                     q += 12 + n + (n & 1)
             else:
                 h.update(head[4:12])
@@ -215,12 +219,53 @@ def _dff_sans_machine(path: Path) -> str:
     return h.hexdigest()
 
 
+# A MARK chunk's body: hours (2), minutes, seconds, samples (4), offset (4), markType (2),
+# markChannel (2), TrackFlags (2), count (4), text
+_MARK_FLAGS = 16
+
+
+def _stop_flags(chunk: bytes) -> int | None:
+    """The track flags of a DIIN sub-chunk that is a TrackStop marker (markType 1), else None."""
+    if chunk[:4] != b"MARK" or len(chunk) < 12 + _MARK_FLAGS + 2:
+        return None
+    if int.from_bytes(chunk[12 + 12:12 + 14], "big") != 1:
+        return None
+    return int.from_bytes(chunk[12 + _MARK_FLAGS:12 + _MARK_FLAGS + 2], "big")
+
+
+def _dff_stop_flags(path: Path) -> list[int]:
+    """The track flags of a DSDIFF file's TrackStop markers, in order."""
+    out: list[int] = []
+    with open(path, "rb") as f:
+        end = f.seek(0, 2)
+        pos = 16
+        while pos + 12 <= end:
+            f.seek(pos)
+            head = f.read(12)
+            size = int.from_bytes(head[4:12], "big")
+            if head[:4] == b"DIIN":
+                body = f.read(min(size, 1 << 24))
+                q = 0
+                while q + 12 <= len(body):
+                    n = int.from_bytes(body[q + 4:q + 12], "big")
+                    flags = _stop_flags(body[q:q + 12 + n])
+                    if flags is not None:
+                        out.append(flags)
+                    q += 12 + n + (n & 1)
+            pos += 12 + size + (size & 1)
+    return out
+
+
 def documented_only(ours: Path, theirs: Path) -> bool:
     """True if the files differ only where docs/sacd_extract.md says they do."""
     ext = ours.suffix.lower()
     if ext in (".cue", ".xml"):
         return _sans_version(ours.read_bytes()) == _sans_version(theirs.read_bytes())
-    return ext == ".dff" and _dff_sans_machine(ours) == _dff_sans_machine(theirs)
+    if ext != ".dff" or _dff_sans_machine(ours) != _dff_sans_machine(theirs):
+        return False
+    # TrackStop markers: DSDIFF 1.5 (3.7.2) has TrackFlags zero on every marker but a TrackStart,
+    # as pysacd writes them; sacd_extract writes the area TOC's track mute flags there (bits 0 to 3)
+    return all(f == 0 for f in _dff_stop_flags(ours)) and all(f < 16 for f in _dff_stop_flags(theirs))
 
 
 def against_sacd_extract(root: Path, se_root: Path, files: dict[str, str], se_files: dict[str, str],

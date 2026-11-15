@@ -57,6 +57,7 @@ deliberate:
 | `-b` (pauses) | cuts on sectors, so frames near a boundary can land in both tracks (on one real disc of the five we compare, 6 frames at 4 of its 17 boundaries; with `-z`, the carry then shifts every later track) | cuts on frame timecodes: the tracks joined are exactly the area's audio | gapless and unambiguous |
 | DSDIFF "creating machine" comment; `.cue`/`.xml` version lines | name sacd-ripper | name pysacd | honesty; otherwise byte-identical |
 | Pad byte after odd-length text and ID3 tags in a DSDIFF file | leaves it uninitialised when DST is kept (or with `-e`), so it holds whatever was in memory | writes zero | the byte has no meaning, and it can't be matched |
+| Track flags on the `TrackStop` markers of a DSDIFF edited master (`-e`), seen on a real disc whose 5.1 area has gaps between tracks and track mute flags in its TOC (#179) | writes the TOC's mute flags for the track (the flag byte of its length entry) on each `TrackStop`; on that disc 8, "third channel muted" | writes 0 | DSDIFF 1.5 (3.7.2): `TrackFlags` is only meaningful on a `TrackStart`, and must be zero on any other marker. Markers, times and audio are otherwise identical. An area without mute flags, as on most discs, gives the same file |
 | Console messages | | `-P` and the cfg summary are identical; other lines are worded differently | |
 
 ## Extensions

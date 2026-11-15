@@ -910,12 +910,30 @@ def _other_disc_in(folder: Path, own: dict[str, list[int]], disc: Disc, area: Ar
 
 
 def _same_tags(have, want) -> bool:
-    """No tag of the disc's identity differs (a tag missing on either side doesn't count)."""
+    """No tag of the disc's identity differs between a file's tags (`have`) and a track's
+    (`want`). A tag missing on both sides isn't compared, nor one missing on one side only,
+    except the ISRC (#171):
+
+    - sacd_extract's ID3 modes 1, 3 and 4 write a TSRC frame for every track, empty when the
+      track has no ISRC, and a TPOS; pysacd's own tags (FLAC, WAV, --musicbrainz) carry the
+      disc number, and the ISRC when the track has one. Such a file without the ISRC this
+      track has is another disc's. The minimal modes (2, 5) write neither frame;
+    - a file with an ISRC the track lacks is another disc's, unless it was tagged from
+      MusicBrainz, which supplies ISRCs the disc lacks.
+
+    The other tags keep the old rule: sacd_extract writes the album title as the title of a
+    track without one, and a phonetic album title as the album, which the disc's own tags lack."""
+    def value(tags, key: str) -> str:
+        return (tags.get(key) or [""])[0].strip()
+
     for key in ("ALBUM", "TITLE", "TRACKNUMBER", "TRACKTOTAL", "ISRC"):
-        a, b = (have.get(key) or [""])[0].strip(), (want.get(key) or [""])[0].strip()
+        a, b = value(have, key), value(want, key)
         if a and b and a != b:
             return False
-    return True
+    a, b = value(have, "ISRC"), value(want, "ISRC")
+    if b and not a and ("ISRC" in have or "DISCNUMBER" in have):
+        return False
+    return not (a and not b and not any(k.startswith("MUSICBRAINZ_") for k in have))
 
 
 def _inside(base: Path, path: Path) -> Path:

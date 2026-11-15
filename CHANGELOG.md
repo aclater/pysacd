@@ -22,6 +22,13 @@ behaviour, and a patch version only adds or fixes. Each release on
   DSDIFF tracks, tracks after an edit master, a second `-e`, another `-t` selection or a `-k`
   concatenation went to `<album> [<catalogue no.>]` instead, as if the folder held another disc.
   Another disc's files still keep a disc out of the folder (#165).
+- `pysacd-extract` keeps two editions of an album apart when one has ISRCs and the other doesn't
+  but their titles and numbering are the same. With `sacd_extract`'s naming, the second replaced
+  the first's files, with only a warning that their sizes differed. An ISRC on one side only now
+  counts as a difference wherever the file would carry the track's ISRC: `sacd_extract`'s ID3
+  modes 1, 3 and 4 (the default) and pysacd's own tags. The minimal ID3 modes (2 and 5) carry no
+  ISRC, so their files are compared without it (#171;
+  [the rule](docs/sacd_extract.md#compatibility-policy)).
 
 ### Security hardening
 - Cover downloads follow redirects only to `coverartarchive.org` and `archive.org` hosts. A

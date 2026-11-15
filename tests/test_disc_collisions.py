@@ -459,7 +459,7 @@ class PortableExtractNames(unittest.TestCase):
             self.assertEqual(late, ["_ Intro (2).dsf", "_ Intro.dsf", "_ intro.dsf"])
         # Re-run: the renamed files are this disc's own, not another disc's (#4)
         r = self.extract(ours, "-s", "-i", str(self.case_iso()))
-        self.assertNotIn("another disc", r.stderr)
+        self.assertNotIn("already holds tracks of another disc", r.stderr)
         self.assertEqual(sorted(self.tree(ours)), sorted(f"Case/{n}" for n in files))
 
     @unittest.skipUnless(SACD_EXTRACT, "set SACD_EXTRACT to compare with the real sacd_extract")
@@ -505,15 +505,16 @@ class PortableExtractNames(unittest.TestCase):
 
 
 def _plain_disc(path: Path, titles: list[str], catalog: str, seed: int = 0, tracks: tuple[int, ...] = (3, 3),
-                mch: bool = False) -> Path:
-    """A plain DSD stereo disc; with `mch`, DST stereo and 6 channels (as in test_extract_tree)."""
+                mch: bool = False, isrcs: list[str] | None = None) -> Path:
+    """A plain DSD stereo disc; with `mch`, DST stereo and 6 channels (as in test_extract_tree).
+    `isrcs`: as sacdgen.AreaSpec's (default: every track has one)."""
     frames = sum(tracks)
     if mch:
-        areas = [sacdgen.AreaSpec(ch, [f for _, _, f in dst.encoded(ch)][:frames], list(tracks), titles=titles)
-                 for ch in (2, 6)]
+        areas = [sacdgen.AreaSpec(ch, [f for _, _, f in dst.encoded(ch)][:frames], list(tracks), titles=titles,
+                                  isrcs=isrcs) for ch in (2, 6)]
     else:
         areas = [sacdgen.AreaSpec(2, [sacdgen._dsd_frame(2, seed + i) for i in range(frames)], list(tracks),
-                                  dst=False, titles=titles)]
+                                  dst=False, titles=titles, isrcs=isrcs)]
     sacdgen.build_iso(path, areas, info=sacdgen.DiscInfo(title="Album", artist="Artist", disc_catalog=catalog))
     return path
 
@@ -637,6 +638,169 @@ class OwnFilesAcrossModes(unittest.TestCase):
                     for k in a:
                         # apart from the documented version lines and DSDIFF creating-machine comment
                         self.assertTrue(a[k] == b[k] or documented_only(ours / k, theirs / k), k)
+
+
+# Two editions of one album with the same titles and numbering, one with ISRCs and one without
+# (#171): every mode pair of the other-disc test above, and pysacd's -p pair
+EDITION_PAIRS = [
+    (["-s"], ["-e"]), (["-s"], ["-C"]), (["-e"], ["-s"]), (["-e"], ["-e"]), (["-p"], ["-e"]), (["-e"], ["-p"]),
+    (["-s"], ["-s"]), (["-p"], ["-p"]), (["-s", "-t", "1"], ["-s", "-t", "2"]), (["-s"], ["-s", "-k", "-t", "1,2"]),
+    (["-s", "-k", "-t", "1,2"], ["-s"]), (["--id3tag", "1", "-s"], ["-s"]), (["--id3tag", "3", "-p"], ["-e"]),
+]
+# one disc's runs with other ID3 modes: the minimal modes (2, 5) and 0 write no ISRC
+OWN_ID3_SEQUENCES = [
+    (["--id3tag", "5", "-s"], ["-s"]), (["-s"], ["--id3tag", "5", "-s"]), (["--id3tag", "2", "-e"], ["-s"]),
+    (["--id3tag", "0", "-s"], ["-e"]), (["--id3tag", "0", "-p"], ["-p"]), (["--id3tag", "1", "-s"], ["-e"]),
+    (["--id3tag", "3", "-e"], ["-p"]),
+]
+
+
+@unittest.skipUnless(dst.HAVE_NATIVE, "native helper not built (make)")
+@unittest.skipUnless(dst.HAVE_ENCODER, "test DST encoder unavailable (make test-tools)")
+class IsrcEditions(unittest.TestCase):
+    """An ISRC on one side only tells two discs apart where the file always carries the track's
+    ISRC (#171); this disc's own files, with or without ISRCs, are still this disc's (#165)."""
+
+    pysacd = OwnFilesAcrossModes.pysacd
+    out = OwnFilesAcrossModes.out
+    tree = staticmethod(OwnFilesAcrossModes.tree)
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.env = dict(os.environ, PYTHONPATH=str(SRC))
+        titles = ["One", "Two"]
+        self.a = _plain_disc(self.dir / "a.iso", titles, "CAT-A")
+        self.n = _plain_disc(self.dir / "n.iso", titles, "CAT-N", isrcs=["", ""])
+        self.p = _plain_disc(self.dir / "p.iso", titles, "CAT-P", isrcs=["XXPYS2600001", ""])
+        self.s = _plain_disc(self.dir / "s.iso", titles, "CAT-S", isrcs=[" " * 12, " " * 12])
+
+    def assert_kept_apart(self, one: Path, other: Path, first: list[str], second: list[str], name: str) -> None:
+        out = self.out(name)
+        self.pysacd(out, one, first)
+        before = self.tree(out)
+        r = self.pysacd(out, other, second)
+        self.assertIn("already holds tracks of another disc", r.stderr)
+        after = self.tree(out)
+        self.assertEqual({k: after[k] for k in before}, before)      # the first disc's files untouched
+        label = "CAT-" + other.stem.upper()
+        self.assertEqual({k.split("/")[0] for k in after if k not in before}, {f"Album [{label}]"})
+
+    def assert_own(self, iso: Path, seq, name: str) -> None:
+        out = self.out(name)
+        for args in seq:
+            r = self.pysacd(out, iso, args)
+            # files rewritten in another ID3 mode change size, which is said
+            self.assertNotIn("already holds tracks of another disc", r.stderr)
+        self.assertEqual({k.split("/")[0] for k in self.tree(out)}, {"Album"})
+
+    def test_editions_with_and_without_isrcs_are_kept_apart(self):
+        ma = _plain_disc(self.dir / "ma.iso", ["One", "Two"], "CAT-MA", mch=True)
+        mn = _plain_disc(self.dir / "mn.iso", ["One", "Two"], "CAT-MN", mch=True, isrcs=["", ""])
+        cases = [(one, other, first, second) for one, other in ((self.a, self.n), (self.n, self.a), (self.s, self.a))
+                 for first, second in EDITION_PAIRS]
+        # ISRCs differing on track 2 only: the runs that leave track 2's file in the folder
+        cases += [(self.a, self.p, first, second) for first, second in EDITION_PAIRS
+                  if first[-1] in ("-s", "-p")]
+        cases += [(one, other, ["-2", "-m", "-s"], ["-2", "-m", "-e"]) for one, other in ((ma, mn), (mn, ma))]
+        for n, (one, other, first, second) in enumerate(cases):
+            with self.subTest(first=(one.stem, first), second=(other.stem, second)):
+                self.assert_kept_apart(one, other, first, second, f"ed{n}")
+
+    @unittest.skipUnless(dst._native_has_flac(), "engine built without libFLAC")
+    def test_flac_editions(self):
+        # pysacd's own tags carry an ISRC only when the track has one
+        n = 0
+        for one, other in ((self.a, self.n), (self.n, self.a)):
+            for first, second in ((["--flac"], ["--flac"]), (["--flac"], ["-s"]), (["-s"], ["--flac"])):
+                with self.subTest(first=(one.stem, first), second=(other.stem, second)):
+                    n += 1
+                    self.assert_kept_apart(one, other, first, second, f"flac{n}")
+        for iso in (self.a, self.n, self.p):
+            for seq in ((["--flac"], ["-s"]), (["-s"], ["--wav"]), (["--flac"], ["-e"])):
+                with self.subTest(disc=iso.stem, seq=seq):
+                    n += 1
+                    self.assert_own(iso, seq, f"flacown{n}")
+
+    def test_own_files_with_and_without_isrcs(self):
+        mn = _plain_disc(self.dir / "mn.iso", ["One", "Two"], "CAT-MN", mch=True, isrcs=["", ""])
+        runs = [(iso, seq) for iso in (self.n, self.p, self.s) for seq in OWN_SEQUENCES]
+        runs += [(mn, seq) for seq in OWN_MCH_SEQUENCES]
+        runs += [(iso, seq) for iso in (self.a, self.n, self.p) for seq in OWN_ID3_SEQUENCES]
+        for n, (iso, seq) in enumerate(runs):
+            with self.subTest(disc=iso.stem, seq=seq):
+                self.assert_own(iso, seq, f"own{n}")
+
+    def test_minimal_tags_carry_no_isrc(self):
+        # id3tag=5 writes no ISRC: the editions can't be told apart, as documented
+        out = self.out("minimal")
+        self.pysacd(out, self.a, ["--id3tag", "5", "-s"])
+        r = self.pysacd(out, self.n, ["-s"])
+        self.assertNotIn("already holds tracks of another disc", r.stderr)
+        self.assertEqual({k.split("/")[0] for k in self.tree(out)}, {"Album"})
+
+    def test_same_tags(self):
+        from pysacd.extract import _same_tags
+        disc = {"ALBUM": ["Album"], "TITLE": ["One"], "TRACKNUMBER": ["1"], "TRACKTOTAL": ["2"]}
+        full = {**disc, "DISCNUMBER": ["1"]}            # sacd_extract's ID3 modes 1, 3, 4; pysacd's tags
+        isrc = {"ISRC": ["XXPYS2600001"]}
+        mb = {"MUSICBRAINZ_ALBUMID": ["x"]}
+        for have, want, same in (
+            ({**full, **isrc}, {**disc, **isrc}, True),
+            ({**full, "ISRC": [" XXPYS2600001 "]}, {**disc, **isrc}, True),
+            ({**full, "ISRC": ["XXPYS2600002"]}, {**disc, **isrc}, False),
+            ({**full, "ISRC": [""]}, {**disc, **isrc}, False),        # TSRC written empty
+            (full, {**disc, **isrc}, False),                          # pysacd's tags, no ISRC
+            ({**disc, "ISRC": [""]}, {**disc, **isrc}, False),
+            (disc, {**disc, **isrc}, True),                           # minimal modes: no ISRC, no TPOS
+            ({}, {**disc, **isrc}, True),                             # untagged
+            ({**full, **isrc}, disc, False),
+            ({**full, "ISRC": ["  "]}, disc, True),
+            ({**full, **isrc, **mb}, disc, True),                     # the ISRC may be MusicBrainz's
+            ({**full, **mb}, {**disc, **isrc}, False),
+            (full, disc, True),
+            ({**full, "TITLE": ["Uno"]}, disc, False),
+            ({k: v for k, v in full.items() if k != "TITLE"}, disc, True),
+        ):
+            with self.subTest(have=have, want=want):
+                self.assertEqual(_same_tags(have, want), same)
+
+    @unittest.skipUnless(SACD_EXTRACT, "set SACD_EXTRACT to compare with the real sacd_extract")
+    def test_sacd_extract_files(self):
+        # sacd_extract's files of this disc, in every ID3 mode, are this disc's; those of the other
+        # edition keep it out and stay as they were
+        def theirs(cwd: Path, iso: Path, args: list[str], mode: int | None) -> None:
+            if mode is not None:
+                (cwd / "sacd_extract.cfg").write_text(f"id3tag={mode}\n")
+            subprocess.run([SACD_EXTRACT, *args, f"-i{iso}"], cwd=cwd, capture_output=True, check=False)
+            (cwd / "sacd_extract.cfg").unlink(missing_ok=True)
+
+        n = 0
+        for iso in (self.a, self.n, self.p, self.s):
+            for mode in (None, 0, 1, 2, 3, 5):
+                for first in (["-s"], ["-p"], ["-e"], ["-s", "-k", "-t", "1,2"]):
+                    with self.subTest(disc=iso.stem, id3tag=mode, first=first):
+                        n += 1
+                        out = self.out(f"sx{n}")
+                        theirs(out, iso, first, mode)
+                        self.assertTrue(self.tree(out))
+                        r = self.pysacd(out, iso, ["-e"] if first != ["-e"] else ["-s"])
+                        self.assertNotIn("WARNING", r.stderr)
+                        self.assertEqual({k.split("/")[0] for k in self.tree(out)}, {"Album"})
+        for one, other in ((self.a, self.n), (self.n, self.a), (self.s, self.a)):
+            for first, second in ((["-s"], ["-s"]), (["-p"], ["-e"]), (["-e"], ["-e"]), (["-s", "-k", "-t", "1,2"], ["-s"])):
+                with self.subTest(first=(one.stem, first), second=(other.stem, second)):
+                    n += 1
+                    out = self.out(f"sx{n}")
+                    theirs(out, one, first, None)
+                    before = self.tree(out)
+                    self.assertTrue(before)
+                    r = self.pysacd(out, other, second)
+                    self.assertIn("already holds tracks of another disc", r.stderr)
+                    after = self.tree(out)
+                    self.assertEqual({k: after[k] for k in before}, before)
+                    self.assertEqual({k.split("/")[0] for k in after if k not in before}, {f"Album [CAT-{other.stem.upper()}]"})
 
 
 if __name__ == "__main__":

@@ -904,7 +904,18 @@ def _other_disc_in(folder: Path, own: dict[str, list[int]], disc: Disc, area: Ar
             log.debug("%s: a name this disc doesn't produce", safetext.for_terminal(f))
             foreign.append(f.name)
             continue
-        have = tagging.read_tags(f)
+        # A file with no readable tags has only its name to go by (album folder, track number
+        # and title): it counts as this disc's, as for sacd_extract. Without tags is normal
+        # (--id3tag 0); a file that can't be read at all is worth telling the user about.
+        try:
+            have = tagging.read_tags(f, strict=True)
+        except tagging.TagsUnreadable:
+            have = {}
+            log.warning("%s: its tags could not be read (a damaged file?); matched by name only, and "
+                        "replaced if this run writes that file", safetext.for_terminal(f.name))
+        else:
+            if not have:
+                log.debug("%s: has no tags; matched by name only", safetext.for_terminal(f))
         if not any(_same_tags(have, tagging.base_tags(disc, area, area.tracks[i])) for i in candidates):
             log.debug("%s: tags of another disc", safetext.for_terminal(f))
             foreign.append(f.name)

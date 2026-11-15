@@ -559,6 +559,28 @@ class OwnFilesAcrossModes(unittest.TestCase):
     def tree(root: Path) -> dict[str, bytes]:
         return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
 
+    def test_files_without_readable_tags_are_matched_by_name(self):
+        # A damaged file of this disc is replaced in place, with a warning; files written
+        # without tags (--id3tag 0) are this disc's too, and say nothing
+        out = self.out("damaged")
+        self.pysacd(out, self.a, ["-s"])
+        dsf = sorted(out.rglob("*.dsf"))
+        self.assertEqual(len(dsf), 2)
+        good = dsf[0].read_bytes()
+        dsf[0].write_bytes(b"not a DSF file")
+        r = self.pysacd(out, self.a, ["-s"])
+        self.assertIn("its tags could not be read", r.stdout + r.stderr)
+        self.assertIn("matched by name only", r.stdout + r.stderr)
+        self.assertEqual(sorted(out.rglob("*.dsf")), dsf)        # same folder, nothing diverted
+        self.assertEqual(dsf[0].read_bytes(), good)
+
+        out = self.out("untagged")
+        self.pysacd(out, self.a, ["-s", "--id3tag", "0"])
+        before = self.tree(out)
+        r = self.pysacd(out, self.a, ["-s", "--id3tag", "0"])
+        self.assertNotIn("could not be read", r.stdout + r.stderr)
+        self.assertEqual(self.tree(out), before)
+
     def test_own_files_stay_in_the_album_folder(self):
         m = _plain_disc(self.dir / "m.iso", ["One", "Two"], "CAT-M", mch=True)
         n = 0

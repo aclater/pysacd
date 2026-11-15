@@ -10,6 +10,9 @@ behaviour, and a patch version only adds or fixes. Each release on
 ## Unreleased
 
 ### Fixed
+- `pysacd-extract` warns when a file already in the album folder can't be read for its tags: it is
+  matched by name only, and replaced if the run writes that file. docs/sacd_extract.md says how
+  files without tags are matched.
 - `pysacd-extract` on Windows: a disc titled with a device name such as `CON` no longer fails the
   run; its folder and files get a leading `_` (`_CON`), as `pysacd convert` names them. Other
   systems keep `sacd_extract`'s names (#156).

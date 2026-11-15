@@ -10,7 +10,7 @@ on:
   pull_request:
     paths: ["setup.py", "pyproject.toml", "MANIFEST.in", "Makefile", "csrc/**", "tests/wheel_smoke.py",
             "scarletbook.lock", "tools/scarletbook.py", "tools/check_cet.py", "tools/check_release_tag.py",
-            "src/pysacd/__init__.py", "licenses/**", ".github/workflows/workflow.yml"]
+            "src/pysacd/__init__.py", "licenses/**", "scripts/build-libflac.sh", ".github/workflows/workflow.yml"]
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -22,9 +22,10 @@ concurrency:
 permissions:
   contents: read
 
-# libFLAC for the macOS wheels, built from its release source (#142): Homebrew's bottles target the
-# runner's macOS, which made the wheels macOS 15 only. The SHA-256 is the same from downloads.xiph.org,
-# the GitHub release and Homebrew's formula.
+# libFLAC for the macOS and Linux wheels, built from its release source and linked in statically:
+# Homebrew's bottles target the runner's macOS, which made the wheels macOS 15 only (#142), and the
+# Linux images' distro packages are whatever version the image has (#153). The SHA-256 is the same
+# from downloads.xiph.org, the GitHub release and Homebrew's formula.
 env:
   FLAC_VERSION: "1.5.0"
   FLAC_SHA256: f2c1c76592a82ffff8413ba3c4a1299b6c7ab06c734dee03fd88630485c2b920
@@ -136,12 +137,14 @@ jobs:
           # serves every Python: build it once.
           CIBW_BUILD: ${{ matrix.build }}
           CIBW_ARCHS_LINUX: native
-          # libFLAC for FLAC output; auditwheel / delocate then bundle it into the wheel.
+          # Linux: a static libFLAC built from the hash-checked release source above (#153), linked
+          # into the engine, so auditwheel has no libFLAC or libogg to bundle.
           CIBW_BEFORE_ALL_LINUX: >-
-            if command -v apk >/dev/null; then apk add flac-dev pkgconf;
-            else dnf install -y dnf-plugins-core &&
-            (dnf config-manager --set-enabled powertools || dnf config-manager --set-enabled crb) &&
-            dnf install -y flac-devel; fi
+            if command -v apk >/dev/null; then apk add curl pkgconf xz;
+            elif ! command -v pkg-config >/dev/null; then dnf install -y pkgconf-pkg-config; fi &&
+            sh {project}/scripts/build-libflac.sh /opt/libflac
+          CIBW_ENVIRONMENT_PASS_LINUX: FLAC_VERSION FLAC_SHA256
+          CIBW_ENVIRONMENT_LINUX: PKG_CONFIG_PATH=/opt/libflac/lib/pkgconfig
           # The wheel's minimum macOS (#142); libFLAC above and scarletbook's library target it or older.
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
           # The Windows DLL is static: nothing to bundle.
@@ -156,6 +159,25 @@ jobs:
       - name: The engine keeps the CET shadow-stack mark (x86-64 manylinux)
         if: runner.os == 'Linux' && runner.arch == 'X64' && contains(matrix.build, 'manylinux')
         run: python3 -I tools/check_cet.py wheelhouse/*.whl
+
+      # The engine has the libFLAC built above linked in, and needs no shared libFLAC or libogg (#153).
+      - name: The engine links libFLAC statically (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          whl=$(ls wheelhouse/*.whl)
+          mkdir "$RUNNER_TEMP/whl" && unzip -q "$whl" -d "$RUNNER_TEMP/whl"
+          lib="$RUNNER_TEMP/whl/pysacd/_sacdconv.so"
+          readelf -d "$lib" | grep NEEDED
+          if readelf -d "$lib" | grep NEEDED | grep -i -e flac -e ogg; then
+            echo "::error::the engine needs a shared libFLAC or libogg"; exit 1
+          fi
+          if unzip -Z1 "$whl" | grep -i -e libflac -e libogg; then
+            echo "::error::the wheel bundles libFLAC or libogg"; exit 1
+          fi
+          grep -a -o -m 1 "reference libFLAC [0-9.]* [0-9]*" "$lib" || true
+          grep -a -q "reference libFLAC $FLAC_VERSION " "$lib" ||
+            { echo "::error::the engine does not have libFLAC $FLAC_VERSION linked in"; exit 1; }
 
       # The tag and the engine's own minimum (LC_BUILD_VERSION) both say the target, and the engine
       # links no library outside the system (#142).

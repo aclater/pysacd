@@ -15,6 +15,7 @@ import logging
 import os
 import stat
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -363,8 +364,10 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
     dff_dst = dst_in and not o.convert_dst
     ntracks = len(area.tracks)
 
+    taken: list[str] = []      # file names of this folder already planned (#156)
     if o.output_dsdiff_em:
         path = Path(sbcompat.unique_filename(str(out_dir), album_filename, "dff"))
+        taken.append(path.name)
         end = area.total_playtime.total_frames
         say(f"\n Exporting DFF edit master output in file: {path}")
         try:
@@ -399,6 +402,10 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
             if o.selected and i not in o.selected:
                 continue
             groups.append(([i], sbcompat.music_filename(disc, area, i, "", o.performer_flag)))
+
+    if not o.templates:
+        names = _distinct_names(out_dir, [n for _, n in groups], ext, taken)
+        groups = [(t, n) for (t, _), n in zip(groups, names)]
 
     chains: dict = {}
     chains_refused: dict = {}
@@ -764,7 +771,7 @@ def _wanted_areas(disc: Disc, o: Opts) -> list[Area]:
     return want
 
 
-def _planned_tracks(disc: Disc, area: Area, o: Opts) -> dict[str, int]:
+def _planned_tracks(disc: Disc, area: Area, o: Opts, folder: Path) -> dict[str, int]:
     """File name (without extension) -> track index for the tracks this run would write."""
     ext = o.pcm or ("dsf" if o.output_dsf else "dff")
     if not (o.output_dsf or o.output_dsdiff or o.pcm):
@@ -773,8 +780,62 @@ def _planned_tracks(disc: Disc, area: Area, o: Opts) -> dict[str, int]:
         first, last = min(o.selected), max(o.selected)
         name = sbcompat.music_filename(disc, area, first, f"[{first + 1:02d}-{last + 1:02d}]", o.performer_flag)
         return {Path(sbcompat.make_filename(None, name, ext)).stem: first}
-    return {Path(sbcompat.make_filename(None, sbcompat.music_filename(disc, area, i, "", o.performer_flag), ext)).stem: i
-            for i in range(len(area.tracks)) if not o.selected or i in o.selected}
+    idx = [i for i in range(len(area.tracks)) if not o.selected or i in o.selected]
+    names = [sbcompat.music_filename(disc, area, i, "", o.performer_flag) for i in idx]
+    if folder.is_dir():
+        taken = [sbcompat.make_filename(None, sbcompat.album_dir(disc, o.artist_flag), "dff")] \
+            if o.output_dsdiff_em and ext == "dff" else []
+        names = _distinct_names(folder, names, ext, taken)
+    return {Path(sbcompat.make_filename(None, n, ext)).stem: i for n, i in zip(names, idx)}
+
+
+def _same_file(folder: Path, a: str, b: str) -> bool:
+    """Whether names `a` and `b` (which differ) open the same file in `folder`: on a
+    case-insensitive filesystem (Windows, macOS by default, most SMB shares) "Intro.dsf" and
+    "intro.dsf" do. Asked of the filesystem itself, in a scratch folder inside `folder`, because
+    the rules differ (case, Unicode normalisation, per-folder settings on Windows). When it can't
+    tell, it says yes: a renamed track loses nothing, a replaced one loses its audio."""
+    try:
+        with tempfile.TemporaryDirectory(dir=folder, prefix=".pysacd-case-") as d:
+            (Path(d) / a).touch()
+            return (Path(d) / b).exists()
+    except OSError as e:
+        log.debug("%s: can't tell whether %s and %s are one file (%s); keeping both",
+                  safetext.for_terminal(folder), safetext.for_terminal(a), safetext.for_terminal(b), e)
+        return True
+
+
+def _distinct_names(folder: Path, names: list[str], ext: str, taken: list[str]) -> list[str]:
+    """`names` (sacd_extract's file names, without extension), with " (2)", " (3)"... on any
+    that would be the same file in `folder` as a name before it or in `taken` (file names with
+    extension) (#156). sacd_extract writes the later file over the earlier: two tracks numbered
+    past 99 (which get no number) with the same title, or titles that differ only in case on a
+    case-insensitive filesystem. Other names are unchanged, so ordinary discs keep
+    sacd_extract's names; the filesystem is asked only when two names fold to the same key."""
+    from .convert import name_key
+
+    used: dict[str, list[str]] = {}
+    for t in taken:
+        used.setdefault(name_key(t), []).append(t)
+    out = []
+    for name in names:
+        cand, n = name, 2
+        while True:
+            fname = sbcompat.make_filename(None, cand, ext)
+            if not any(u == fname or _same_file(folder, u, fname) for u in used.get(name_key(fname), [])):
+                break
+            # keep the suffix when sacd_extract's cut would drop it from a very long name
+            stem = Path(sbcompat.make_filename(None, name, ext)).stem
+            suffix = f" ({n})"
+            room = sbcompat.MAX_FILENAME_LEN - 1 - len(suffix.encode())
+            cand = stem.encode("utf-8", "surrogateescape")[:room].decode("utf-8", "surrogateescape") + suffix
+            n += 1
+        if cand != name:
+            log.info("%s would replace an earlier track's file; writing %s",
+                     safetext.for_terminal(sbcompat.make_filename(None, name, ext)), safetext.for_terminal(fname))
+        used.setdefault(name_key(fname), []).append(fname)
+        out.append(cand)
+    return out
 
 
 def _other_disc_in(folder: Path, planned: dict[str, int], disc: Disc, area: Area) -> list[str]:
@@ -824,7 +885,7 @@ def _avoid_other_discs(disc: Disc, want: list[Area], o: Opts, out_dir: Path) -> 
     clash: list[str] = []
     for area in want:
         folder = out_dir / sbcompat.area_dir_name(area) if disc.multichannel else out_dir
-        clash += _other_disc_in(folder, _planned_tracks(disc, area, o), disc, area)
+        clash += _other_disc_in(folder, _planned_tracks(disc, area, o, folder), disc, area)
     if not clash:
         return out_dir
     label = (disc.disc_catalog_number or disc.album_catalog_number).strip()
@@ -882,10 +943,13 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
         ref = disc.stereo or disc.areas[0]
         try:
             match = musicbrainz.find_release(disc, ref, o.mb_contact, o.mb_release)
-            if match and o.cover:
-                cover = musicbrainz.fetch_cover(match.release, o.mb_contact)
         except musicbrainz.MBError as e:
             say(f"\n Warning: MusicBrainz lookup failed: {e}")
+        if match and o.cover:
+            try:
+                cover = musicbrainz.fetch_cover(match.release, o.mb_contact)
+            except musicbrainz.MBError as e:
+                say(f"\n Warning: cover art: {e}")
         say(f"\n MusicBrainz: {'https://musicbrainz.org/release/' + match.release_id if match else 'no confident match'}")
         if match and o.submit_isrcs:
             from . import isrcsubmit

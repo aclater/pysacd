@@ -103,6 +103,13 @@ def _sanitize(b: bytes, unsafe: frozenset) -> bytes:
     return b.rstrip(b". ") if _WINDOWS else b
 
 
+def _not_device(b: bytes) -> bytes:
+    """On Windows, a device name (CON, NUL.x, COM1...) as a whole file or folder name gets a
+    leading '_', as `pysacd convert` names it: Windows can't create a file of that name, and the
+    run would fail. Elsewhere such names are ordinary and stay sacd_extract's (#156)."""
+    return b"_" + b if _WINDOWS and safetext.WINDOWS_DEVICE.match(_s(b)) else b
+
+
 def sanitize_filename(name: str) -> str:
     return _s(_sanitize(_b(name), _UNSAFE_FILENAME))
 
@@ -153,7 +160,7 @@ def make_filename(directory: str | None, name: str | None, ext: str | None) -> s
             buf += b"/"
     if name:
         # never an empty name: "dir/.ext" would be a hidden file
-        n = _sanitize(_b(name)[:MAX_FILENAME_LEN - 1], _UNSAFE_FILENAME) or b"_"
+        n = _not_device(_sanitize(_b(name)[:MAX_FILENAME_LEN - 1], _UNSAFE_FILENAME) or b"_")
         buf += n[:max(0, MAX_BUFF_FULL_PATH_LEN - len(buf) - 5)]
     if ext:
         buf += b"." + _b(ext)[:max(0, MAX_BUFF_FULL_PATH_LEN - len(buf) - 2)]
@@ -235,7 +242,7 @@ def album_path(disc: Disc, artist_flag: bool = False) -> str:
         t = b"unknown album title"
     artist = _disc_artist(disc)
     a = _cut_artist(artist, MAX_DISC_ARTIST_LEN) if artist is not None else b""
-    out = a + b" - " + t if artist_flag and a else t
+    out = _not_device(a + b" - " + t if artist_flag and a else t)
     if disc.album_set_size > 1:
         out += b"/Disc %d" % disc.album_sequence_number
     return _s(out)

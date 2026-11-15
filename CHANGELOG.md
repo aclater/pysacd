@@ -9,6 +9,22 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Fixed
+- `pysacd-extract` on Windows: a disc titled with a device name such as `CON` no longer fails the
+  run; its folder and files get a leading `_` (`_CON`), as `pysacd convert` names them. Other
+  systems keep `sacd_extract`'s names (#156).
+- `pysacd-extract` no longer writes one track over another when their `sacd_extract` names would be
+  the same file: titles that differ only in case on a case-insensitive filesystem (Windows, macOS
+  by default), or equal titles of tracks past 99. The later track is written as `<name> (2)`
+  (#156). See [the differences from sacd_extract](docs/sacd_extract.md#compatibility-policy).
+
+### Security hardening
+- Cover downloads follow redirects only to `coverartarchive.org` and `archive.org` hosts. A
+  redirect anywhere else is refused and reported as a cover-art warning; the run continues
+  without a cover (#155).
+- Reading a MusicBrainz or cover response stops with an error on anything that isn't bytes.
+  The test suite can run under a memory limit (`PYSACD_TEST_MEMORY_MB`), and CI's `tests` job does.
+
 ### Tests
 - The engine's fuzz harness also covers ranges that don't start at frame 0 in every format, DSF
   chains with a head frame, the ISO copy, cancellation, 176.4 kHz PCM, FLAC output, other thread
@@ -17,6 +33,10 @@ behaviour, and a patch version only adds or fixes. Each release on
   (#157).
 
 ### Build and release
+- The release-tag check runs in a Fedora container like the other release jobs, and on pull
+  requests it also checks its clone, so its set-up is tested before a tag depends on it (#167).
+- `licenses/` names the GCC runtime library (`libgcc_s`) that the musllinux wheel carries, with its
+  licence texts (#167).
 - The release workflow refuses a `v*` tag that isn't `v` plus the package version, or whose commit
   isn't on `master` or a `release/*` branch, before anything is built or published (#154).
 - The Linux wheels link libFLAC 1.5.0, built in the job from its release source with the SHA-256

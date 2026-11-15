@@ -83,6 +83,7 @@ jobs:
         if: matrix.python != '3.13'
         env:
           PYSACD_TEST_REPORT: ${{ runner.temp }}/test-report.json
+          PYSACD_TEST_MEMORY_MB: "4096"  # a test that grows without bound fails alone (tests/conftest.py)
         run: PYTHONPATH=src pytest -q tests
 
       # One leg runs the suite under coverage.py (configured in pyproject.toml); the report goes
@@ -92,6 +93,7 @@ jobs:
         if: matrix.python == '3.13'
         env:
           PYSACD_TEST_REPORT: ${{ runner.temp }}/test-report.json
+          PYSACD_TEST_MEMORY_MB: "4096"  # a test that grows without bound fails alone (tests/conftest.py)
         run: |
           PYTHONPATH=src coverage run -m pytest -q tests
           coverage report

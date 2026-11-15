@@ -78,7 +78,10 @@ Output paths: each name component is neutralised (below) and capped at 240 bytes
 can't split a component, and `..` can't appear as one. Lookalike slashes (U+2215, U+2044,
 U+FF0F) are ordinary characters on every filesystem, so they can only make a name look
 nested; they can't nest it. With `--portable-names` (always on Windows), trailing spaces and dots are removed and Windows
-device names (`CON`, `NUL`, `COM1`, `COM¹`, …, with any extension) get a leading `_`.
+device names (`CON`, `NUL`, `COM1`, `COM¹`, …, with any extension) get a leading `_`. `pysacd-extract`'s
+`sacd_extract` names do the same on Windows only, and never let one track's file replace another's,
+in particular names that differ only in case on a case-insensitive filesystem
+([details](sacd_extract.md#compatibility-policy)).
 
 ## Hostile images
 
@@ -182,8 +185,13 @@ closed when its next read returns or times out. Timeouts, resets, TLS errors and
 bodies are retried like other network errors and then reported as a MusicBrainz error; a reply
 that runs past its deadline or its size cap is not retried.
 
-Requests use https only, and follow at most 5 redirects, each to an https URL (the Cover Art
-Archive redirects to archive.org hosts, so other hosts are allowed). Requests that carry
+Requests use https only, and follow at most 5 redirects, each to an https URL. A cover download
+follows redirects only to `coverartarchive.org` and `archive.org` and their subdomains (the Cover
+Art Archive hands its images to Internet Archive servers), so a response can't steer the
+download to another host. If the archive ever moves its images elsewhere, covers stop and the
+run says why ("cover art: the Cover Art Archive sent the download to a host pysacd doesn't
+follow"); tags and audio are unaffected. MusicBrainz lookups may be redirected to any https
+host. Requests that carry
 credentials (the OAuth token exchange and the ISRC submission, with a Bearer token or digest
 auth) follow no redirect at all, so a token, client secret or password can only reach the URL it
 was meant for, on every supported Python. The one exception to https is for tests: when the

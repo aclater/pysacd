@@ -7,6 +7,8 @@ import io
 import os
 import ssl
 import stat
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -135,8 +137,24 @@ class ConfigDir(unittest.TestCase):
                 self.assertTrue(Path(out[1]).is_absolute(), out[1])
 
 
+class MemoryLimit(unittest.TestCase):
+    def test_a_runaway_allocation_fails_instead_of_growing(self):
+        # tests/conftest.py's limit, in a child process so this one keeps its own; without a
+        # sanitizer runtime preloaded, which maps more than the limit before Python starts
+        code = ("import sys; sys.path.insert(0, sys.argv[1]); import conftest\n"
+                "if not conftest.limit_memory(200):\n    print('no limit here'); sys.exit()\n"
+                "try:\n    held = [bytearray(64 << 20) for _ in range(16)]\n"
+                "except MemoryError:\n    print('MemoryError')\n")
+        env = {k: v for k, v in os.environ.items() if k != "LD_PRELOAD"}
+        out = subprocess.run([sys.executable, "-c", code, str(Path(__file__).parent)],
+                             capture_output=True, text=True, timeout=60, env=env, check=False)
+        want = "MemoryError" if sys.platform.startswith("linux") else "no limit here"
+        self.assertEqual(out.stdout.strip(), want, out.stderr)
+
+
 class HTTPLimits(unittest.TestCase):
-    def response(self, body: bytes, ctype: str = "application/json"):
+    @staticmethod
+    def response(body: bytes, ctype: str = "application/json"):
         r = mock.MagicMock()
         stream = io.BytesIO(body)
         r.read.side_effect = stream.read
@@ -150,6 +168,13 @@ class HTTPLimits(unittest.TestCase):
                 mock.patch.object(musicbrainz, "_last_request", 0.0), \
                 self.assertRaisesRegex(musicbrainz.MBError, "larger than 100"):
             musicbrainz._get("https://example.invalid/x", None, limit=100)
+
+    def test_a_response_that_is_not_bytes_ends_the_read(self):
+        # A bare MagicMock's read1() returns a truthy mock for ever; the loop must stop at once
+        r = mock.MagicMock()
+        with self.assertRaisesRegex(musicbrainz.MBError, "unreadable response"):
+            musicbrainz._read_capped(r, 100, "https://example.invalid/x")
+        self.assertEqual(r.read1.call_count, 1)
 
     def test_at_limit_is_fine(self):
         with mock.patch.object(musicbrainz, "_open", return_value=self.response(b"x" * 100)):
@@ -317,6 +342,73 @@ class HTTPDeadlinesAndRedirects(unittest.TestCase):
                                                                       "https://musicbrainz.org/x")
             with self.assertRaisesRegex(musicbrainz.MBError, "only https"):
                 musicbrainz._get("http://musicbrainz.org/ws/2/x", None)
+
+    def test_cover_redirects_stay_on_the_archive(self):
+        # #155: a cover download follows redirects only to the Cover Art Archive and archive.org
+        h = musicbrainz._Redirects(hosts=musicbrainz.COVER_HOSTS)
+        req = urllib.request.Request("https://coverartarchive.org/release/x/front")
+        with mock.patch.object(musicbrainz, "API", "https://musicbrainz.org/ws/2"):
+            for ok in ("https://archive.org/download/x.jpg", "https://ia800100.us.archive.org/1/x.jpg",
+                       "https://coverartarchive.org/y", "https://ARCHIVE.org./x"):
+                with self.subTest(ok=ok):
+                    self.assertIsNotNone(h.redirect_request(req, io.BytesIO(), 302, "Found", {}, ok))
+            for bad in ("https://example.invalid/x.jpg", "https://archive.org.example.invalid/x",
+                        "https://notarchive.org/x", "https://archive.org@example.invalid/x",
+                        "https://musicbrainz.org/x", "https:///x"):
+                with self.subTest(bad=bad), self.assertRaisesRegex(
+                        musicbrainz.RedirectHostError, "only coverartarchive.org and archive.org hosts"):
+                    h.redirect_request(req, io.BytesIO(), 302, "Found", {}, bad)
+            # the scheme rule still comes first
+            with self.assertRaisesRegex(musicbrainz.MBError, "non-https"):
+                h.redirect_request(req, io.BytesIO(), 302, "Found", {}, "http://archive.org/x")
+            # other requests are not limited to those hosts
+            self.assertIsNotNone(musicbrainz._Redirects().redirect_request(
+                req, io.BytesIO(), 302, "Found", {}, "https://example.invalid/x"))
+
+    def test_cover_redirect_elsewhere_is_reported_not_followed(self):
+        # The stub's redirect handler sees a redirect off the archive: nothing is fetched from
+        # it, the release-group URL is still tried, and the caller is told why there is no cover
+        release = {"id": "00000000-0000-4000-8000-000000000001",
+                   "release-group": {"id": "00000000-0000-4000-8000-000000000002"}}
+        seen = []
+
+        def opened(req, **kw):
+            seen.append((req.full_url, kw.get("redirect_hosts")))
+            raise musicbrainz.RedirectHostError("redirect to example.invalid refused: only ... hosts")
+
+        with mock.patch.object(musicbrainz, "_open", side_effect=opened), \
+                mock.patch.object(musicbrainz, "_last_request", 0.0), \
+                self.assertRaisesRegex(musicbrainz.RedirectHostError, "example.invalid.*newer pysacd"):
+            musicbrainz.fetch_cover(release, None)
+        self.assertEqual([h for _, h in seen], [musicbrainz.COVER_HOSTS] * 2)   # no retries
+        self.assertIn("/release-group/", seen[1][0])
+
+    def test_cover_from_the_second_url_hides_a_refused_first(self):
+        release = {"id": "00000000-0000-4000-8000-000000000001",
+                   "release-group": {"id": "00000000-0000-4000-8000-000000000002"}}
+        jpeg = b"\xff\xd8\xff\xe0" + bytes(20)
+
+        def opened(req, **kw):
+            if "/release-group/" not in req.full_url:
+                raise musicbrainz.RedirectHostError("redirect to example.invalid refused")
+            return HTTPLimits.response(jpeg, "image/jpeg")   # a real stream behind read1()
+
+        with mock.patch.object(musicbrainz, "_open", side_effect=opened), \
+                mock.patch.object(musicbrainz, "_last_request", 0.0):
+            self.assertEqual(musicbrainz.fetch_cover(release, None), (jpeg, "image/jpeg"))
+
+    def test_loopback_cover_redirect_followed_off_host_refused(self):
+        # End to end through urllib against the local stub: a loopback redirect (test scaffolding)
+        # is followed, one to another host is refused before any connection to it
+        _Handler.routes["/cover"] = (302, {"Location": "/img"}, [b""], 0)
+        _Handler.routes["/img"] = (200, {}, [b"IMG"], 0)
+        self.assertEqual(musicbrainz._get(self.srv.base + "/cover", None,
+                                          redirect_hosts=musicbrainz.COVER_HOSTS)[0], b"IMG")
+        _Handler.routes["/away"] = (302, {"Location": "https://example.invalid/x.jpg"}, [b""], 0)
+        _Handler.seen = []
+        with self.assertRaisesRegex(musicbrainz.RedirectHostError, "example.invalid refused"):
+            musicbrainz._get(self.srv.base + "/away", None, redirect_hosts=musicbrainz.COVER_HOSTS)
+        self.assertEqual(len(_Handler.seen), 1)       # asked once, not retried
 
     def test_loopback_redirect_followed_and_bounded(self):
         _Handler.routes["/a"] = (302, {"Location": "/b"}, [b""], 0)

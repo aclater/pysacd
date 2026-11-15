@@ -406,6 +406,12 @@ Every pull request runs:
   a stopped skip and a changed reason all fail. To add one, say why it's legitimate there.
   The job names are `tests`, `asan`, `tsan` and `oracle`; the portability and fuzz workflows aren't
   checked.
+- **A memory limit:** the `tests` job runs with `PYSACD_TEST_MEMORY_MB=4096`, which caps the test
+  process's data size (Linux; `tests/conftest.py`), so a test that grows without bound fails with
+  `MemoryError` instead of exhausting the machine. The suite peaks near 0.5 GB and passes with a
+  limit of 2048; not with 1024. Use it for local runs too, with temporary files on a disk
+  (`TMPDIR`) when `/tmp` is a tmpfs. The sanitizer jobs don't set it: their runtimes map far more
+  than they use.
 - **An informational benchmark**, when `src/`, `csrc/`, the `Makefile` or the scarletbook pin changes
   (about 1.5 min; never a required check, so it may be path-filtered). It builds base (the pull
   request's target branch) and head in one job and times `pysacd-extract` to DSF on synthetic discs
@@ -499,7 +505,8 @@ older version), named `v` plus the version in `pyproject.toml`, which `src/pysac
 repeats. The workflow's first job, `release tag`, checks all of that with
 `tools/check_release_tag.py` and nothing is built, attested or published when it fails (#154): a
 tag on an unmerged commit, or one that doesn't match the version, stops there. On pull requests the
-job only checks that the two version strings agree.
+job checks that the two version strings agree and that its clone has origin's branches, so its
+set-up (a Fedora container, like the sdist job) is tested before a tag depends on it.
 
 `.github/workflows/workflow.yml` builds wheels for manylinux (x86-64, aarch64),
 musllinux (x86-64), macOS (arm64, x86-64) and Windows (x86-64), plus the sdist,
@@ -515,7 +522,8 @@ macOS: 11.0 on arm64, 10.13 on x86-64 (#142); the job checks each macOS wheel's 
 `minos`, and that the engine links nothing outside the system. The Windows DLL links MSYS2's
 libFLAC and libogg statically.
 GitHub has no runner older than macOS 15, so no wheel is run on an older macOS in CI. The Windows DLL is
-linked statically. Their licences ship in the wheel (`licenses/`). Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
+linked statically. Their licences ship in the wheel (`licenses/`), with the notice for the GCC runtime
+library that auditwheel copies into the musllinux wheel. Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
 in a clean environment: it converts a synthetic disc to DSF and FLAC with the
 installed console scripts, and checks that the engine has the pinned scarletbook release
 (version and commit) linked in. Building from the sdist downloads that release, as `make` does. Runtime SIMD dispatch needs glibc, so musllinux wheels
@@ -555,6 +563,40 @@ To release:
    (the PyPI publisher is constrained to it). On GitHub, the `pypi` environment
    only accepts `v*` tags, so nothing but a release tag can publish. No API token
    is stored anywhere.
+
+### Security releases
+
+A fix for a vulnerability stays private until the fixed release is on PyPI. Every step below was
+run for 0.5.1, except where marked.
+
+1. **Draft advisory and private fork.** Open a draft GitHub security advisory per finding (or group
+   of findings with one fix), and create the private fork from one of them. Fixes are developed and
+   reviewed there, as pull requests against the fork's default branch. Nothing about the finding
+   goes into a public issue, pull request, branch name or commit message.
+2. **Run by hand what CI runs.** No workflow runs in the private fork. Before the release, on the
+   final commit:
+   - the test suite, and `ruff check .` and `mypy src` (the linters were not recorded for 0.5.1);
+   - the suite under ASan and UBSan, and the engine leak check (`scripts/leak-check.sh memcheck`);
+   - the comparison tests against a `sacd_extract` built from the commit pinned in
+     `.github/workflows/ci.yml` (`SACD_EXTRACT=...`);
+   - the real-disc comparison of step 1 of an ordinary release.
+
+   Not available privately: Windows, macOS, Python 3.10, CodeQL, semgrep and TSan. They first run
+   on the public pull request.
+3. **Changelog.** Date the section and name each advisory by its GHSA id without a link: the link
+   fails the docs link check until the advisory is published.
+4. **One public pull request,** titled only `Release X.Y.Z`, with the fixes and the version bump.
+   From this push the fixes are public, so merge as soon as CI is green and tag at once. Allow for
+   one extra CI round: for 0.5.1 the public jobs found a Windows-only defect and three test
+   assumptions (Python 3.10, line endings, drive letters), and PyPI had the release about 50 minutes
+   after the first public push.
+5. **Check the published package:** install it from PyPI into a clean environment and repeat the
+   advisory's reproduction.
+6. **Publish the advisories.** Close the private fork's pull requests (an advisory can't be
+   published while they are open), set the patched version, request a CVE and publish. GitHub
+   deletes the private fork. Then set the GitHub release's notes from the changelog section.
+7. File the hardening that didn't belong in the fix as ordinary issues, and update RELEASES.md and
+   DECISIONS.md in aclater/sacd.
 
 ## CI speed
 

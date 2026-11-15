@@ -33,6 +33,8 @@ class AreaSpec:
     titles: list[str] = field(default_factory=list)
     charset: int = 2            # locale character set code (see CHARSET_CODECS)
     pauses: list[int] = field(default_factory=list)  # per track: leading frames of pause (timecodes only)
+    # per track ISRC; None: XXPYS26 and the track number; "" leaves a track's ISRC blank
+    isrcs: list[str] | None = None
 
 
 def _tc(frames: int) -> bytes:
@@ -171,7 +173,8 @@ def _area_toc(spec: AreaSpec, track_lsns: list[tuple[int, int]], audio: tuple[in
     ig = 2 * S                                               # SACD_IGL: ISRC + genre
     a[ig:ig + 8] = b"SACD_IGL"
     for i in range(ntracks):
-        a[ig + 8 + i * 12:ig + 20 + i * 12] = f"XXPYS26{i + 1:05d}".encode()
+        isrc = f"XXPYS26{i + 1:05d}" if spec.isrcs is None else spec.isrcs[i]
+        a[ig + 8 + i * 12:ig + 20 + i * 12] = isrc.encode("latin-1").ljust(12, b"\0")
         g = ig + 8 + 255 * 12 + 4 + i * 4
         a[g:g + 4] = bytes([1, 0, 0, 25])
 

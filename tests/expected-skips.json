@@ -24,6 +24,7 @@
     ],
     "tests": [
       "tests.test_disc_collisions.ExtractDiscCollisions.test_disc_override_matches_sacd_extract_set_layout",
+      "tests.test_disc_collisions.IsrcEditions.test_sacd_extract_files",
       "tests.test_disc_collisions.PortableExtractNames.test_case_collisions_against_sacd_extract",
       "tests.test_disc_collisions.PortableExtractNames.test_device_names_match_sacd_extract",
       "tests.test_disc_collisions.OwnFilesAcrossModes.test_mixed_modes_match_sacd_extract",

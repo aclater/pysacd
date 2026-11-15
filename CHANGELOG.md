@@ -19,7 +19,8 @@ behaviour, and a patch version only adds or fixes. Each release on
 - `pysacd-extract` no longer writes one track over another when their `sacd_extract` names would be
   the same file: titles that differ only in case on a case-insensitive filesystem (Windows, macOS
   by default), or equal titles of tracks past 99. The later track is written as `<name> (2)`
-  (#156). See [the differences from sacd_extract](docs/sacd_extract.md#compatibility-policy).
+  (#156). See [the differences from sacd_extract](docs/sacd_extract.md#compatibility-policy). The
+  filesystem is asked once per name, so a disc with many such titles doesn't slow the run.
 - `pysacd-extract` writes into an album folder that holds this disc's own files from an earlier run in
   another mode, as `sacd_extract` does. An edit master (`-e`) or cue sheet (`-C`) run after the DSF or
   DSDIFF tracks, tracks after an edit master, a second `-e`, another `-t` selection or a `-k`
@@ -37,7 +38,9 @@ behaviour, and a patch version only adds or fixes. Each release on
   written as an empty TSRC frame, left out of the cue sheet, XML and `-P`, and padded ones were
   trimmed, so the DSF, DSDIFF, edit master, cue, XML and `-P` output differed from
   `sacd_extract`'s. `pysacd convert` and pysacd's own tags still carry the ISRC itself, and a
-  blank ISRC still counts as none when telling discs apart (#175).
+  blank ISRC still counts as none when telling discs apart (#175). In `-P`, control characters in
+  the field are shown as escapes, and a disc with such a field is still recognised as itself on a
+  second run.
 
 ### Security hardening
 - Cover downloads follow redirects only to `coverartarchive.org` and `archive.org` hosts. A

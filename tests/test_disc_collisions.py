@@ -441,6 +441,37 @@ class PortableExtractNames(unittest.TestCase):
             self.assertEqual(sorted(self.tree(ours)), sorted(f"{album}/{n}" for n in names))
         self.assertIn(f'FILE "{album}.dff"', (self.dir / "ours1" / album / f"{album}.cue").read_text(encoding="utf-8"))
 
+    def test_the_filesystem_is_asked_once_per_name_not_per_pair(self):
+        # 60 names that differ only in case: one scratch folder, and no more files than names
+        import tempfile as tf
+        from unittest import mock
+
+        from pysacd import extract
+        folder = self.dir / "probe"
+        folder.mkdir()
+        names = ["".join(c.upper() if i >> k & 1 else c for k, c in enumerate("abcdef")) for i in range(60)]
+        real, made = tf.TemporaryDirectory, []
+
+        def counted(*a, **kw):
+            made.append(real(*a, **kw))
+            return made[-1]
+
+        touched = []
+        real_touch = Path.touch
+
+        def touch(self, *a, **kw):
+            touched.append(self.name)
+            return real_touch(self, *a, **kw)
+
+        with mock.patch.object(extract.tempfile, "TemporaryDirectory", counted), mock.patch.object(Path, "touch", touch):
+            got = extract._distinct_names(folder, names, "dsf", [])
+        self.assertEqual(len(made), 1)
+        self.assertLessEqual(len(touched), len(names))
+        self.assertEqual(list(folder.iterdir()), [])                 # the scratch folder is gone
+        self.assertEqual(len({g.casefold() for g in got}) if _case_insensitive(folder) else len(set(got)), 60)
+        if not _case_insensitive(folder):
+            self.assertEqual(got, names)
+
     def test_names_differing_in_case_keep_every_track(self):
         ours = self.dir / "ours"
         ours.mkdir()

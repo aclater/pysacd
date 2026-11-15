@@ -490,10 +490,15 @@ job only checks that the two version strings agree.
 musllinux (x86-64), macOS (arm64, x86-64) and Windows (x86-64), plus the sdist,
 whenever packaging or `csrc/` changes. Every wheel's engine has the pinned scarletbook library
 linked in statically, and the wheel job runs only after the `scarletbook provenance` check.
-auditwheel bundles libFLAC and libogg into the Linux wheels. The macOS wheels link a static libFLAC
-built in the job from its release source, SHA-256 checked (`FLAC_VERSION` and `FLAC_SHA256` in the
-workflow), for the wheel's minimum macOS: 11.0 on arm64, 10.13 on x86-64 (#142). The job checks
-each macOS wheel's tag and its engine's `minos`, and that the engine links nothing outside the system.
+The Linux and macOS wheels link a static libFLAC (no Ogg) built in the job from its release source,
+SHA-256 checked (`FLAC_VERSION` and `FLAC_SHA256` in the workflow). On Linux,
+`scripts/build-libflac.sh` builds it inside the cibuildwheel container with the release tarball's
+`./configure`, with the engine's hardening flags (so the x86-64 engine keeps its CET mark), and
+auditwheel has nothing to bundle (#153); the job checks that the engine needs no shared libFLAC or
+libogg and has that libFLAC version linked in. On macOS, CMake builds it for the wheel's minimum
+macOS: 11.0 on arm64, 10.13 on x86-64 (#142); the job checks each macOS wheel's tag and its engine's
+`minos`, and that the engine links nothing outside the system. The Windows DLL links MSYS2's
+libFLAC and libogg statically.
 GitHub has no runner older than macOS 15, so no wheel is run on an older macOS in CI. The Windows DLL is
 linked statically. Their licences ship in the wheel (`licenses/`). Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
 in a clean environment: it converts a synthetic disc to DSF and FLAC with the

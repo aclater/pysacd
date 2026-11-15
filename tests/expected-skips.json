@@ -25,9 +25,10 @@
     "tests": [
       "tests.test_disc_collisions.ExtractDiscCollisions.test_disc_override_matches_sacd_extract_set_layout",
       "tests.test_disc_collisions.IsrcEditions.test_sacd_extract_files",
+      "tests.test_disc_collisions.OwnFilesAcrossModes.test_mixed_modes_match_sacd_extract",
       "tests.test_disc_collisions.PortableExtractNames.test_case_collisions_against_sacd_extract",
       "tests.test_disc_collisions.PortableExtractNames.test_device_names_match_sacd_extract",
-      "tests.test_disc_collisions.OwnFilesAcrossModes.test_mixed_modes_match_sacd_extract",
+      "tests.test_extract_tree.BlankIsrcs.test_isrc_forms",
       "tests.test_extract_tree.Trees.test_every_mode_on_every_disc",
       "tests.test_names.Decoding.test_ksc_gb_documented_difference",
       "tests.test_names.Decoding.test_sjis_big5_match_sacd_extract",

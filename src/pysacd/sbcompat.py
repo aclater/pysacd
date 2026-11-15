@@ -14,18 +14,22 @@ Known, unavoidable differences (see also the module tests):
   * Where the C code reads past a converted string (ID3 frames for text that
     shrinks in ISO-8859-1/UTF-16), it copies uninitialised heap bytes; we
     write zeros there.
-  * Raw catalog numbers and ISRCs come from the stripped TOC fields; pass
+  * Raw catalog numbers come from the stripped TOC fields; pass
     raw_catalog_numbers() to metadata_xml() for the exact padded values.
+    ISRCs are as stored up to the first NUL, spaces kept (Track.isrc_stored, #175).
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import struct
 import sys
 
 from . import __version__, safetext
-from .toc import CATEGORIES, GENRES, START_OF_MASTER_TOC, Area, Disc, SACDImage
+from .toc import CATEGORIES, GENRES, SECTOR_SIZE, START_OF_MASTER_TOC, Area, Disc, SACDError, SACDImage
+
+log = logging.getLogger(__name__)
 
 FRAME_RATE = 75
 SAMPLES_PER_FRAME = 588
@@ -66,6 +70,66 @@ def _b(s: str | None) -> bytes:
     # Untrusted disc text: control, bidi and zero-width characters never reach names, tags,
     # cue or XML (docs/security.md, "Hostile text"). Ordinary text is unchanged.
     return safetext.strip_controls(s).encode("utf-8", "surrogateescape") if s is not None else b""
+
+
+def _isrc_text(raw: bytes) -> str:
+    # up to the first NUL. An ISRC is ASCII; another byte is read as Latin-1, as scarletbook
+    # reads it on a Latin-1 disc, so it can't make a tag or XML invalid UTF-8
+    return raw.split(b"\0", 1)[0].decode("latin-1")
+
+
+def stored_isrc(t) -> str:
+    """A track's ISRC as sacd_extract writes it in tags, cue, XML and -P: the stored field up to
+    its first NUL, spaces kept, "" when blank (#175). Without the stored field (see
+    read_stored_isrcs()), the TOC's ISRC."""
+    if t.isrc_stored is None:
+        return t.isrc or ""
+    return _isrc_text(t.isrc_stored)
+
+
+def isrc_parts(t) -> tuple[str, str, str, str]:
+    """Country, owner, year and designation as sacd_extract prints them: each part of the stored
+    field up to its own first NUL."""
+    if t.isrc_stored is None:
+        s = t.isrc or ""
+        return s[0:2], s[2:5], s[5:7], s[7:12]
+    country, owner, year, designation = (_isrc_text(t.isrc_stored[a:b])
+                                         for a, b in ((0, 2), (2, 5), (5, 7), (7, 12)))
+    return country, owner, year, designation
+
+
+# The most area TOC sectors read to find the ISRC list: an area TOC is far smaller
+_MAX_AREA_TOC_SECTORS = 256
+
+
+def read_stored_isrcs(image: SACDImage, disc: Disc) -> None:
+    """Fill in each track's Track.isrc_stored from the area's SACD_IGL list, as stored.
+
+    scarletbook gives an ISRC with its spaces trimmed and a blank one as none; sacd_extract
+    writes the field as stored, so a blank ISRC of spaces is a TSRC of 12 spaces (#175). Only
+    the area TOC that scarletbook used is read, and only for an area it found an ISRC list in.
+    A failed read leaves the TOC's ISRCs in use."""
+    for area in disc.areas:
+        if not area.tracks or all(t.genre is None for t in area.tracks):
+            continue        # no SACD_IGL list: no TSRC, as in sacd_extract
+        n = min(area.toc_size, _MAX_AREA_TOC_SECTORS)
+        try:
+            data = image.read_sectors(area.toc_start, n)
+        except (OSError, SACDError) as e:
+            log.debug("%s: area TOC at %d (+%d) unreadable for ISRCs: %s", area.speaker_config, area.toc_start, n,
+                      safetext.for_terminal(e))
+            continue
+        # the list's two sectors start with their signature; 255 tracks x 12 bytes fit in them
+        at = next((k * SECTOR_SIZE for k in range(1, len(data) // SECTOR_SIZE - 1)
+                   if data[k * SECTOR_SIZE:k * SECTOR_SIZE + 8] == b"SACD_IGL"), None)
+        if at is None:
+            log.debug("%s: no SACD_IGL in the area TOC at %d (+%d)", area.speaker_config, area.toc_start, n)
+            continue
+        for i, t in enumerate(area.tracks[:255]):
+            if t.genre is not None:
+                t.isrc_stored = bytes(data[at + 8 + 12 * i:at + 20 + 12 * i])
+        log.debug("%s: ISRC fields read from the SACD_IGL list at %d", area.speaker_config,
+                  area.toc_start + at // SECTOR_SIZE)
 
 
 def _s(b: bytes) -> str:
@@ -383,7 +447,7 @@ def _render_id3(disc: Disc, area: Area, track_idx: int, mode: int) -> bytes:
         if "composer" in tt:
             text(b"TCOM", _b(tt["composer"]))
         if tr.genre is not None or tr.isrc is not None:  # area has an SACD_IGL list
-            text(b"TSRC", _b(tr.isrc or ""))
+            text(b"TSRC", _b(stored_isrc(tr)))
         if "album_publisher" in disc.text:
             text(b"TPUB", _b(disc.text["album_publisher"]))
         if "album_copyright" in disc.text:
@@ -448,8 +512,8 @@ def cue_sheet(disc: Disc, area: Area, dff_filename: str,
             out.append(b'      TITLE "' + _cue_escape(_b(t.text["title"])) + b'"\n')
         if "performer" in t.text:
             out.append(b'      PERFORMER "' + _cue_escape(_b(t.text["performer"])) + b'"\n')
-        if t.isrc:
-            out.append(b"      ISRC " + _cue_escape(_b(t.isrc)[:12]) + b"\n")
+        if stored_isrc(t):        # a field of spaces gives a bare "ISRC ", as sacd_extract writes it
+            out.append(b"      ISRC " + _cue_escape(_b(stored_isrc(t))[:12]) + b"\n")
         s = t.start
         if s.total_frames > prev_end:
             sec = prev_end // FRAME_RATE
@@ -563,8 +627,9 @@ def metadata_xml(disc: Disc, version: str = PYSACD_VERSION_INFO,
             meta("TOTALTRACKS", str(len(area.tracks)))
             gi = t.genre.genre if t.genre is not None else 0
             meta("GENRE", GENRES[gi] if gi < len(GENRES) else "")
-            meta("ISRC", t.isrc or "")
-            meta("DATE", t.isrc[5:7] if t.isrc and len(t.isrc) >= 7 else f"{y:4d}")
+            meta("ISRC", stored_isrc(t))
+            # the ISRC's year as stored (spaces too), else the disc's
+            meta("DATE", isrc_parts(t)[2] or f"{y:4d}")
             s, du = t.start, t.duration
             meta("Track_Start_Time_Code", f"{s.minutes:02d}:{s.seconds:02d}:{s.frames:02d}", comment=True)
             meta("Duration", f"{du.minutes:02d}:{du.seconds:02d}:{du.frames:02d}", comment=True)

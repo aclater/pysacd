@@ -128,7 +128,8 @@ Its `read_sectors()` reads 2048-byte logical sectors whatever the image's sector
   beets-pysacd fingerprint (#87). They agreed on the sacd-spec conformance corpus, 3,000 TOC
   mutations, real discs and a library of 142 ISOs. Where scarletbook gives bytes as stored
   (catalogue numbers, language codes, manufacturer data, ISRCs), `_sbtoc` renders them as that
-  parser did. The warnings are the specification's codes (see
+  parser did. scarletbook trims an ISRC's spaces, which `sacd_extract` keeps: for its output,
+  `sbcompat.read_stored_isrcs()` reads the fields from the area TOC scarletbook used (#175). The warnings are the specification's codes (see
   [the Python library](library.md#the-parser)).
 - **Timecodes as stored.** scarletbook gives play times and track times as frame counts, and,
   since 0.5.1, as stored (`sb_area_playtime_stored`, `sb_track_timecodes_stored`; requested by

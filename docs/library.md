@@ -56,7 +56,9 @@ pysacd toc --json IMAGE.iso               # full TOC as JSON
   `sacd_extract`), and a track that runs past the area's play time is cut to it.
 - Per track: start and duration timecodes (75 frames/s), start LSN and length,
   ISRC, genre, and text (title, performer, composer, songwriter, arranger,
-  message, plus phonetic variants).
+  message, plus phonetic variants). The ISRC has its spaces trimmed (`None` when blank);
+  `pysacd.sbcompat.read_stored_isrcs(image, disc)` adds each field as stored
+  (`Track.isrc_stored`), which `sacd_extract`-compatible output writes.
 
 Like sacd-ripper, only the first text language is decoded. Text is decoded
 using the locale's character set (ASCII, Latin-1, Shift-JIS, KSC5601, GB2312

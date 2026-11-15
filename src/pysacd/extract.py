@@ -323,9 +323,10 @@ def print_disc(img: SACDImage, disc: Disc) -> None:
             say(f"\t\tDuration: {tr.duration} [mins:secs:frames]")
             say()
         for i, tr in enumerate(area.tracks):
-            if tr.isrc:
-                s = tr.isrc.ljust(12)
-                say(f"\tISRC Track [{i}]:\n\t  Country: {s[0:2]}, Owner: {s[2:5]}, Year: {s[5:7]}, Designation: {s[7:12]}")
+            if sbcompat.stored_isrc(tr):    # a blank field of spaces too, as sacd_extract prints it (#175)
+                country, owner, year, number = sbcompat.isrc_parts(tr)
+                say(f"\tISRC Track [{i}]:\n\t  Country: {country}, Owner: {owner}, Year: {year}, "
+                    f"Designation: {number}")
 
 
 def _print_text(t: dict, prefix: str) -> None:
@@ -732,6 +733,7 @@ def _main_local(o: Opts) -> int:
         _err(f"{o.input}: {e}")
         _hint_log()
         return 255
+    sbcompat.read_stored_isrcs(img, disc)      # blank ISRCs as sacd_extract writes them (#175)
     log.info("input: %s, %d sectors of %d bytes (data at offset %d)", kind, img.total_sectors, img.sector_size,
              img.data_offset)
     log.debug("input path: %s", safetext.for_terminal(o.input))

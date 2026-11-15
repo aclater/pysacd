@@ -174,7 +174,9 @@ def _area_toc(spec: AreaSpec, track_lsns: list[tuple[int, int]], audio: tuple[in
     a[ig:ig + 8] = b"SACD_IGL"
     for i in range(ntracks):
         isrc = f"XXPYS26{i + 1:05d}" if spec.isrcs is None else spec.isrcs[i]
-        a[ig + 8 + i * 12:ig + 20 + i * 12] = isrc.encode("latin-1").ljust(12, b"\0")
+        raw = isrc.encode("latin-1")
+        assert len(raw) <= 12, isrc
+        a[ig + 8 + i * 12:ig + 20 + i * 12] = raw.ljust(12, b"\0")
         g = ig + 8 + 255 * 12 + 4 + i * 4
         a[g:g + 4] = bytes([1, 0, 0, 25])
 
@@ -244,6 +246,21 @@ def build_iso(path: str | Path, areas: list[AreaSpec], title: str = "pysacd DST 
     """Write an ISO with a stereo area and/or a multichannel area (at most one each)."""
     img, _ = build_image(areas, info or DiscInfo(title=title))
     Path(path).write_bytes(bytes(img))
+
+
+# ISRC fields blank or partly filled, as discs store them (#175), one per track: a real ISRC,
+# spaces, NULs, short ones padded with NULs or spaces, leading spaces, a NUL inside or first.
+# sacd_extract writes each field as stored up to its first NUL.
+ISRC_FORMS = ["XXPYS2600001", " " * 12, "", "JP", "JPABC" + " " * 7, "  ABC2500001", "JP\0BC2500001",
+              "\0PABC2500001", "JPABC2"]
+
+
+def isrc_forms_iso(path: str | Path, isrcs: list[str] = ISRC_FORMS) -> Path:
+    """A plain DSD stereo disc of two-frame tracks with these ISRC fields."""
+    frames = [_dsd_frame(2, i) for i in range(2 * len(isrcs))]
+    build_iso(path, [AreaSpec(2, frames, [2] * len(isrcs), dst=False, isrcs=isrcs)],
+              info=DiscInfo(title="Album", artist="Artist"))
+    return Path(path)
 
 
 # ---------------------------------------------------------------- hostile images (#17)

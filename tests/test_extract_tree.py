@@ -11,6 +11,7 @@ The HarnessDetects tests need no sacd_extract: they check that the comparison ca
 
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -85,6 +86,59 @@ class Trees(unittest.TestCase):
         # the formats the docs promise were really compared
         self.assertLessEqual({"dsf", "dff", "cue", "xml", "iso"}, compared.keys())
         self.assertTrue(all(compared.values()), compared)
+
+
+@unittest.skipUnless(SACD_EXTRACT, "set SACD_EXTRACT to compare with the real sacd_extract")
+@unittest.skipUnless(dst.HAVE_NATIVE, "native helper not built (make)")
+class BlankIsrcs(unittest.TestCase):
+    """Blank and partly filled ISRC fields (sacdgen.ISRC_FORMS) in every output that carries an
+    ISRC: DSF and DSDIFF in each ID3 mode, -k concatenations, the edit master with cue and XML,
+    and -P (#175)."""
+
+    RUNS = [(fmt, mode) for mode in range(6) for fmt in (["-2", "-s"], ["-2", "-p"])] + [
+        (["-2", "-s", "-k", "-t", "2,3"], None), (["-2", "-p", "-k", "-t", "2,3"], None),
+        (["-2", "-e", "-C"], None), (["-P"], None)]
+
+    @staticmethod
+    def run_both(iso: Path, root: Path, args: list[str], mode: int | None) -> tuple:
+        se, py = root / "sacd_extract", root / "pysacd"
+        for d in (se, py):
+            shutil.rmtree(d, ignore_errors=True)
+            d.mkdir()
+        if mode is not None:
+            (se / "sacd_extract.cfg").write_text(f"id3tag={mode}\n")
+        a = subprocess.run([SACD_EXTRACT, *args, "-i", str(iso)], cwd=se, capture_output=True, text=True,
+                           errors="replace", check=False)
+        (se / "sacd_extract.cfg").unlink(missing_ok=True)
+        b = subprocess.run([sys.executable, "-m", "pysacd.extract", "--no-cfg", "--threads", "2",
+                            *(["--id3tag", str(mode)] if mode is not None else []), *args, "-i", str(iso)],
+                           cwd=py, capture_output=True, text=True, errors="replace", check=False,
+                           env={**os.environ, "PYTHONPATH": SRC})
+        return se, py, a, b
+
+    def test_isrc_forms(self):
+        with tempfile.TemporaryDirectory(prefix="pysacd-isrc") as tmp:
+            root = Path(tmp)
+            iso = sacdgen.isrc_forms_iso(root / "isrcs.iso")
+            compared = 0
+            for args, mode in self.RUNS:
+                with self.subTest(args=args, id3tag=mode):
+                    for _ in range(3):      # sacd_extract now and then leaves out a file (see Trees)
+                        se, py, a, b = self.run_both(iso, root, args, mode)
+                        theirs, ours = cmp.tree(se), cmp.tree(py)
+                        if args == ["-P"] or theirs.keys() >= ours.keys():
+                            break
+                    self.assertEqual((a.returncode, b.returncode), (0, 0), b.stderr)
+                    if args == ["-P"]:
+                        body = lambda t: t[t.find("Disc Information:"):]
+                        self.assertIn("ISRC Track [1]:", a.stdout)
+                        self.assertEqual(body(b.stdout), body(a.stdout))
+                        continue
+                    self.assertTrue(theirs)
+                    vs = cmp.against_sacd_extract(py, se, ours, theirs, False)
+                    self.assertEqual({fmt: e["different"] for fmt, e in vs.items() if e["different"]}, {})
+                    compared += sum(e["identical"] + e["documented"] for e in vs.values())
+            self.assertGreaterEqual(compared, 6 * 2 * 9)
 
 
 class HarnessDetects(unittest.TestCase):

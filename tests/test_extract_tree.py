@@ -9,6 +9,8 @@ before a release (docs/development.md, "Packaging and releases").
 The HarnessDetects tests need no sacd_extract: they check that the comparison can fail.
 """
 
+import contextlib
+import io
 import os
 import random
 import shutil
@@ -304,13 +306,21 @@ class ChainBoundary(unittest.TestCase):
     """pysacd's -z files at a block boundary (#182), as CHAIN_CASES pins them."""
 
     def test_sizes(self):
-        env = {**os.environ, "PYTHONPATH": SRC}
+        # in this process, so the coverage run sees the chain plan
+        from pysacd import extract
         with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
             root = Path(tmp)
             for name, frames, pauses, args, _theirs, ours in CHAIN_CASES:
                 with self.subTest(name):
                     iso = chain_iso(root / "c.iso", frames, pauses)
-                    self.assertEqual(dsf_sizes(extract_dsf(PYSACD, iso, root / "py", args, env)), ours)
+                    out = root / "py"
+                    shutil.rmtree(out, ignore_errors=True)
+                    out.mkdir()
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        rc = extract.main(["--no-cfg", "--threads", "2", "-2", "-s", *args, "-o", str(out),
+                                           "-i", str(iso)])
+                    self.assertEqual(rc, 0)
+                    self.assertEqual(dsf_sizes(out), ours)
 
 
 @unittest.skipUnless(SACD_EXTRACT, "set SACD_EXTRACT to compare with the real sacd_extract")

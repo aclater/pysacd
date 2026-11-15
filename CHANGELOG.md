@@ -10,6 +10,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 ## Unreleased
 
 ### Build and release
+- The release-tag check runs in a Fedora container like the other release jobs, and on pull
+  requests it also checks its clone, so its set-up is tested before a tag depends on it (#167).
+- `licenses/` names the GCC runtime library (`libgcc_s`) that the musllinux wheel carries, with its
+  licence texts (#167).
 - The release workflow refuses a `v*` tag that isn't `v` plus the package version, or whose commit
   isn't on `master` or a `release/*` branch, before anything is built or published (#154).
 - The Linux wheels link libFLAC 1.5.0, built in the job from its release source with the SHA-256

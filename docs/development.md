@@ -484,7 +484,8 @@ older version), named `v` plus the version in `pyproject.toml`, which `src/pysac
 repeats. The workflow's first job, `release tag`, checks all of that with
 `tools/check_release_tag.py` and nothing is built, attested or published when it fails (#154): a
 tag on an unmerged commit, or one that doesn't match the version, stops there. On pull requests the
-job only checks that the two version strings agree.
+job checks that the two version strings agree and that its clone has origin's branches, so its
+set-up (a Fedora container, like the sdist job) is tested before a tag depends on it.
 
 `.github/workflows/workflow.yml` builds wheels for manylinux (x86-64, aarch64),
 musllinux (x86-64), macOS (arm64, x86-64) and Windows (x86-64), plus the sdist,
@@ -500,7 +501,8 @@ macOS: 11.0 on arm64, 10.13 on x86-64 (#142); the job checks each macOS wheel's 
 `minos`, and that the engine links nothing outside the system. The Windows DLL links MSYS2's
 libFLAC and libogg statically.
 GitHub has no runner older than macOS 15, so no wheel is run on an older macOS in CI. The Windows DLL is
-linked statically. Their licences ship in the wheel (`licenses/`). Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
+linked statically. Their licences ship in the wheel (`licenses/`), with the notice for the GCC runtime
+library that auditwheel copies into the musllinux wheel. Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
 in a clean environment: it converts a synthetic disc to DSF and FLAC with the
 installed console scripts, and checks that the engine has the pinned scarletbook release
 (version and commit) linked in. Building from the sdist downloads that release, as `make` does. Runtime SIMD dispatch needs glibc, so musllinux wheels

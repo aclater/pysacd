@@ -351,5 +351,155 @@ class NoSilentReplacement(unittest.TestCase):
         self.assertFalse(safeio.inside("out", "out/../b"))
 
 
+def _case_insensitive(folder: Path) -> bool:
+    probe = folder / "case-probe"
+    probe.touch()
+    try:
+        return (folder / "CASE-PROBE").exists()
+    finally:
+        probe.unlink()
+
+
+class DeviceNames(unittest.TestCase):
+    """sacd_extract's names on Windows: device names get a leading '_' there only (#156)."""
+
+    def test_device_names(self):
+        from unittest import mock
+
+        from pysacd import sbcompat as sb
+        for name in ("CON", "con", "NUL.dsf", "aux.tar.gz", "COM1", "LPT9", "COM\u00b9", "LPT\u00b3", "PRN .x"):
+            with mock.patch.object(sb, "_WINDOWS", True):
+                self.assertEqual(sb._not_device(name.encode()), b"_" + name.encode(), name)
+            with mock.patch.object(sb, "_WINDOWS", False):
+                self.assertEqual(sb._not_device(name.encode()), name.encode(), name)
+        for name in ("COM10", "CONSOLE", "COM1 - x", "_CON", "01 - CON"):
+            with mock.patch.object(sb, "_WINDOWS", True):
+                self.assertEqual(sb._not_device(name.encode()), name.encode(), name)
+
+    def test_names_on_this_platform(self):
+        from pysacd import sbcompat as sb
+        win = sys.platform == "win32"
+        self.assertEqual(sb.make_filename("out", "CON", "cue"), "out/_CON.cue" if win else "out/CON.cue")
+        self.assertEqual(sb.make_filename(None, "nul", "dff"), "_nul.dff" if win else "nul.dff")
+        self.assertEqual(sb.make_filename(None, "01 - CON", "dsf"), "01 - CON.dsf")
+
+
+@unittest.skipUnless(dst.HAVE_NATIVE, "native helper not built (make)")
+class PortableExtractNames(unittest.TestCase):
+    """pysacd-extract, end to end, on the filesystem it runs on (#156): run on the Windows and
+    macOS runners too, where the device names and the case folding are real."""
+
+    BOOT = ("import sys;from pysacd import sbcompat as s, extract;"
+            "s.PYSACD_VERSION_INFO=s.SACD_RIPPER_VERSION_INFO;"
+            "sys.exit(extract.main())")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def extract(self, cwd: Path, *args: str) -> subprocess.CompletedProcess:
+        cwd.mkdir(exist_ok=True)
+        r = subprocess.run([sys.executable, "-c", self.BOOT, "--no-cfg", *args], cwd=cwd,
+                           env=dict(os.environ, PYTHONPATH=str(SRC)), capture_output=True, text=True, check=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r
+
+    @staticmethod
+    def tree(root: Path) -> dict[str, bytes]:
+        return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+
+    def device_iso(self) -> Path:
+        path = self.dir / "con.iso"
+        frames = [sacdgen._dsd_frame(2, i) for i in range(4)]
+        sacdgen.build_iso(path, [sacdgen.AreaSpec(2, frames, [2, 2], dst=False, titles=["NUL", "aux"])],
+                          info=sacdgen.DiscInfo(title="CON", artist="PRN"))
+        return path
+
+    def case_iso(self) -> Path:
+        # Tracks past 99 get no number in sacd_extract's names: 100, 101 and 102 are all "Intro"
+        path = self.dir / "case.iso"
+        frames = [sacdgen._dsd_frame(2, i) for i in range(102)]
+        sacdgen.build_iso(path, [sacdgen.AreaSpec(2, frames, [1] * 102, dst=False,
+                                                  titles=["t"] * 99 + ["Intro", "intro", "Intro"])],
+                          info=sacdgen.DiscInfo(title="Case"))
+        return path
+
+    def test_device_names(self):
+        iso = self.device_iso()
+        album = "_CON" if sys.platform == "win32" else "CON"
+        for i, (args, names) in enumerate(((["-s"], ["01 - NUL.dsf", "02 - aux.dsf"]),
+                                           (["-e", "-C"], [f"{album}.dff", f"{album}.cue", f"{album}.xml"]),
+                                           (["-I"], [f"{album}.iso"]))):
+            ours = self.dir / f"ours{i}"
+            self.extract(ours, *args, "-i", str(iso))
+            self.assertEqual(sorted(self.tree(ours)), sorted(f"{album}/{n}" for n in names))
+        self.assertIn(f'FILE "{album}.dff"', (self.dir / "ours1" / album / f"{album}.cue").read_text(encoding="utf-8"))
+
+    def test_names_differing_in_case_keep_every_track(self):
+        ours = self.dir / "ours"
+        ours.mkdir()
+        folded = _case_insensitive(ours)
+        if sys.platform in ("win32", "darwin"):
+            self.assertTrue(folded, "expected a case-insensitive filesystem on this runner")
+        self.extract(ours, "-s", "-i", str(self.case_iso()))
+        files = self.tree(ours / "Case")
+        self.assertEqual(len(files), 102)
+        self.assertEqual(len(set(files.values())), 102)         # each track's own audio
+        late = sorted(n for n in files if not n[:2].isdigit())
+        if folded:
+            self.assertEqual(late, ["_ Intro (3).dsf", "_ Intro.dsf", "_ intro (2).dsf"])
+        else:
+            # case-sensitive: sacd_extract's names, and only the exact duplicate is renamed
+            self.assertEqual(late, ["_ Intro (2).dsf", "_ Intro.dsf", "_ intro.dsf"])
+        # Re-run: the renamed files are this disc's own, not another disc's (#4)
+        r = self.extract(ours, "-s", "-i", str(self.case_iso()))
+        self.assertNotIn("another disc", r.stderr)
+        self.assertEqual(sorted(self.tree(ours)), sorted(f"Case/{n}" for n in files))
+
+    @unittest.skipUnless(SACD_EXTRACT, "set SACD_EXTRACT to compare with the real sacd_extract")
+    def test_device_names_match_sacd_extract(self):
+        # Off Windows, a device name is an ordinary name: byte-identical to sacd_extract
+        iso = self.device_iso()
+        for i, args in enumerate((["-s"], ["-e", "-C"])):
+            ours, theirs = self.dir / f"ours{i}", self.dir / f"theirs{i}"
+            self.extract(ours, *args, "-i", str(iso))
+            theirs.mkdir()
+            subprocess.run([SACD_EXTRACT, *args, f"-i{iso}"], cwd=theirs, capture_output=True, check=False)
+            a, b = self.tree(ours), self.tree(theirs)
+            self.assertEqual(sorted(a), sorted(b))
+            self.assertIn("CON/01 - NUL.dsf" if i == 0 else "CON/CON.cue", a)
+            for k in a:
+                if k.endswith(".dff"):          # the creating-machine comment differs
+                    continue
+                # .cue/.xml: only the version line differs (sacd_extract's names its own version)
+                x, y = a[k].splitlines(), b[k].splitlines()
+                self.assertEqual(len(x), len(y), k)
+                self.assertEqual([(p, q) for p, q in zip(x, y) if p != q and b"pysacd" not in p], [], k)
+
+    @unittest.skipUnless(SACD_EXTRACT, "set SACD_EXTRACT to compare with the real sacd_extract")
+    def test_case_collisions_against_sacd_extract(self):
+        # Linux (case-sensitive): every file sacd_extract keeps is ours byte for byte, under its
+        # name ('-' leading a name becomes '_', docs/security.md); the track sacd_extract writes
+        # over (track 100, replaced by 102) is ours as "_ Intro.dsf", and 102 is "_ Intro (2).dsf".
+        iso = self.case_iso()
+        ours, theirs = self.dir / "ours", self.dir / "theirs"
+        ours.mkdir()
+        if _case_insensitive(ours):
+            self.skipTest("needs a case-sensitive filesystem")
+        self.extract(ours, "-s", "-i", str(iso))
+        theirs.mkdir()
+        subprocess.run([SACD_EXTRACT, "-s", f"-i{iso}"], cwd=theirs, capture_output=True, check=False)
+        a, b = self.tree(ours), self.tree(theirs)
+        self.assertEqual(len(b), 101)                            # sacd_extract lost a track
+        self.assertEqual(len(a), 102)
+        rename = {"Case/- Intro.dsf": "Case/_ Intro (2).dsf", "Case/- intro.dsf": "Case/_ intro.dsf"}
+        for k, v in b.items():
+            self.assertEqual(a[rename.get(k, k)], v, k)
+        self.assertNotIn(a["Case/_ Intro.dsf"], b.values())
+
+
 if __name__ == "__main__":
     unittest.main()

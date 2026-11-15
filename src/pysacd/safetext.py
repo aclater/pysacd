@@ -45,6 +45,11 @@ _COMPAT_CATEGORIES = INVISIBLE_CATEGORIES - {"Cs"}
 # Command substitution, pipes, command separators and redirection
 NAME_UNSAFE = "`$|;<>"
 _NAME_UNSAFE_RE = re.compile("[" + re.escape(NAME_UNSAFE) + "]")
+# Windows device names, reserved with any extension and with trailing spaces or dots, which
+# Windows ignores ("CON", "nul.txt", "CON .", "COM¹"; "COM10" and "COM1 - x" are fine). Microsoft's
+# "Naming Files, Paths, and Namespaces" lists COM1-9, LPT1-9 and the superscripts ¹²³; COM0 and LPT0,
+# which older versions of that page listed, are included to be safe.
+WINDOWS_DEVICE = re.compile(r"(?i)^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])[ .]*(\..*)?$")
 
 
 _BREAKS = frozenset({"Cc", "Zl", "Zp"})     # these separate words: they become a space

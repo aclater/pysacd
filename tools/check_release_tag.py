@@ -9,7 +9,8 @@ The release workflow runs this before anything is built. For a `v*` tag it check
 - the tagged commit is on the default branch or a `release/*` branch of `origin`, so a tag
   pushed onto an unmerged or unreviewed commit publishes nothing.
 
-For any other ref (a pull request, a manual run) only the two version strings are compared.
+For any other ref (a pull request, a manual run) it compares the two version strings and checks
+that the clone has origin's default branch, so the job's set-up is tested before a tag needs it.
 `v*` tags can't be moved or deleted afterwards (a repository ruleset), so a wrong tag has to
 fail here. It needs a full clone with origin's branches (`fetch-depth: 0`).
 """
@@ -61,16 +62,20 @@ def problems(root: Path, ref: str, sha: str, default: str, init: str | None = IN
     version = project_version(root)
     if init and (v := init_version(root, init)) != version:
         out.append(f"pyproject.toml says {version}, {init} says {v}")
+    # For every ref, so a pull request shows that the job's clone and git work, not the first tag
+    branches = release_branches(root, default)
+    if f"refs/remotes/origin/{default}" not in branches:
+        why = git(root, "rev-parse", "--git-dir").stderr.strip()
+        out.append(f"origin/{default} isn't here: the check needs a full clone (fetch-depth: 0)"
+                   + (f"; git says: {why}" if why else ""))
+        return out
     if not ref.startswith(TAG + "v"):
         return out
     tag = ref[len(TAG):]
     if tag != "v" + version:
         out.append(f"the tag is {tag}, the package version is {version} (expected v{version})")
-    branches = release_branches(root, default)
     if not re.fullmatch(r"[0-9a-f]{40}([0-9a-f]{24})?", sha):  # it goes to git: never an option or a name
         out.append(f"{sha!r} isn't a commit hash")
-    elif f"refs/remotes/origin/{default}" not in branches:
-        out.append(f"origin/{default} isn't here: the check needs a full clone (fetch-depth: 0)")
     elif not any(git(root, "merge-base", "--is-ancestor", sha, b).returncode == 0 for b in branches):
         names = ", ".join(b.removeprefix("refs/remotes/origin/") for b in branches)
         out.append(f"commit {sha[:12]} isn't on a release branch of origin ({names})")

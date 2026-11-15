@@ -141,6 +141,100 @@ class BlankIsrcs(unittest.TestCase):
             self.assertGreaterEqual(compared, 6 * 2 * 9)
 
 
+# Track flags on TrackStop markers (#179): an edited master whose area has gaps between tracks gets
+# a TrackStop before each gap, and sacd_extract writes the area TOC's track mute flags (the flag
+# byte of each track's SACDTRL2 length entry) there. DSDIFF 1.5 (3.7.2) wants them zero on every
+# marker but a TrackStart, as pysacd writes them: a documented exception (docs/sacd_extract.md).
+LENGTH_FLAGS = [0x20, 0x40, 0x10]       # TMF3, TMF4 and TMF2 mute in DSDIFF's TrackFlags
+STOP_FLAGS = [8, 1, 4]
+
+
+def gapped_iso(path: Path, frames6: list[bytes], dst_area: bool) -> Path:
+    """Stereo plain DSD, and a 6-channel area whose tracks 2 and 3 start one frame after the
+    previous one ends, with LENGTH_FLAGS."""
+    n = len(frames6)
+    assert n >= 6, n
+    plain = [bytes([i]) * (2 * 4704) for i in range(6)]
+    sacdgen.build_iso(path, [
+        sacdgen.AreaSpec(2, plain, [2, 2, 2], dst=False, titles=["One", "Two", "Three"]),
+        sacdgen.AreaSpec(6, frames6, tracks(n), dst=dst_area, titles=["One", "Two", "Three"],
+                         pauses=[0, 1, 1], length_flags=LENGTH_FLAGS)],
+        info=sacdgen.DiscInfo(title="Gap Album", artist="Gap Artist"))
+    return path
+
+
+def markers(path: Path) -> list[tuple[int, int]]:
+    """(markType, TrackFlags) of a DSDIFF file's markers, in order."""
+    data = path.read_bytes()
+    pos, out = 16, []
+    while pos + 12 <= len(data):
+        size = int.from_bytes(data[pos + 4:pos + 12], "big")
+        if data[pos:pos + 4] == b"DIIN":
+            q, end = pos + 12, pos + 12 + size
+            while q + 12 <= end:
+                n = int.from_bytes(data[q + 4:q + 12], "big")
+                if data[q:q + 4] == b"MARK":
+                    out.append((int.from_bytes(data[q + 24:q + 26], "big"), int.from_bytes(data[q + 28:q + 30], "big")))
+                q += 12 + n + (n & 1)
+        pos += 12 + size + (size & 1)
+    return out
+
+
+def edit_master(cmd: list[str], iso: Path, cwd: Path, env: dict | None = None) -> Path:
+    cwd.mkdir()
+    r = subprocess.run([*cmd, "-m", "-e", "-i", str(iso)], cwd=cwd, capture_output=True, text=True,
+                       errors="replace", check=False, env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    found = sorted(cwd.rglob("*.dff"))
+    assert len(found) == 1, found
+    return found[0]
+
+
+PYSACD = [sys.executable, "-m", "pysacd.extract", "--no-cfg", "--threads", "2"]
+
+
+@unittest.skipUnless(dst.HAVE_NATIVE, "native helper not built (make)")
+class TrackStopFlags(unittest.TestCase):
+    """pysacd's edited master keeps TrackFlags zero on TrackStop markers (#179)."""
+
+    def test_stop_markers_carry_no_flags(self):
+        with tempfile.TemporaryDirectory(prefix="pysacd-stops") as tmp:
+            root = Path(tmp)
+            iso = gapped_iso(root / "gap.iso", [bytes([i]) * (6 * 4704) for i in range(9)], dst_area=False)
+            dff = edit_master(PYSACD, iso, root / "out", {**os.environ, "PYTHONPATH": SRC})
+            # program start, then per track a start, a stop before each gap, and the last stop
+            self.assertEqual(markers(dff), [(2, 0), (0, 0), (1, 0), (0, 0), (1, 0), (0, 0), (1, 0)])
+            self.assertEqual(cmp._dff_stop_flags(dff), [0, 0, 0])
+
+
+@unittest.skipUnless(SACD_EXTRACT, "set SACD_EXTRACT to compare with the real sacd_extract")
+@unittest.skipUnless(dst.HAVE_NATIVE, "native helper not built (make)")
+@unittest.skipUnless(dst.HAVE_ENCODER, "test DST encoder unavailable (make test-tools)")
+class TrackStopFlagsAgainstSacdExtract(unittest.TestCase):
+    """A 6-channel DST edited master with gaps and track mute flags, as on a real disc (#179):
+    sacd_extract's file differs only in its TrackStop markers' flags, which come from the TOC."""
+
+    def test_mch_edit_master(self):
+        with tempfile.TemporaryDirectory(prefix="pysacd-stops") as tmp:
+            root = Path(tmp)
+            iso = gapped_iso(root / "gap.iso", [f for _, _, f in dst.encoded(6)], dst_area=True)
+            for _ in range(3):      # sacd_extract now and then leaves out a file (see Trees)
+                shutil.rmtree(root / "se", ignore_errors=True)
+                try:
+                    theirs = edit_master([SACD_EXTRACT], iso, root / "se")
+                    break
+                except AssertionError:
+                    continue
+            ours = edit_master(PYSACD, iso, root / "py", {**os.environ, "PYTHONPATH": SRC})
+            self.assertEqual(cmp._dff_stop_flags(theirs), STOP_FLAGS)
+            self.assertEqual(cmp._dff_stop_flags(ours), [0, 0, 0])
+            self.assertEqual([t for t, _ in markers(theirs)], [t for t, _ in markers(ours)])
+            self.assertTrue(cmp.documented_only(ours, theirs))
+            r = cmp.compare(iso, "mch-edit-master", {"old": SRC, "new": SRC}, SACD_EXTRACT, 2, None)
+            self.assertEqual(cmp.sacd_extract_problems(r), [])
+            self.assertEqual(r["vs_sacd_extract"]["new"]["dff"]["documented"], 1)
+
+
 class HarnessDetects(unittest.TestCase):
     """A comparison that can't fail compares nothing (#131)."""
 
@@ -197,6 +291,28 @@ class HarnessDetects(unittest.TestCase):
             self.assertTrue(cmp.documented_only(a, b))              # sacd_extract's pad byte may differ
             b.write_bytes(diin(b"abd", b"\0"))
             self.assertFalse(cmp.documented_only(a, b))             # the text may not
+            def marks(stop_flags: int, start_flags: int = 0, pad: bytes = b"") -> bytes:
+                def mark(kind: int, flags: int) -> bytes:
+                    body = bytes(12) + kind.to_bytes(2, "big") + bytes(2) + flags.to_bytes(2, "big") + bytes(4)
+                    return b"MARK" + len(body).to_bytes(8, "big") + body
+                sub = mark(2, 0) + mark(0, start_flags) + mark(1, stop_flags) + mark(4, 0) + pad
+                chunks = b"DIIN" + len(sub).to_bytes(8, "big") + sub
+                return b"FRM8" + (len(chunks) + 4).to_bytes(8, "big") + b"DSD " + chunks
+            a.write_bytes(marks(0))
+            b.write_bytes(marks(8))
+            self.assertTrue(cmp.documented_only(a, b))              # sacd_extract's TrackStop flags may differ
+            self.assertFalse(cmp.documented_only(b, a))             # pysacd's must be zero
+            b.write_bytes(marks(0x100))
+            self.assertFalse(cmp.documented_only(a, b))             # only the mute flags (bits 0 to 3)
+            b.write_bytes(marks(0, start_flags=8))
+            self.assertFalse(cmp.documented_only(a, b))             # a TrackStart's flags may not differ
+            a.write_bytes(marks(0, pad=b"MARK" + (22).to_bytes(8, "big") + bytes(12) + b"\0\4" + bytes(8)))
+            b.write_bytes(marks(0, pad=b"MARK" + (22).to_bytes(8, "big") + bytes(12) + b"\0\4" + b"\0\0\0\1" + bytes(4)))
+            self.assertFalse(cmp.documented_only(a, b))             # nor an index marker's
+            a.write_bytes(marks(0))
+            b.write_bytes(marks(8)[:-49] + b"\1" + marks(8)[-48:])   # the TrackStop's samples
+            self.assertFalse(cmp.documented_only(a, b))             # nor the marker's time
+            self.assertEqual(cmp._dff_stop_flags(b), [8])
             a, b = root / "a.cue", root / "b.cue"
             a.write_bytes(b"REM File created by SACD Extract, version: NA\nTITLE \"x\"\n")
             b.write_bytes(b"REM File created by SACD Extract, version: pysacd 9.9\nTITLE \"x\"\n")

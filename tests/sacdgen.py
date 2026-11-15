@@ -33,6 +33,8 @@ class AreaSpec:
     titles: list[str] = field(default_factory=list)
     charset: int = 2            # locale character set code (see CHARSET_CODECS)
     pauses: list[int] = field(default_factory=list)  # per track: leading frames of pause (timecodes only)
+    # per track: the flag byte of the SACDTRL2 length entry (sacd_extract writes it on TrackStop markers)
+    length_flags: list[int] = field(default_factory=list)
     # per track ISRC; None: XXPYS26 and the track number; "" leaves a track's ISRC blank
     isrcs: list[str] | None = None
 
@@ -194,6 +196,7 @@ def _area_toc(spec: AreaSpec, track_lsns: list[tuple[int, int]], audio: tuple[in
         assert 0 <= pause < n
         a[l2 + 8 + i * 4:l2 + 11 + i * 4] = _tc(t + pause)
         a[l2 + 8 + 255 * 4 + i * 4:l2 + 11 + 255 * 4 + i * 4] = _tc(n - pause)
+        a[l2 + 11 + 255 * 4 + i * 4] = spec.length_flags[i] if i < len(spec.length_flags) else 0
         t += n
     return bytes(a)
 

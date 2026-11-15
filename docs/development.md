@@ -235,6 +235,9 @@ both hold (see [performance](performance.md)).
     from the album (option 34); an edited master keeps an empty `EMID`. Departures D1 (`CMPR`
     of plain DSD counts its pad byte) and D2 (text as ISO 8859-1) are named: they make files
     that don't conform to DSDIFF, and `sacd_extract` writes them.
+  - DSDIFF markers: scarletbook writes a marker's track flags on a `TrackStart` only, as DSDIFF
+    1.5 (3.7.2) requires; `sacd_extract` also writes the TOC's mute flags on `TrackStop` markers,
+    a documented difference (docs/sacd_extract.md, #179).
 - **What stays pysacd's is content, not layout:** the ID3 tag `sacd_extract` makes from the TOC
   (`sbcompat.id3_tag`), which goes in as a DSF file's raw tag and as a DSDIFF file's `ID3 `
   caller chunks (padded to even length, with the pad counted, as `sacd_extract` counts it), and

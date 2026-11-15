@@ -9,6 +9,13 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Tests
+- The release comparison (`tools/extract_compare.py`) knows one more documented difference from
+  `sacd_extract`, found on a real disc with a 5.1 DST area: in a DSDIFF edited master, `sacd_extract`
+  writes the TOC's track mute flags on `TrackStop` markers, where DSDIFF 1.5 wants zero, and
+  pysacd writes zero. pysacd's output is unchanged. A generated disc with gaps and mute flags
+  reproduces it in the `sacd_extract` comparison job (#179).
+
 ## 0.5.2 (2026-11-15)
 
 Fixes for `pysacd-extract` writing into a folder that already holds files, byte-compatibility with

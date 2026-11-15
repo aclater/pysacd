@@ -449,8 +449,8 @@ Every pull request runs:
 - **A link check** (lychee) of README.md and `docs/` when they change.
 - **An AI review** from a second model, using PR-Agent. It needs the
   `GEMINI_API_KEY` repository secret. **This sends each PR's title,
-  description and diff to Google's Gemini API**, a third party, even though
-  the repository is private. Without the secret the workflow sends nothing.
+  description and diff to Google's Gemini API**, a third party. The repository is
+  public, so that is nothing an outsider couldn't read. Without the secret the workflow sends nothing.
 
 Scheduled runs, besides the weekly fuzzing and portability runs:
 
@@ -522,7 +522,9 @@ libogg and has that libFLAC version linked in. On macOS, CMake builds it for the
 macOS: 11.0 on arm64, 10.13 on x86-64 (#142); the job checks each macOS wheel's tag and its engine's
 `minos`, and that the engine links nothing outside the system. The Windows DLL links MSYS2's
 libFLAC and libogg statically.
-GitHub has no runner older than macOS 15, so no wheel is run on an older macOS in CI. The Windows DLL is
+GitHub has no runner older than macOS 15, so no wheel is run on an older macOS in CI; the published
+0.5.1 arm64 wheel was also run on macOS 15 in a VM on Apple hardware, with no developer libraries. macOS 11 to 14 and
+Intel Macs below 15 are untested, and docs/quickstart.md says so (#142). The Windows DLL is
 linked statically. Their licences ship in the wheel (`licenses/`), with the notice for the GCC runtime
 library that auditwheel copies into the musllinux wheel. Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
 in a clean environment: it converts a synthetic disc to DSF and FLAC with the

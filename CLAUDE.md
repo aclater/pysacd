@@ -61,10 +61,11 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
   any change to a hot path, using an image copied to local storage, never
   read directly from a network share (other clients skew the numbers). Run
   old and new builds alternately and report the mean.
-- **Privacy.** The repository is private, but keep it clean anyway:
+- **Privacy.** The repository is public:
   - no hostnames, home-network names, IP plans or personal details in code,
     docs, tests or commit identities;
-  - commits are authored as `aclater <aclater@gmail.com>`;
+  - commits are authored as `aclater` with the GitHub noreply address
+    `105859+aclater@users.noreply.github.com`;
   - CI's `no private names` check enforces this.
 - **Packages.** Don't install system packages; ask the owner to.
 - **Portability.** The engine builds on Linux, macOS and Windows (MinGW-w64).

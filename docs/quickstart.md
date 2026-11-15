@@ -10,7 +10,9 @@
 
 **From PyPI** (Python 3.10 or later; wheels for Linux x86-64/aarch64 with glibc 2.28 or later,
 Linux x86-64 with musl 1.2 or later, macOS 11 or later on arm64, macOS 10.13 or later on x86-64,
-and Windows x86-64; anywhere else pip builds from source, below):
+and Windows x86-64; anywhere else pip builds from source, below). The macOS wheels are built
+for those versions and run-tested on macOS 15 only (arm64 and x86-64); on macOS 11 to 14 they are
+untested, so please report how they do there:
 
 ```sh
 pip install pysacd                    # engine, libFLAC and mutagen included

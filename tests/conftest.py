@@ -1,9 +1,34 @@
 """With PYSACD_TEST_REPORT=path, pytest writes which tests ran and which skipped, and why, for
-tools/check_skips.py (#131)."""
+tools/check_skips.py (#131).
+
+With PYSACD_TEST_MEMORY_MB=N (Linux), the test process may hold at most N MiB of data, so a test
+that grows without bound fails with MemoryError instead of taking the machine down. Not for the
+sanitizer jobs: their runtimes map far more than they use."""
 
 import json
 import os
+import sys
 from pathlib import Path
+
+
+def limit_memory(mb: int) -> bool:
+    """Cap this process's data size (heap and private writable mappings) at `mb` MiB. Linux only:
+    elsewhere RLIMIT_DATA doesn't cover mmap, so the limit would promise more than it does."""
+    if not sys.platform.startswith("linux"):
+        return False
+    import resource
+    hard = resource.getrlimit(resource.RLIMIT_DATA)[1]
+    want = mb << 20
+    if hard != resource.RLIM_INFINITY:
+        want = min(want, hard)
+    resource.setrlimit(resource.RLIMIT_DATA, (want, hard))
+    return True
+
+
+def pytest_configure(config):
+    mb = os.environ.get("PYSACD_TEST_MEMORY_MB")
+    if mb:
+        limit_memory(int(mb))
 
 _tests: set[str] = set()
 _skips: dict[str, str] = {}

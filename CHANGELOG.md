@@ -18,6 +18,13 @@ behaviour, and a patch version only adds or fixes. Each release on
   by default), or equal titles of tracks past 99. The later track is written as `<name> (2)`
   (#156). See [the differences from sacd_extract](docs/sacd_extract.md#compatibility-policy).
 
+### Security hardening
+- Cover downloads follow redirects only to `coverartarchive.org` and `archive.org` hosts. A
+  redirect anywhere else is refused and reported as a cover-art warning; the run continues
+  without a cover (#155).
+- Reading a MusicBrainz or cover response stops with an error on anything that isn't bytes.
+  The test suite can run under a memory limit (`PYSACD_TEST_MEMORY_MB`), and CI's `tests` job does.
+
 ### Build and release
 - The release workflow refuses a `v*` tag that isn't `v` plus the package version, or whose commit
   isn't on `master` or a `release/*` branch, before anything is built or published (#154).

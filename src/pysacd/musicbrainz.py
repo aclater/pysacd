@@ -37,6 +37,10 @@ class MBError(RuntimeError):
     pass
 
 
+class RedirectHostError(MBError):
+    """A redirect to a host outside the request's allowed hosts."""
+
+
 def _user_agent(contact: str | None) -> str:
     return f"pysacd/{__version__} ( {contact or 'https://musicbrainz.org/doc/MusicBrainz_API'} )"
 
@@ -54,6 +58,10 @@ SOCKET_TIMEOUT = 30.0
 JSON_DEADLINE = 60.0
 COVER_DEADLINE = 300.0
 MAX_REDIRECTS = 5           # Cover Art Archive redirects once or twice (to archive.org)
+# The only hosts a cover download may be redirected to (subdomains included): the Cover Art
+# Archive's images are served by the Internet Archive (ia*.us.archive.org and the like). A
+# response can't steer the download anywhere else (#155).
+COVER_HOSTS = ("coverartarchive.org", "archive.org")
 
 
 def _read_capped(r, limit: int, url: str, deadline: float | None = None) -> bytes:
@@ -71,6 +79,9 @@ def _read_capped(r, limit: int, url: str, deadline: float | None = None) -> byte
             if isinstance(left, int) and left > 0:
                 raise http.client.IncompleteRead(bytes(out), left)
             return bytes(out)
+        if not isinstance(chunk, (bytes, bytearray)):
+            # never loop on something that isn't data (a test double, a broken response object)
+            raise MBError(f"{url}: unreadable response")
         out += chunk
         if len(out) > limit:
             raise MBError(f"{url}: response larger than {limit} bytes")
@@ -96,18 +107,36 @@ def _allowed_url(url: str) -> bool:
     return u.scheme == "http" and api.scheme == "http" and _loopback(api.hostname) and _loopback(u.hostname)
 
 
+def _host_allowed(url: str, hosts: tuple[str, ...]) -> bool:
+    """Whether `url`'s host is one of `hosts` or a subdomain of one. A loopback http URL that
+    _allowed_url() let through (test scaffolding only) passes too."""
+    u = urllib.parse.urlsplit(url)
+    host = (u.hostname or "").lower().rstrip(".")
+    if u.scheme == "http":
+        return _loopback(host)
+    return any(host == h or host.endswith("." + h) for h in hosts)
+
+
 class _Redirects(urllib.request.HTTPRedirectHandler):
     """Follow at most MAX_REDIRECTS redirects, and only to URLs _allowed_url() accepts. With
     follow=False (requests that carry credentials) refuse every redirect, so an Authorization
-    header or a password never reaches another URL, whatever the Python version does."""
+    header or a password never reaches another URL, whatever the Python version does. With
+    `hosts`, a redirect must also stay on those hosts or their subdomains."""
 
     max_redirections = MAX_REDIRECTS
 
-    def __init__(self, follow: bool = True):
+    def __init__(self, follow: bool = True, hosts: tuple[str, ...] | None = None):
         super().__init__()
         self.follow = follow
+        self.hosts = hosts
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if self.follow and _allowed_url(newurl) and self.hosts is not None \
+                and not _host_allowed(newurl, self.hosts):
+            fp.close()
+            host = safetext.for_terminal(urllib.parse.urlsplit(newurl).hostname or "")
+            raise RedirectHostError(
+                f"redirect to {host} refused: only {' and '.join(self.hosts)} hosts are followed here")
         if not self.follow or not _allowed_url(newurl):
             fp.close()
             why = "redirect refused for an authenticated request" if not self.follow else \
@@ -117,7 +146,8 @@ class _Redirects(urllib.request.HTTPRedirectHandler):
 
 
 def _open(req: urllib.request.Request, timeout: float = SOCKET_TIMEOUT, follow: bool = True,
-          handlers: tuple = (), deadline: float | None = None):
+          handlers: tuple = (), deadline: float | None = None,
+          redirect_hosts: tuple[str, ...] | None = None):
     """Open `req` with the redirect rules above (every MusicBrainz, Cover Art Archive and OAuth
     request goes through here).
 
@@ -128,7 +158,7 @@ def _open(req: urllib.request.Request, timeout: float = SOCKET_TIMEOUT, follow: 
     The abandoned connection is closed when its own next read returns or times out."""
     if not _allowed_url(req.full_url):
         raise MBError(f"{req.full_url}: only https:// URLs are used")
-    opener = urllib.request.build_opener(_Redirects(follow), *handlers)
+    opener = urllib.request.build_opener(_Redirects(follow, redirect_hosts), *handlers)
     if deadline is None:
         return opener.open(req, timeout=timeout)
     box: dict = {}
@@ -192,7 +222,8 @@ def _throttle(url: str) -> None:
 
 
 def _get(url: str, contact: str | None, accept: str = "application/json", retries: int = 5,
-         limit: int = MAX_JSON, deadline: float = JSON_DEADLINE) -> tuple[bytes, str]:
+         limit: int = MAX_JSON, deadline: float = JSON_DEADLINE,
+         redirect_hosts: tuple[str, ...] | None = None) -> tuple[bytes, str]:
     req = urllib.request.Request(url, headers={"User-Agent": _user_agent(contact), "Accept": accept})
     for attempt in range(retries):
         _throttle(url)
@@ -200,7 +231,8 @@ def _get(url: str, contact: str | None, accept: str = "application/json", retrie
             # The deadline covers one attempt: connecting, the headers (_open) and the whole
             # body (_read_capped)
             end = time.monotonic() + deadline
-            with _open(req, timeout=min(SOCKET_TIMEOUT, deadline), deadline=end) as r:
+            with _open(req, timeout=min(SOCKET_TIMEOUT, deadline), deadline=end,
+                       redirect_hosts=redirect_hosts) as r:
                 return _read_capped(r, limit, url, end), r.headers.get_content_type()
         except urllib.error.HTTPError as e:
             e.close()
@@ -475,7 +507,11 @@ def find_release(disc: Disc, area: Area, contact: str | None, release_id: str | 
 
 
 def fetch_cover(release: dict, contact: str | None, size: str = "1200") -> tuple[bytes, str] | None:
-    """Front cover from the Cover Art Archive (release, then release group)."""
+    """Front cover from the Cover Art Archive (release, then release group).
+
+    Redirects are followed only to COVER_HOSTS. When no cover was found and a redirect went
+    elsewhere, that is raised (RedirectHostError) rather than reported as "no cover": if the
+    archive ever moves its images to other hosts, the user has to be told why covers stopped."""
     suffix = "front" if size == "full" else f"front-{size}"
     urls = []
     if _mbid(release.get("id")):
@@ -483,13 +519,22 @@ def fetch_cover(release: dict, contact: str | None, size: str = "1200") -> tuple
     rg = _mbid(release.get("release-group", {}).get("id"))
     if rg:
         urls.append(f"{CAA}/release-group/{rg}/{suffix}")
+    refused: RedirectHostError | None = None
     for url in urls:
         try:
-            data, _ = _get(url, contact, accept="image/*", limit=MAX_COVER, deadline=COVER_DEADLINE)
+            data, _ = _get(url, contact, accept="image/*", limit=MAX_COVER, deadline=COVER_DEADLINE,
+                           redirect_hosts=COVER_HOSTS)
+        except RedirectHostError as e:
+            refused = refused or e
+            continue
         except MBError:
             continue
         # Embed only what is really a JPEG or PNG, whatever the Content-Type says (#14)
         mime = image_type(data)
         if mime:
             return data, mime
+    if refused:
+        raise RedirectHostError(
+            f"the Cover Art Archive sent the download to a host pysacd doesn't follow ({refused}). "
+            "If the archive has moved its images, this needs a newer pysacd; no cover was fetched")
     return None

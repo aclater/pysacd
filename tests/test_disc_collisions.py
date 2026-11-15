@@ -598,6 +598,28 @@ class OwnFilesAcrossModes(unittest.TestCase):
                 label = "CAT-" + other.stem.upper()
                 self.assertEqual({k.split("/")[0] for k in after if k not in before}, {f"Album [{label}]"})
 
+    def test_check_in_process(self):
+        # the same check called directly (the runs above are subprocesses): an edit master, a
+        # concatenation and one track are this disc's for a run of the other track; another
+        # disc's files are not
+        from pysacd import extract
+        from pysacd.toc import SACDImage
+        b = _plain_disc(self.dir / "b.iso", ["Uno", "Dos"], "CAT-B", seed=40)
+        out = self.out("inproc")
+        for args in (["-e"], ["-s", "-k", "-t", "1,2"], ["-s", "-t", "1"]):
+            self.pysacd(out, self.a, args)
+        album = out / "Album"
+        for iso, want in ((self.a, album), (b, out / "Album [CAT-B]")):
+            with self.subTest(disc=iso.stem), SACDImage(str(iso)) as img:
+                disc = img.read_toc()
+                o = extract.parse_args(["-2", "-s", "-t", "2", "-o", str(out)])
+                with self.assertLogs("pysacd.extract", "DEBUG") as logs:
+                    extract.log.debug("start")
+                    got = extract._avoid_other_discs(disc, extract._wanted_areas(disc, o), o, album)
+                self.assertEqual(got, want)
+                self.assertEqual(any("another disc" in m or "doesn't produce" in m for m in logs.output),
+                                 iso == b)
+
     @unittest.skipUnless(SACD_EXTRACT, "set SACD_EXTRACT to compare with the real sacd_extract")
     def test_mixed_modes_match_sacd_extract(self):
         m = _plain_disc(self.dir / "m.iso", ["One", "Two"], "CAT-M", mch=True)

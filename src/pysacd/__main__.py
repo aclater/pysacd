@@ -22,6 +22,7 @@ def _to_json(disc: Disc) -> dict:
         for track, td in zip(area.tracks, ad["tracks"]):
             td["start_seconds"] = track.start.seconds_float
             td["duration_seconds"] = track.duration.seconds_float
+            del td["isrc_stored"]       # sacd_extract's view of `isrc`: not part of the TOC's JSON
     return d
 
 

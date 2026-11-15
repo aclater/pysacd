@@ -32,6 +32,12 @@ behaviour, and a patch version only adds or fixes. Each release on
   modes 1, 3 and 4 (the default) and pysacd's own tags. The minimal ID3 modes (2 and 5) carry no
   ISRC, so their files are compared without it (#171;
   [the rule](docs/sacd_extract.md#compatibility-policy)).
+- `pysacd-extract` writes a track's ISRC field as `sacd_extract` does when the disc leaves it blank
+  or fills it only in part: as stored up to its first NUL, spaces kept. A field of spaces was
+  written as an empty TSRC frame, left out of the cue sheet, XML and `-P`, and padded ones were
+  trimmed, so the DSF, DSDIFF, edit master, cue, XML and `-P` output differed from
+  `sacd_extract`'s. `pysacd convert` and pysacd's own tags still carry the ISRC itself, and a
+  blank ISRC still counts as none when telling discs apart (#175).
 
 ### Security hardening
 - Cover downloads follow redirects only to `coverartarchive.org` and `archive.org` hosts. A

@@ -8,6 +8,7 @@ With real discs, PYSACD_SLOW=1 also runs the ~1 GB DSDIFF edit-master comparison
 Output goes to a temporary directory (set TMPDIR to put it on disk).
 """
 
+import contextlib
 import glob
 import io
 import os
@@ -263,6 +264,128 @@ class AgainstSacdExtract(unittest.TestCase):
         self.assertTrue(documented_only(Path(ours, dff), Path(d, dff)), "the edit master differs from sacd_extract's")
         with open(os.path.join(d, sb.make_filename(sb.output_dir(disc, area, None), base, "cue")), "rb") as f:
             self.assertEqual(sb.cue_sheet(disc, area, sb.make_filename(None, base, "dff"), version="NA"), f.read())
+
+
+def id3_frames(tag: bytes) -> dict[bytes, bytes]:
+    """The frames of an ID3v2.3/2.4 tag as sbcompat writes it (no padding, small frames)."""
+    out, pos, v24 = {}, 10, tag[3] == 4
+    while pos + 10 <= len(tag):
+        b = tag[pos + 4:pos + 8]
+        n = (b[0] << 21 | b[1] << 14 | b[2] << 7 | b[3]) if v24 else struct.unpack(">I", b)[0]
+        out[tag[pos:pos + 4]] = tag[pos + 10:pos + 10 + n]
+        pos += 10 + n
+    return out
+
+
+class StoredIsrcs(unittest.TestCase):
+    """Blank and partly filled ISRC fields are written as sacd_extract writes them (#175): the
+    stored field up to its first NUL, spaces kept. The values are sacd_extract's, measured on
+    sacdgen.ISRC_FORMS; tests/test_extract_tree.py compares with the real program."""
+
+    STORED = ("XXPYS2600001", " " * 12, "", "JP", "JPABC       ", "  ABC2500001", "JP", "", "JPABC2")
+    CUE = ("XXPYS2600001", "", None, "JP", "JPABC", "ABC2500001", "JP", None, "JPABC2")
+    DATE = ("26", "  ", None, None, "  ", "25", "25", "25", "2")          # None: the disc's year
+    OWN = ("XXPYS2600001", None, None, "JP", "JPABC", "ABC2500001", "JP", None, "JPABC2")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.tmp.cleanup)
+        cls.iso = sacdgen.isrc_forms_iso(Path(cls.tmp.name) / "isrcs.iso")
+        with SACDImage(cls.iso) as img:
+            cls.toc = img.read_toc()
+            cls.disc = img.read_toc()
+            sb.read_stored_isrcs(img, cls.disc)
+        cls.area = cls.disc.stereo
+
+    def test_toc_unchanged(self):
+        # the TOC's ISRCs stay trimmed, and the stored fields aren't in `pysacd toc --json`
+        from pysacd import tagging
+        from pysacd.__main__ import _to_json
+        self.assertEqual(tuple(t.isrc for t in self.area.tracks), self.OWN)
+        self.assertEqual([t.isrc_stored for t in self.toc.stereo.tracks], [None] * len(self.OWN))
+        self.assertEqual(self.toc, self.disc)
+        self.assertEqual(_to_json(self.toc), _to_json(self.disc))
+        self.assertNotIn("isrc_stored", _to_json(self.disc)["areas"][0]["tracks"][0])
+        # pysacd's own tags (convert, FLAC, WAV) carry the ISRC itself
+        own = [(tagging.base_tags(self.disc, self.area, t).get("ISRC") or [None])[0] for t in self.area.tracks]
+        self.assertEqual(tuple(own), self.OWN)
+
+    def test_tsrc(self):
+        for i, stored in enumerate(self.STORED):
+            want = {1: b"\x01\xff\xfe" + stored.encode("utf-16-le") + b"\0\0",
+                    3: b"\x00" + stored.encode() + b"\0", 4: b"\x03" + stored.encode() + b"\0"}
+            for mode in range(6):
+                with self.subTest(track=i + 1, mode=mode):
+                    for dsdiff in (False, True):
+                        frames = id3_frames(sb.id3_tag(self.disc, self.area, i, mode, dsdiff)) if mode or dsdiff else {}
+                        # mode 0: no tag in a DSF, empty frames in a DSDIFF file; 2 and 5: no TSRC
+                        self.assertEqual(frames.get(b"TSRC"), b"" if mode == 0 and dsdiff else want.get(mode))
+
+    def test_without_stored_fields(self):
+        # a Disc read without them (the library API) keeps the old output: the trimmed ISRC
+        frames = id3_frames(sb.id3_tag(self.toc, self.toc.stereo, 1, 4))
+        self.assertEqual(frames[b"TSRC"], b"\x03\0")
+
+    def test_cue(self):
+        cue = sb.cue_sheet(self.disc, self.area, "Album.dff", version="NA").split(b"\n")
+        got, track = {}, 0
+        for line in cue:
+            if line.startswith(b"  TRACK "):
+                track += 1
+            elif line.startswith(b"      ISRC "):
+                got[track] = line[11:].decode()
+        self.assertEqual(tuple(got.get(i + 1) for i in range(len(self.CUE))), self.CUE)
+
+    def test_xml(self):
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(sb.metadata_xml(self.disc, version="NA"))
+        meta = [{m.get("name"): m.get("value") for m in t.iter("meta")} for t in root.iter("track")]
+        year = f"{self.disc.date[0]:4d}"
+        self.assertEqual(tuple(m["ISRC"] for m in meta), self.STORED)
+        self.assertEqual([m["DATE"] for m in meta], [d or year for d in self.DATE])
+
+    def run_extract(self, cwd: Path, *args: str) -> str:
+        from pysacd import extract
+        buf, old = io.StringIO(), os.getcwd()
+        os.chdir(cwd)
+        try:
+            with contextlib.redirect_stdout(buf):
+                self.assertEqual(extract.main([*args, "-i", str(self.iso), "--no-cfg"]), 0)
+        finally:
+            os.chdir(old)
+        return buf.getvalue()
+
+    def test_print(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = self.run_extract(Path(d), "-P")
+        lines = [ln for ln in out.splitlines() if "ISRC Track" in ln or "Country:" in ln]
+        want = []
+        for i, stored in enumerate(["XXPYS2600001", " " * 12, "", "JP", "JPABC       ", "  ABC2500001",
+                                    "JP\0BC2500001", "", "JPABC2"]):
+            if stored:
+                c, o, y, n = (stored[a:b].split("\0")[0] for a, b in ((0, 2), (2, 5), (5, 7), (7, 12)))
+                want += [f"\tISRC Track [{i}]:", f"\t  Country: {c}, Owner: {o}, Year: {y}, Designation: {n}"]
+        self.assertEqual(lines, want)
+
+    @unittest.skipUnless(dst.HAVE_NATIVE, "native helper not built (make)")
+    def test_extracted_files(self):
+        from pysacd import tagging
+        from pysacd.extract import _same_tags
+        with tempfile.TemporaryDirectory() as d:
+            self.run_extract(Path(d), "-2", "-s")
+            files = sorted(Path(d).rglob("*.dsf"))
+            self.assertEqual(len(files), len(self.STORED))
+            for i, (f, stored) in enumerate(zip(files, self.STORED, strict=True)):
+                data = f.read_bytes()
+                tag = data[struct.unpack_from("<Q", data, 20)[0]:]
+                self.assertEqual(id3_frames(tag)[b"TSRC"], b"\x03" + stored.encode() + b"\0", f.name)
+                # a blank TSRC, 12 spaces or none, is no ISRC when telling discs apart (#171)
+                have = tagging.read_tags(f)
+                for j, t in enumerate(self.area.tracks):
+                    want = tagging.base_tags(self.disc, self.area, t)
+                    same = {k: v for k, v in want.items() if k not in ("TITLE", "TRACKNUMBER")}
+                    self.assertEqual(_same_tags(have, same), self.OWN[i] == self.OWN[j], (f.name, j))
 
 
 if __name__ == "__main__":

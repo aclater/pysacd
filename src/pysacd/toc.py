@@ -134,6 +134,9 @@ class Track:
     genre: Genre | None = None
     text: dict[str, str] = field(default_factory=dict)
     start_flags: int = 0         # raw flag byte from SACDTRL2 start entry
+    # The 12-byte ISRC field as stored, NULs and spaces kept, for sacd_extract-compatible output
+    # (#175); None until sbcompat.read_stored_isrcs() reads it. `isrc` is the ISRC itself.
+    isrc_stored: bytes | None = field(default=None, repr=False, compare=False)
 
     @property
     def title(self) -> str | None:

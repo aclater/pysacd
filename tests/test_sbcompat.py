@@ -311,6 +311,35 @@ class StoredIsrcs(unittest.TestCase):
         own = [(tagging.base_tags(self.disc, self.area, t).get("ISRC") or [None])[0] for t in self.area.tracks]
         self.assertEqual(tuple(own), self.OWN)
 
+    def test_hostile_fields_print_on_one_line_and_rerun_in_place(self):
+        # -P: a CR, LF or escape in a stored field never reaches the terminal as such; and a
+        # second run recognises its own files although the written TSRC differs from the TOC's
+        import contextlib
+        import io
+
+        from pysacd import extract
+        d = Path(self.tmp.name) / "hostile"
+        d.mkdir()
+        fields = ["US\x1b[2JA\r\nZZZ", "JP\0BC2500001", "A\rB\nC\x07D\x9bE12", "XXPYS2600001"]
+        iso = sacdgen.isrc_forms_iso(d / "h.iso", fields)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            extract.main(["--no-cfg", "-P", "-i", str(iso)])
+        lines = [x for x in out.getvalue().split("\n") if "Designation:" in x]
+        self.assertEqual(len(lines), sum(1 for f in fields if f.split("\0")[0]))
+        for line in lines:
+            self.assertFalse(any(ord(c) < 0x20 and c != "\t" or 0x7f <= ord(c) < 0xa0 for c in line), repr(line))
+        self.assertNotIn("\r", out.getvalue())
+        (d / "out").mkdir()
+        src = str(Path(extract.__file__).resolve().parents[1])
+        for run in range(2):
+            r = subprocess.run([sys.executable, "-m", "pysacd.extract", "--no-cfg", "-2", "-s", "-i", str(iso)],
+                               cwd=d / "out", env=dict(os.environ, PYTHONPATH=src), capture_output=True, text=True,
+                               check=False)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual([x.name for x in (d / "out").iterdir()], ["Album"], f"run {run + 1}")
+        self.assertEqual(len(list((d / "out" / "Album").glob("*.dsf"))), len(fields))
+
     def test_tsrc(self):
         for i, stored in enumerate(self.STORED):
             want = {1: b"\x01\xff\xfe" + stored.encode("utf-16-le") + b"\0\0",

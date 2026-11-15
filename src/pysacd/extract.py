@@ -324,7 +324,8 @@ def print_disc(img: SACDImage, disc: Disc) -> None:
             say()
         for i, tr in enumerate(area.tracks):
             if sbcompat.stored_isrc(tr):    # a blank field of spaces too, as sacd_extract prints it (#175)
-                country, owner, year, number = sbcompat.isrc_parts(tr)
+                # the stored bytes: no control character, CR or LF reaches the terminal
+                country, owner, year, number = (safetext.for_terminal(x) for x in sbcompat.isrc_parts(tr))
                 say(f"\tISRC Track [{i}]:\n\t  Country: {country}, Owner: {owner}, Year: {year}, "
                     f"Designation: {number}")
 
@@ -793,20 +794,49 @@ def _planned_tracks(disc: Disc, area: Area, o: Opts, folder: Path) -> dict[str, 
     return {Path(sbcompat.make_filename(None, n, ext)).stem: i for n, i in zip(names, idx)}
 
 
-def _same_file(folder: Path, a: str, b: str) -> bool:
-    """Whether names `a` and `b` (which differ) open the same file in `folder`: on a
+class _FolderNames:
+    """Whether a name would open the same file in `folder` as one already used there: on a
     case-insensitive filesystem (Windows, macOS by default, most SMB shares) "Intro.dsf" and
-    "intro.dsf" do. Asked of the filesystem itself, in a scratch folder inside `folder`, because
-    the rules differ (case, Unicode normalisation, per-folder settings on Windows). When it can't
-    tell, it says yes: a renamed track loses nothing, a replaced one loses its audio."""
-    try:
-        with tempfile.TemporaryDirectory(dir=folder, prefix=".pysacd-case-") as d:
-            (Path(d) / a).touch()
-            return (Path(d) / b).exists()
-    except OSError as e:
-        log.debug("%s: can't tell whether %s and %s are one file (%s); keeping both",
-                  safetext.for_terminal(folder), safetext.for_terminal(a), safetext.for_terminal(b), e)
+    "intro.dsf" do. Asked of the filesystem itself, because the rules differ (case, Unicode
+    normalisation, per-folder settings on Windows): the used names are created once, empty, in a
+    scratch folder inside `folder`, and each new name is looked up there. When it can't tell, it
+    says yes: a renamed track loses nothing, a replaced one loses its audio."""
+
+    def __init__(self, folder: Path):
+        self.folder = folder
+        self.scratch: tempfile.TemporaryDirectory | None = None
+        self.there: set[str] = set()
+        self.failed = False
+
+    def clash(self, used: list[str], fname: str) -> bool:
+        """`fname` is, or opens the same file as, one of `used` (the names that fold to its key)."""
+        if fname in used:
+            return True
+        if not used:
+            return False
+        if not self.failed:
+            try:
+                if self.scratch is None:
+                    self.scratch = tempfile.TemporaryDirectory(dir=self.folder, prefix=".pysacd-case-")
+                d = Path(self.scratch.name)
+                for u in used:
+                    if u not in self.there:
+                        (d / u).touch()
+                        self.there.add(u)
+                return (d / fname).exists()
+            except OSError as e:
+                self.failed = True
+                log.debug("%s: can't tell which names are one file there (%s); keeping every track apart",
+                          safetext.for_terminal(self.folder), e)
         return True
+
+    def close(self) -> None:
+        if self.scratch is not None:
+            try:
+                self.scratch.cleanup()
+            except OSError as e:
+                log.debug("%s: scratch folder not removed: %s", safetext.for_terminal(self.scratch.name), e)
+            self.scratch = None
 
 
 def _distinct_names(folder: Path, names: list[str], ext: str, taken: list[str]) -> list[str]:
@@ -815,30 +845,35 @@ def _distinct_names(folder: Path, names: list[str], ext: str, taken: list[str]) 
     extension) (#156). sacd_extract writes the later file over the earlier: two tracks numbered
     past 99 (which get no number) with the same title, or titles that differ only in case on a
     case-insensitive filesystem. Other names are unchanged, so ordinary discs keep
-    sacd_extract's names; the filesystem is asked only when two names fold to the same key."""
+    sacd_extract's names; the filesystem is asked only when two names fold to the same key, and
+    once per name, not per pair."""
     from .convert import name_key
 
     used: dict[str, list[str]] = {}
     for t in taken:
         used.setdefault(name_key(t), []).append(t)
     out = []
-    for name in names:
-        cand, n = name, 2
-        while True:
-            fname = sbcompat.make_filename(None, cand, ext)
-            if not any(u == fname or _same_file(folder, u, fname) for u in used.get(name_key(fname), [])):
-                break
-            # keep the suffix when sacd_extract's cut would drop it from a very long name
-            stem = Path(sbcompat.make_filename(None, name, ext)).stem
-            suffix = f" ({n})"
-            room = sbcompat.MAX_FILENAME_LEN - 1 - len(suffix.encode())
-            cand = stem.encode("utf-8", "surrogateescape")[:room].decode("utf-8", "surrogateescape") + suffix
-            n += 1
-        if cand != name:
-            log.info("%s would replace an earlier track's file; writing %s",
-                     safetext.for_terminal(sbcompat.make_filename(None, name, ext)), safetext.for_terminal(fname))
-        used.setdefault(name_key(fname), []).append(fname)
-        out.append(cand)
+    there = _FolderNames(folder)
+    try:
+        for name in names:
+            cand, n = name, 2
+            while True:
+                fname = sbcompat.make_filename(None, cand, ext)
+                if not there.clash(used.get(name_key(fname), []), fname):
+                    break
+                # keep the suffix when sacd_extract's cut would drop it from a very long name
+                stem = Path(sbcompat.make_filename(None, name, ext)).stem
+                suffix = f" ({n})"
+                room = sbcompat.MAX_FILENAME_LEN - 1 - len(suffix.encode())
+                cand = stem.encode("utf-8", "surrogateescape")[:room].decode("utf-8", "surrogateescape") + suffix
+                n += 1
+            if cand != name:
+                log.info("%s would replace an earlier track's file; writing %s",
+                         safetext.for_terminal(sbcompat.make_filename(None, name, ext)), safetext.for_terminal(fname))
+            used.setdefault(name_key(fname), []).append(fname)
+            out.append(cand)
+    finally:
+        there.close()
     return out
 
 
@@ -916,10 +951,24 @@ def _other_disc_in(folder: Path, own: dict[str, list[int]], disc: Disc, area: Ar
         else:
             if not have:
                 log.debug("%s: has no tags; matched by name only", safetext.for_terminal(f))
-        if not any(_same_tags(have, tagging.base_tags(disc, area, area.tracks[i])) for i in candidates):
+        if not any(_same_tags(have, want) for i in candidates for want in _identities(disc, area, area.tracks[i])):
             log.debug("%s: tags of another disc", safetext.for_terminal(f))
             foreign.append(f.name)
     return foreign
+
+
+def _identities(disc: Disc, area: Area, track) -> list:
+    """The tags a track's own file may carry: the TOC's, and, when the ISRC field as
+    sacd_extract-style output writes it (stored, up to a NUL, control characters removed) differs
+    from the TOC's ISRC, those with that one. Otherwise a second run of a disc with such a field
+    would take its own files for another disc's."""
+    from . import tagging
+
+    want = tagging.base_tags(disc, area, track)
+    written = sbcompat._s(sbcompat._b(sbcompat.stored_isrc(track)))
+    if written.strip() == (want.get("ISRC") or [""])[0].strip():
+        return [want]
+    return [want, {**want, "ISRC": [written]}]
 
 
 def _same_tags(have, want) -> bool:

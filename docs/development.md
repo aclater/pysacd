@@ -324,26 +324,41 @@ added to CI's test jobs so that can't recur silently (#131).
 the TOC reader and the `ps3sim` handler. It runs 300 cases per target by default;
 `PYSACD_FUZZ=5000` runs more. A failure names the seed that reproduces it.
 
-The engine has a libFuzzer harness in `fuzz/`, `fuzz_engine`. It needs clang. Each input is a
-disc image: the harness opens it with scarletbook and runs `sacdconv_area_run()` on each area,
-as the commands do:
-- the whole area, capped at 600 frames, to DSF, DSDIFF and, for a DST area, DSDIFF with the
-  stored frames, in one pass;
-- the last track to WAV, through a sector source and with a provisional start.
+The engine has a libFuzzer harness in `fuzz/`, `fuzz_engine`. It needs clang, and builds in
+FLAC output when libFLAC is found. An input is a disc image, which the harness opens with
+scarletbook before running `sacdconv_area_run()` on each area, in one of two ways:
+- a plain image: the whole area, capped at 600 frames, to DSF, DSDIFF, FLAC and, for a DST area,
+  DSDIFF with the stored frames, in one pass; then the last track to WAV, through a sector source
+  and with a provisional start;
+- a configured run (#157): the magic `PSFZcfg1` and a 24-byte configuration (`cfg_t` in
+  `fuzz/fuzz_engine.c`) before the image choose the outputs (DSF, FLAC, WAV, DSDIFF, DSDIFF DST,
+  a second WAV and a gapless DSF chain with a head frame), each over its own range of up to 200
+  frames anywhere in the area or past its end, and the run's options: an ISO copy, a sector
+  source, a provisional start, `allow_filler`, 88.2 or 176.4 kHz PCM, gain, 1 to 20 threads, a
+  log callback, a cancel (from the log callback, from another thread or before the run), and
+  arguments the engine must refuse. libFuzzer mutates the configuration along with the image.
 
 scarletbook's own parsing is fuzzed in its repository; this covers pysacd's code around it.
 
 ```sh
 make fuzz test-tools
 PYTHONPATH=src:tests python3 fuzz/make_seeds.py build/fuzz-seeds
-build/fuzz_engine -max_len=4194304 -jobs=8 -workers=8 -max_total_time=600 build/fuzz-corpus/engine build/fuzz-seeds/engine
+mkdir -p build/fuzz-corpus/engine build/fuzz-tmp
+TMPDIR=build/fuzz-tmp build/fuzz_engine -max_len=4194304 -jobs=2 -workers=2 -rss_limit_mb=1500 \
+    -max_total_time=600 build/fuzz-corpus/engine build/fuzz-seeds/engine
 ```
 
-The seeds are pysacd's hostile corpus (`tests/sacdgen.py`) and DST discs built by the test
-encoder. A crashing input goes, minimised, into `fuzz/regressions/fuzz_engine/` along with its
-fix. `tests/test_fuzz_engine.py` builds the same harness without libFuzzer (`make
-fuzz-replay`, any C compiler) and replays those inputs and the seeds, under the sanitizers
-in CI.
+The harness writes its outputs (up to a few MB each, removed after each run) to a directory under
+`$TMPDIR`, else `/tmp`; point it at a disk rather than a small tmpfs. For ThreadSanitizer instead
+of ASan and UBSan, `rm -f build/fuzz_engine && make FUZZ_SAN=thread fuzz`, and run it with
+`TSAN_OPTIONS=suppressions=tests/tsan.supp` (the uninstrumented Rust code in the scarletbook
+library, as in CI's TSan job).
+
+The seeds are pysacd's hostile corpus (`tests/sacdgen.py`), DST discs built by the test
+encoder, and configured runs (`cfg-*.iso`) that each reach one of the paths above. A crashing
+input goes, minimised, into `fuzz/regressions/fuzz_engine/` along with its fix.
+`tests/test_fuzz_engine.py` builds the same harness without libFuzzer (`make fuzz-replay`, any C
+compiler) and replays those inputs and the seeds, under ASan and UBSan, and under TSan, in CI.
 
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
@@ -372,13 +387,13 @@ Every pull request runs:
   leaks, because Python itself reports them at exit, so this one drives the engine and the
   scarletbook library from C, with `make leak-driver`: the fuzz harness plus FLAC output. It
   opens each image, reads the TOC, writes DSF, DSDIFF, WAV and FLAC, and closes it. LeakSanitizer
-  runs on all the synthetic seeds (`fuzz/make_seeds.py`), twice, and valgrind memcheck on six of
+  runs on all the synthetic seeds (`fuzz/make_seeds.py`), twice, and valgrind memcheck on eight of
   them, failing on any definite leak or memory error. To run it locally:
   `scripts/leak-check.sh lsan` and `scripts/leak-check.sh memcheck`. Besides the build
   dependencies they need gcc's LeakSanitizer runtime (`liblsan` on Fedora) and valgrind.
-- **libFuzzer** on the engine (`fuzz_engine`), 2 minutes, when `csrc/`, `fuzz/`, the
-  hostile corpus or the scarletbook pin changes. A weekly run lasts 30 minutes and keeps its
-  corpus cached.
+- **libFuzzer** on the engine (`fuzz_engine`, ASan and UBSan, FLAC output included), 2 minutes,
+  when `csrc/`, `fuzz/`, the hostile corpus or the scarletbook pin changes. A weekly run lasts
+  30 minutes and keeps its corpus cached.
 - **The comparison tests** against a `sacd_extract` built from a pinned upstream commit inside the
   runner; its code never enters the repository. They use generated discs only: audio from every
   DST feature, whole output trees in every compatible mode of `tools/extract_compare.py`, names,

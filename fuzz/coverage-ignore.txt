@@ -1,0 +1,5 @@
+# Sanitizer-coverage ignore list for the libFuzzer build (make fuzz, #157): the PCM filters
+# (csrc/dsp.c) are fixed arithmetic over whole frames, with no branch on the input's content for
+# coverage to guide, and their per-sample loops instrumented made each input several times
+# slower. ASan, UBSan and TSan still check them.
+src:*csrc/dsp.c

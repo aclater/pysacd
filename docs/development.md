@@ -215,7 +215,7 @@ writer thread fills the whole file from it, in order, with the decoded frames ea
 (`sb_output_layout_positions`, `sb_output_layout_fill`): channel separation, bit order, the
 4096-byte blocks, the zero padding and a `-z` chain's carried and left-over bytes. pysacd's
 own DSF block layout (bit reversal, planar copy, block buffers) is deleted. For `-z` across a
-gap, the previous file's last frame stands in for the position before the file
+pause left out, the previous file's last frame stands in for the position before the file
 (`OutputSpec.head_frame`), which gives the carry `sacd_extract` writes. The owner's rule for offloading is to adopt scarletbook where
 the output is byte-identical and no more than 15 % slower, and then delete pysacd's own code;
 both hold (see [performance](performance.md)).
@@ -228,7 +228,11 @@ both hold (see [performance](performance.md)).
     chain (`sb_output_dsf_chain_plan`, options 37 and 38). Every file but the area's last track
     ends on a whole block, and the bytes left over open the next file. When the last selected
     track isn't the area's last, the chain runs one frame past it, so that its file ends
-    unpadded too, as `sacd_extract`'s does.
+    unpadded too, as `sacd_extract`'s does. A `-k` concatenation is one range of its own. The
+    bytes left over cross a pause left out (without `-b`) into the next track's file, but not a
+    track that isn't selected: there `sacd_extract` drops them (#182). Where a file ends exactly
+    on a block, `sacd_extract` ends it one block earlier; no plan from scarletbook holds that, so
+    it is a tracked difference (docs/sacd_extract.md, #182).
   - DSDIFF: `DIIN` with `DIAR` and `DITI`, their pad byte counted; `DSTI` offsets at the frame
     data; `LSCO` 65 535 for an unspecified layout; local chunks in `sacd_extract`'s order. A
     track file has no `EMID` (option 33) and takes `DIAR` and `DITI` from its track, or else
@@ -262,17 +266,21 @@ both hold (see [performance](performance.md)).
   written: it is left out. This happens only on a damaged image.
 
 **Checking the outputs.** `tools/extract_compare.py` runs `pysacd-extract` and `pysacd convert`
-in 35 modes with two pysacd source trees, and the `sacd_extract`-compatible modes with
+in 37 modes with two pysacd source trees, and the `sacd_extract`-compatible modes with
 `sacd_extract` as a black box. The modes cover DSF, DSDIFF with DST kept or decoded, the edit
 master alone and with DSF (one pass), cue and XML, pauses, no padding, single tracks, the ISO copy alone and with DSF,
 concatenation, multichannel, `-P`, FLAC, WAV at 176.4 kHz, `convert` with and without
-pauses, and the writer's choices of #94 one by one (ID3 modes 0 to 5, `-z` on a selection and
-with pauses, DSDIFF with pauses, a multichannel edited master). The new tree must give the same files, names and bytes as the old one, and must match
+pauses, and the writer's choices of #94 one by one (ID3 modes 0 to 5, `-z` on a selection,
+past a track not selected, on a concatenation and with pauses, DSDIFF with pauses, a
+multichannel edited master). The new tree must give the same files, names and bytes as the old one, and must match
 `sacd_extract` file by file wherever the old one did. Both trees need the same `__version__`,
 which pysacd writes into its output. Each run also reports, per file format, how
 both trees compare with `sacd_extract`: identical, identical apart from the documented exceptions,
-or different with where the files part. `--require-sacd-extract` makes any unexplained difference a
-failure, along with a `sacd_extract` that failed or wrote nothing. `--no-values` reports counts only.
+known (in a `-z` run, DSF files that differ only by `sacd_extract`'s block carry, #182: the tool
+checks that each such file is pysacd's with one block per channel moved to the next file or
+dropped, and every other byte the same), or different with where the files part.
+`--require-sacd-extract` makes any unexplained difference a failure, in every mode, `-b`
+included, along with a `sacd_extract` that failed or wrote nothing. `--no-values` reports counts only.
 
 **Moving to another scarletbook release:**
 
@@ -549,8 +557,8 @@ To release:
    ```
 
    Exit status 0 means no difference between the two trees, and none from `sacd_extract` beyond the
-   documented exceptions. The `-b` modes are reported in `vs_sacd_extract` without failing, because
-   `sacd_extract` repeats frames at some boundaries of some discs: look at them. Record the counts
+   documented exceptions and the known block carry. A `-b` mode fails like any other: see
+   docs/sacd_extract.md, `-b`, for what can differ there. Record the counts
    in the release's changelog section.
 2. Bump `version` in `pyproject.toml` and `src/pysacd/__init__.py`, and merge.
 3. Tag `vX.Y.Z` on master and push the tag. The workflow then:

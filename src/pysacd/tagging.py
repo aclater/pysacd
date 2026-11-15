@@ -171,9 +171,15 @@ def flac_metadata_size(tags: Tags, cover: tuple[bytes, str] | None) -> int:
     return size + 4096
 
 
-def read_tags(path: str | os.PathLike) -> Tags:
+class TagsUnreadable(Exception):
+    """read_tags(strict=True): the file couldn't be parsed at all."""
+
+
+def read_tags(path: str | os.PathLike, strict: bool = False) -> Tags:
     """Tags of an existing DSF, DSDIFF, FLAC or WAV file, as Vorbis-style keys
-    (the inverse of the writers above); {} if the file has none or can't be read."""
+    (the inverse of the writers above); {} if the file has none or can't be read. With
+    `strict`, a file that can't be read raises TagsUnreadable instead, so the caller can tell
+    a file without tags from a damaged one."""
     p = Path(path)
     try:
         if p.suffix.lower() == ".flac":
@@ -192,7 +198,9 @@ def read_tags(path: str | os.PathLike) -> Tags:
 
         reader = {".dsf": DSF, ".dff": DSDIFF}.get(p.suffix.lower(), WAVE)
         id3 = reader(p).tags
-    except Exception:  # noqa: BLE001 - unreadable files just have no identity
+    except Exception as e:  # noqa: BLE001 - unreadable files just have no identity
+        if strict:
+            raise TagsUnreadable(str(e)) from None
         return {}
     if id3 is None:
         return {}

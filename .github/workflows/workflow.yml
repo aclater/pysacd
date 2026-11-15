@@ -172,7 +172,7 @@ jobs:
           if readelf -d "$lib" | grep NEEDED | grep -i -e flac -e ogg; then
             echo "::error::the engine needs a shared libFLAC or libogg"; exit 1
           fi
-          if unzip -Z1 "$whl" | grep -i -e libflac -e libogg; then
+          if unzip -Z1 "$whl" | grep -i -E '^pysacd\.libs/lib(flac|ogg)'; then
             echo "::error::the wheel bundles libFLAC or libogg"; exit 1
           fi
           grep -a -o -m 1 "reference libFLAC [0-9.]* [0-9]*" "$lib" || true

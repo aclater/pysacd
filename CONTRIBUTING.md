@@ -43,7 +43,8 @@ Blu-ray player running SACD Ripper or AutoScript are especially useful (#10).
 ## Releasing
 
 When a version is released, update [RELEASES.md](https://github.com/aclater/sacd/blob/main/RELEASES.md)
-in aclater/sacd (the minor version's summary and release list).
+in aclater/sacd (the minor version's summary and release list). A release that fixes a
+vulnerability follows [development: security releases](docs/development.md#security-releases).
 
 ## Rules that keep the project clean
 

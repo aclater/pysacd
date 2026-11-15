@@ -18,6 +18,17 @@ linked in statically (#85), in every wheel and every build from source:
 | scarletbook-rs | MIT OR Apache-2.0, used under MIT | [scarletbook-rs-LICENSE-MIT](scarletbook-rs-LICENSE-MIT) |
 | the Rust standard library, rayon, crossbeam, either, thiserror (inside it) | MIT OR Apache-2.0, used under MIT | [scarletbook-rs-runtime-MIT](scarletbook-rs-runtime-MIT) |
 
+The musllinux wheel also carries GCC's runtime support library, `libgcc_s`, which auditwheel
+copies in next to the engine because musl systems may not have it (the Rust code in the
+scarletbook library needs it to unwind). It is not modified:
+
+| Library | Licence | Files |
+|---|---|---|
+| libgcc_s (musllinux wheel only) | GPL-3.0-or-later with the GCC Runtime Library Exception 3.1 | [libgcc-COPYING3](libgcc-COPYING3), [libgcc-COPYING.RUNTIME](libgcc-COPYING.RUNTIME) |
+
+The exception lets code compiled with GCC, and linked with this library, be distributed under
+its own licence.
+
 pysacd takes the dual-licensed code under MIT because MIT is compatible with GPL-2.0, and
 Apache-2.0 is not compatible with GPL-2.0 (only with GPL-3.0).
 

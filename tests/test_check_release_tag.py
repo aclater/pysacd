@@ -99,10 +99,18 @@ class CheckReleaseTag(unittest.TestCase):
         self.assertEqual(self.problems("refs/pull/7/merge", self.unmerged), [])
         self.assertEqual(self.problems("refs/heads/feature", self.unmerged), [])
 
-    def test_a_clone_without_the_default_branch_fails(self):
+    def test_a_clone_without_the_default_branch_fails_for_any_ref(self):
         git(self.clone, "update-ref", "-d", "refs/remotes/origin/master")
-        (p,) = self.problems("refs/tags/v1.2.3")
-        self.assertIn("full clone", p)
+        for ref in ("refs/tags/v1.2.3", "refs/pull/7/merge"):
+            with self.subTest(ref):
+                (p,) = self.problems(ref)
+                self.assertIn("full clone", p)
+
+    def test_a_directory_git_cannot_read_fails_with_gits_reason(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.write(Path(d), "1.2.3", "1.2.3")
+            (p,) = crt.problems(Path(d), "refs/pull/7/merge", self.merged, "master", INIT)
+        self.assertIn("git says:", p)
 
     def test_this_repository_agrees_with_itself(self):
         self.assertEqual(crt.init_version(ROOT, crt.INIT), crt.project_version(ROOT))

@@ -536,6 +536,40 @@ To release:
    only accepts `v*` tags, so nothing but a release tag can publish. No API token
    is stored anywhere.
 
+### Security releases
+
+A fix for a vulnerability stays private until the fixed release is on PyPI. Every step below was
+run for 0.5.1, except where marked.
+
+1. **Draft advisory and private fork.** Open a draft GitHub security advisory per finding (or group
+   of findings with one fix), and create the private fork from one of them. Fixes are developed and
+   reviewed there, as pull requests against the fork's default branch. Nothing about the finding
+   goes into a public issue, pull request, branch name or commit message.
+2. **Run by hand what CI runs.** No workflow runs in the private fork. Before the release, on the
+   final commit:
+   - the test suite, and `ruff check .` and `mypy src` (the linters were not recorded for 0.5.1);
+   - the suite under ASan and UBSan, and the engine leak check (`scripts/leak-check.sh memcheck`);
+   - the comparison tests against a `sacd_extract` built from the commit pinned in
+     `.github/workflows/ci.yml` (`SACD_EXTRACT=...`);
+   - the real-disc comparison of step 1 of an ordinary release.
+
+   Not available privately: Windows, macOS, Python 3.10, CodeQL, semgrep and TSan. They first run
+   on the public pull request.
+3. **Changelog.** Date the section and name each advisory by its GHSA id without a link: the link
+   fails the docs link check until the advisory is published.
+4. **One public pull request,** titled only `Release X.Y.Z`, with the fixes and the version bump.
+   From this push the fixes are public, so merge as soon as CI is green and tag at once. Allow for
+   one extra CI round: for 0.5.1 the public jobs found a Windows-only defect and three test
+   assumptions (Python 3.10, line endings, drive letters), and PyPI had the release about 50 minutes
+   after the first public push.
+5. **Check the published package:** install it from PyPI into a clean environment and repeat the
+   advisory's reproduction.
+6. **Publish the advisories.** Close the private fork's pull requests (an advisory can't be
+   published while they are open), set the patched version, request a CVE and publish. GitHub
+   deletes the private fork. Then set the GitHub release's notes from the changelog section.
+7. File the hardening that didn't belong in the fix as ordinary issues, and update RELEASES.md and
+   DECISIONS.md in aclater/sacd.
+
 ## CI speed
 
 A pull request's checks finish in about 3 min, and a new push cancels the superseded run (`concurrency`; master runs are never cancelled). The test matrix caches pip downloads. Every required check runs on every pull request: none is path-filtered at the workflow level, because a skipped required check stays pending and blocks the merge. Keep new jobs short, and put slow, rarely-failing ones on master, tags or a schedule. The informational `benchmark` job is path-filtered, because it is never required.

@@ -59,7 +59,8 @@ jobs:
           python -m pip install --require-hashes -r requirements-test.txt   # hash-locked (#14)
           make fuzz
           # FLAC output is fuzzed only when libFLAC was found: fail rather than lose it silently
-          nm build/fuzz_engine | grep -q FLAC__stream_encoder_init_FILE || { echo "::error::fuzz_engine built without libFLAC"; exit 1; }
+          # (grep reads all of nm's output: with -q, nm could die of SIGPIPE under pipefail)
+          nm build/fuzz_engine | grep FLAC__stream_encoder_init_FILE > /dev/null || { echo "::error::fuzz_engine built without libFLAC"; exit 1; }
           make test-tools
           PYTHONPATH=src:tests python fuzz/make_seeds.py build/fuzz-seeds
 

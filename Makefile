@@ -163,6 +163,10 @@ FUZZ_FLAC_CFLAGS := $(if $(FLAC_LIBS),-DHAVE_FLAC $(FLAC_DEFS) $(FLAC_CFLAGS))
 # regression inputs and seeds with it (REPLAY_FLAGS: the sanitizer CI jobs' flags), with FLAC output
 # when libFLAC is found
 REPLAY_FLAGS ?= -O1 -g
+# Not with TSan: built with gcc's TSan, the replay crashed at start-up, before the runtime could report
+# (#157). SC_DISPATCH makes gcc build ifunc resolvers (csrc/dsp.c), which an executable runs while it
+# is relocated, before the TSan runtime is initialised
+REPLAY_DISPATCH = $(if $(findstring sanitize=thread,$(REPLAY_FLAGS)),,-DSC_DISPATCH)
 
 fuzz: build/fuzz_engine
 
@@ -175,7 +179,7 @@ fuzz-replay: build/replay_engine
 
 build/replay_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
 	@mkdir -p $(dir $@)
-	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread -DSC_DISPATCH $(FUZZ_FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ \
+	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread $(REPLAY_DISPATCH) $(FUZZ_FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ \
 	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) $(FLAC_LIBS) -lm
 
 # The engine's leak check (#122): the same harness with FLAC output added, and no interpreter

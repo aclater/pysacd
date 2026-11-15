@@ -21,6 +21,11 @@ behaviour, and a patch version only adds or fixes. Each release on
 ### Build and release
 - The release workflow refuses a `v*` tag that isn't `v` plus the package version, or whose commit
   isn't on `master` or a `release/*` branch, before anything is built or published (#154).
+- The Linux wheels link libFLAC 1.5.0, built in the job from its release source with the SHA-256
+  checked, as the macOS wheels do, instead of bundling the build image's libFLAC and libogg (1.3.2
+  in the manylinux wheels, 1.4.3 in the musllinux wheel). FLAC encoding in them is now multithreaded,
+  as on macOS and Windows. The audio is the same; the encoder's vendor string in each FLAC file
+  names the new version (#153).
 
 ## 0.5.1 (2026-11-14)
 

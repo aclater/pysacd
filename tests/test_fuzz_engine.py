@@ -2,9 +2,11 @@
 
 fuzz/fuzz_engine.c is compiled with the system C compiler and fuzz/replay.c (`make
 fuzz-replay`, linked with the scarletbook library), then run on the checked-in regression
-inputs (fuzz/regressions/fuzz_engine/) and on the seed images (fuzz/make_seeds.py). In the
-sanitizer CI job, PYSACD_FUZZ_CFLAGS gives it the same sanitizer flags, so a memory error in
-the engine fails here.
+inputs (fuzz/regressions/fuzz_engine/) and on the seeds (fuzz/make_seeds.py): plain images, and
+configured runs (cfg-*.iso, #157) that reach ranges past frame 0, DSF chains, the ISO copy,
+cancellation, 176.4 kHz PCM, FLAC, other thread counts and the filler limit. In the ASan and TSan
+CI jobs, PYSACD_FUZZ_CFLAGS gives it the same sanitizer flags, so a memory error or a data race
+in the engine fails here.
 """
 
 import os
@@ -53,6 +55,14 @@ class FuzzReplay(unittest.TestCase):
         files = sorted((self.seeds / "engine").iterdir())
         self.assertGreater(len(files), 10)
         self.replay(files)
+
+    def test_configured_seeds(self):
+        """The configured runs are there, and each starts with the harness's magic."""
+        files = sorted((self.seeds / "engine").glob("cfg-*.iso"))
+        self.assertGreaterEqual(len(files), 30)
+        for f in files:
+            with open(f, "rb") as fp:
+                self.assertEqual(fp.read(8), b"PSFZcfg1", f.name)
 
 
 if __name__ == "__main__":

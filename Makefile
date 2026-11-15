@@ -150,27 +150,37 @@ build/dstenc.so: tests/native/dstenc.c
 # libFuzzer harness for pysacd's engine on hostile disc images (#36, #85): clang only.
 #   make fuzz && build/fuzz_engine -max_total_time=300 build/fuzz-corpus/engine build/fuzz-seeds/engine
 # scarletbook-rs, which parses the images, is linked as released (it is fuzzed in its own
-# repository); the engine's own code is instrumented. No libFLAC: FLAC output isn't fuzzed.
+# repository); the engine's own code is instrumented. FLAC output is fuzzed too when libFLAC is
+# found (#157); libFLAC itself is linked as installed. FUZZ_SAN: the sanitizers (thread for TSan).
 FUZZ_CC    ?= clang
-FUZZ_FLAGS := -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,address,undefined \
-              -fno-sanitize-recover=undefined -std=gnu17 -pthread -DSC_DISPATCH
+FUZZ_SAN   ?= address,undefined
+FUZZ_FLAGS := -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,$(FUZZ_SAN) \
+              $(if $(findstring undefined,$(FUZZ_SAN)),-fno-sanitize-recover=undefined) -std=gnu17 -pthread -DSC_DISPATCH \
+              -fsanitize-coverage-ignorelist=fuzz/coverage-ignore.txt
 FUZZ_SRC   := csrc/sacdconv.c csrc/dsp.c
+FUZZ_FLAC_CFLAGS := $(if $(FLAC_LIBS),-DHAVE_FLAC $(FLAC_DEFS) $(FLAC_CFLAGS))
 # The same harness without libFuzzer, for any compiler: tests/test_fuzz_engine.py replays the
-# regression inputs and seeds with it (REPLAY_FLAGS: the sanitizer CI job's flags)
+# regression inputs and seeds with it (REPLAY_FLAGS: the sanitizer CI jobs' flags), with FLAC output
+# when libFLAC is found
 REPLAY_FLAGS ?= -O1 -g
+# Not with TSan: built with gcc's TSan, the replay crashed at start-up, before the runtime could report
+# (#157). SC_DISPATCH makes gcc build ifunc resolvers (csrc/dsp.c), which an executable runs while it
+# is relocated, before the TSan runtime is initialised
+REPLAY_DISPATCH = $(if $(findstring sanitize=thread,$(REPLAY_FLAGS)),,-DSC_DISPATCH)
 
 fuzz: build/fuzz_engine
 
-build/fuzz_engine: fuzz/fuzz_engine.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
+build/fuzz_engine: fuzz/fuzz_engine.c fuzz/coverage-ignore.txt $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
 	@mkdir -p $(dir $@)
-	$(FUZZ_CC) $(FUZZ_FLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ $< $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) -lm
+	$(FUZZ_CC) $(FUZZ_FLAGS) $(FUZZ_FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ $< $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) \
+	    $(FLAC_LIBS) -lm
 
 fuzz-replay: build/replay_engine
 
 build/replay_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
 	@mkdir -p $(dir $@)
-	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread -DSC_DISPATCH -I$(SCARLETBOOK_DIR)/include -o $@ \
-	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) -lm
+	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread $(REPLAY_DISPATCH) $(FUZZ_FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ \
+	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) $(FLAC_LIBS) -lm
 
 # The engine's leak check (#122): the same harness with FLAC output added, and no interpreter
 # whose own allocations would hide the engine's. LEAK_FLAGS: -fsanitize=leak, or -g for valgrind.

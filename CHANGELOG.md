@@ -30,6 +30,13 @@ behaviour, and a patch version only adds or fixes. Each release on
 - Reading a MusicBrainz or cover response stops with an error on anything that isn't bytes.
   The test suite can run under a memory limit (`PYSACD_TEST_MEMORY_MB`), and CI's `tests` job does.
 
+### Tests
+- The engine's fuzz harness also covers ranges that don't start at frame 0 in every format, DSF
+  chains with a head frame, the ISO copy, cancellation, 176.4 kHz PCM, FLAC output, other thread
+  counts and `allow_filler`: an input can carry a run configuration before the image, and the seed
+  corpus has a configured run for each. CI replays the seeds under TSan as well as ASan and UBSan
+  (#157).
+
 ### Build and release
 - The release-tag check runs in a Fedora container like the other release jobs, and on pull
   requests it also checks its clone, so its set-up is tested before a tag depends on it (#167).

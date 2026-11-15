@@ -13,8 +13,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# valid discs (stereo DST, 6-channel DSD; coded DST at 2 and 6 channels) and three error paths
-MEMCHECK_SEEDS=(valid dst-features-2ch dst-features-6ch dst-garbage-frames truncated-in-audio track-lsn-past-end)
+# valid discs (stereo DST, 6-channel DSD; coded DST at 2 and 6 channels), three error paths, and
+# two configured runs on the small disc (every output from past frame 0; the ISO copy, #157)
+MEMCHECK_SEEDS=(valid dst-features-2ch dst-features-6ch dst-garbage-frames truncated-in-audio track-lsn-past-end
+                cfg-formats-offset-valid cfg-copy-only)
 
 seeds=build/leak-seeds/engine
 make -s test-tools

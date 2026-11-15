@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import argparse
 import datetime
+import functools
 import logging
 import os
 import stat
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -469,7 +471,7 @@ def plan_area(img, disc: Disc, area: Area, o: Opts, out_dir: Path, album_filenam
     for folder, planned in template_dirs.items():
         # --templates: the folder is the user's template's, so nothing is moved; but two discs
         # in one folder are worth a line (by names and tags, as with sacd_extract's naming)
-        foreign = _other_disc_in(folder, planned, disc, area)
+        foreign = _other_disc_in(folder, {name: [i] for name, i in planned.items()}, disc, area)
         if foreign:
             print(f"WARNING: {safetext.for_terminal(folder)} already holds tracks of another disc "
                   f"({safetext.for_terminal(', '.join(foreign[:3]))}{', ...' if len(foreign) > 3 else ''}); this "
@@ -838,9 +840,50 @@ def _distinct_names(folder: Path, names: list[str], ext: str, taken: list[str]) 
     return out
 
 
-def _other_disc_in(folder: Path, planned: dict[str, int], disc: Disc, area: Area) -> list[str]:
+def _own_names(disc: Disc, area: Area, o: Opts, folder: Path, planned: dict[str, int]) -> dict[str, list[int]]:
+    """File name (without extension) -> the tracks whose tags a file of that name carries, for
+    every file this disc's runs can leave in the area's folder with sacd_extract's naming, in any
+    mode (#165): each track (alone with -t, or in a whole run), and the edit master and its " (N)"
+    copies (tagged as the first track). The names this run writes (`planned`) map to their own
+    track only, so a file it replaces is checked against what replaces it. Concatenations:
+    _concat_names()."""
+    own: dict[str, list[int]] = {}
+    names = [sbcompat.music_filename(disc, area, i, "", o.performer_flag) for i in range(len(area.tracks))]
+    # a track's name alone (-t), and in a whole run, where equal names get " (2)" (#156)
+    full = _distinct_names(folder, names, o.pcm or ("dff" if o.output_dsdiff else "dsf"), []) \
+        if folder.is_dir() else names
+    for i, (name, in_full) in enumerate(zip(names, full)):
+        for stem in {_stem(name), _stem(in_full)}:
+            own.setdefault(stem, []).append(i)
+    album = sbcompat.album_dir(disc, o.artist_flag)
+    for k in range(21):         # sbcompat.unique_filename()'s names
+        own.setdefault(_stem(f"{album} ({k})" if k else album), []).append(0)
+    own.update({name: [i] for name, i in planned.items()})
+    return own
+
+
+def _concat_names(disc: Disc, area: Area, o: Opts) -> dict[str, list[int]]:
+    """File name (without extension) -> first track, for every concatenation (-k) of this
+    area, which is tagged as its first track."""
+    own: dict[str, list[int]] = {}
+    n = len(area.tracks)
+    for first in range(n):
+        for last in range(first, n):
+            name = sbcompat.music_filename(disc, area, first, f"[{first + 1:02d}-{last + 1:02d}]", o.performer_flag)
+            own.setdefault(_stem(name), []).append(first)
+    return own
+
+
+def _stem(name: str) -> str:
+    return Path(sbcompat.make_filename(None, name, "dsf")).stem
+
+
+def _other_disc_in(folder: Path, own: dict[str, list[int]], disc: Disc, area: Area,
+                   more: Callable[[], dict[str, list[int]]] | None = None) -> list[str]:
     """Audio files in `folder` that belong to some other disc: names this disc
-    doesn't produce, or same-named files whose tags say another disc."""
+    doesn't produce, or same-named files whose tags say another disc. `own` maps
+    this disc's names to the tracks their tags may be; `more()`, asked only for a
+    name `own` lacks, gives further names (the many concatenations)."""
     from . import tagging
 
     if not folder.is_dir():
@@ -851,18 +894,28 @@ def _other_disc_in(folder: Path, planned: dict[str, int], disc: Disc, area: Area
             continue
         # Match on the name without extension: this disc's own tracks in another
         # format (DSF next to DSDIFF, say) are not another disc
-        idx = planned.get(f.stem)
-        if idx is None:
+        if f.stem not in own and more is not None:
+            own = {**more(), **own}
+            more = None
+        candidates = own.get(f.stem)
+        if not candidates:
+            log.debug("%s: a name this disc doesn't produce", safetext.for_terminal(f))
             foreign.append(f.name)
             continue
         have = tagging.read_tags(f)
-        want = tagging.base_tags(disc, area, area.tracks[idx])
-        for key in ("ALBUM", "TITLE", "TRACKNUMBER", "TRACKTOTAL", "ISRC"):
-            a, b = (have.get(key) or [""])[0].strip(), (want.get(key) or [""])[0].strip()
-            if a and b and a != b:
-                foreign.append(f.name)
-                break
+        if not any(_same_tags(have, tagging.base_tags(disc, area, area.tracks[i])) for i in candidates):
+            log.debug("%s: tags of another disc", safetext.for_terminal(f))
+            foreign.append(f.name)
     return foreign
+
+
+def _same_tags(have, want) -> bool:
+    """No tag of the disc's identity differs (a tag missing on either side doesn't count)."""
+    for key in ("ALBUM", "TITLE", "TRACKNUMBER", "TRACKTOTAL", "ISRC"):
+        a, b = (have.get(key) or [""])[0].strip(), (want.get(key) or [""])[0].strip()
+        if a and b and a != b:
+            return False
+    return True
 
 
 def _inside(base: Path, path: Path) -> Path:
@@ -885,7 +938,9 @@ def _avoid_other_discs(disc: Disc, want: list[Area], o: Opts, out_dir: Path) -> 
     clash: list[str] = []
     for area in want:
         folder = out_dir / sbcompat.area_dir_name(area) if disc.multichannel else out_dir
-        clash += _other_disc_in(folder, _planned_tracks(disc, area, o, folder), disc, area)
+        # this disc's files from runs in other modes are this disc's too (#165)
+        own = _own_names(disc, area, o, folder, _planned_tracks(disc, area, o, folder))
+        clash += _other_disc_in(folder, own, disc, area, functools.partial(_concat_names, disc, area, o))
     if not clash:
         return out_dir
     label = (disc.disc_catalog_number or disc.album_catalog_number).strip()

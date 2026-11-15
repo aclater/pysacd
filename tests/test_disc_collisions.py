@@ -10,6 +10,9 @@ from pathlib import Path
 import sacdgen
 import test_dst_full as dst
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+from extract_compare import documented_only
+
 SRC = Path(__file__).resolve().parents[1] / "src"
 
 
@@ -499,6 +502,119 @@ class PortableExtractNames(unittest.TestCase):
         for k, v in b.items():
             self.assertEqual(a[rename.get(k, k)], v, k)
         self.assertNotIn(a["Case/_ Intro.dsf"], b.values())
+
+
+def _plain_disc(path: Path, titles: list[str], catalog: str, seed: int = 0, tracks: tuple[int, ...] = (3, 3),
+                mch: bool = False) -> Path:
+    """A plain DSD stereo disc; with `mch`, DST stereo and 6 channels (as in test_extract_tree)."""
+    frames = sum(tracks)
+    if mch:
+        areas = [sacdgen.AreaSpec(ch, [f for _, _, f in dst.encoded(ch)][:frames], list(tracks), titles=titles)
+                 for ch in (2, 6)]
+    else:
+        areas = [sacdgen.AreaSpec(2, [sacdgen._dsd_frame(2, seed + i) for i in range(frames)], list(tracks),
+                                  dst=False, titles=titles)]
+    sacdgen.build_iso(path, areas, info=sacdgen.DiscInfo(title="Album", artist="Artist", disc_catalog=catalog))
+    return path
+
+
+# One disc's runs into one folder, in other modes (#165): -s, -p, -e (edit master), -C (cue and
+# xml), track selections and a concatenation. The second run must find the first run's files to
+# be this disc's, as sacd_extract writes them all into the album folder.
+OWN_SEQUENCES = [
+    (["-s"], ["-e"]), (["-s"], ["-C"]), (["-e"], ["-s"]), (["-p"], ["-e"]), (["-e"], ["-p"]), (["-e"], ["-e"]),
+    (["-e"], ["-C"]), (["-s", "-t", "1"], ["-s", "-t", "2"]), (["-s"], ["-s", "-k", "-t", "1,2"]),
+    (["-s", "-k", "-t", "1,2"], ["-s"]), (["-s"], ["-e"], ["-p"]),
+]
+OWN_MCH_SEQUENCES = [(["-2", "-m", "-s"], ["-2", "-m", "-e"]), (["-2", "-m", "-e"], ["-2", "-m", "-s"]),
+                     (["-s"], ["-e"]), (["-2", "-m", "-s"], ["-2", "-m", "-C"])]
+
+
+@unittest.skipUnless(dst.HAVE_NATIVE, "native helper not built (make)")
+@unittest.skipUnless(dst.HAVE_ENCODER, "test DST encoder unavailable (make test-tools)")
+class OwnFilesAcrossModes(unittest.TestCase):
+    """This disc's own files, written in another mode or with another track selection, are this
+    disc's (#165); another disc's files in the same mode combinations still keep it out (#4)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = Path(self.tmp.name)
+        self.a = _plain_disc(self.dir / "a.iso", ["One", "Two"], "CAT-A")
+        self.env = dict(os.environ, PYTHONPATH=str(SRC))
+
+    def out(self, name: str) -> Path:
+        d = self.dir / name
+        d.mkdir()
+        return d
+
+    def pysacd(self, cwd: Path, iso: Path, args: list[str]) -> subprocess.CompletedProcess:
+        r = subprocess.run([sys.executable, "-m", "pysacd.extract", "--no-cfg", *args, "-i", str(iso)], cwd=cwd, env=self.env,
+                           capture_output=True, text=True, check=False)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r
+
+    @staticmethod
+    def tree(root: Path) -> dict[str, bytes]:
+        return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+
+    def test_own_files_stay_in_the_album_folder(self):
+        m = _plain_disc(self.dir / "m.iso", ["One", "Two"], "CAT-M", mch=True)
+        n = 0
+        for iso, seqs in ((self.a, OWN_SEQUENCES), (m, OWN_MCH_SEQUENCES)):
+            for seq in seqs:
+                with self.subTest(disc=iso.stem, seq=seq):
+                    n += 1
+                    out = self.out(f"own{n}")
+                    for args in seq:
+                        r = self.pysacd(out, iso, args)
+                        self.assertNotIn("WARNING", r.stderr)
+                    self.assertEqual({k.split("/")[0] for k in self.tree(out)}, {"Album"})
+
+    def test_another_disc_is_still_kept_out(self):
+        # same album title, other track titles; same titles, another track count (so another edit
+        # master with the same name); and a stereo + multichannel pair
+        b = _plain_disc(self.dir / "b.iso", ["Uno", "Dos"], "CAT-B", seed=40)
+        b3 = _plain_disc(self.dir / "b3.iso", ["One", "Two", "Three"], "CAT-B3", seed=60, tracks=(2, 2, 2))
+        m = _plain_disc(self.dir / "m.iso", ["One", "Two"], "CAT-M", mch=True)
+        mb = _plain_disc(self.dir / "mb.iso", ["Uno", "Dos"], "CAT-MB", seed=40, mch=True)
+        cases = [(self.a, b, first, second) for first, second in (
+            (["-s"], ["-e"]), (["-s"], ["-C"]), (["-e"], ["-s"]), (["-e"], ["-e"]), (["-p"], ["-e"]),
+            (["-e"], ["-p"]), (["-s"], ["-s"]), (["-s", "-t", "1"], ["-s", "-t", "2"]),
+            (["-s"], ["-s", "-k", "-t", "1,2"]), (["-s", "-k", "-t", "1,2"], ["-s"]))]
+        cases += [(self.a, b3, first, second) for first, second in (
+            (["-s"], ["-e"]), (["-e"], ["-s"]), (["-e"], ["-e"]), (["-s"], ["-s"]), (["-s", "-t", "1"], ["-s", "-t", "2"]))]
+        cases += [(m, mb, first, second) for first, second in (
+            (["-2", "-m", "-s"], ["-2", "-m", "-e"]), (["-2", "-m", "-e"], ["-2", "-m", "-s"]))]
+        for n, (one, other, first, second) in enumerate(cases):
+            with self.subTest(first=(one.stem, first), second=(other.stem, second)):
+                out = self.out(f"other{n}")
+                self.pysacd(out, one, first)
+                before = self.tree(out)
+                r = self.pysacd(out, other, second)
+                self.assertIn("already holds tracks of another disc", r.stderr)
+                after = self.tree(out)
+                self.assertEqual({k: after[k] for k in before}, before)      # the first disc's files untouched
+                label = "CAT-" + other.stem.upper()
+                self.assertEqual({k.split("/")[0] for k in after if k not in before}, {f"Album [{label}]"})
+
+    @unittest.skipUnless(SACD_EXTRACT, "set SACD_EXTRACT to compare with the real sacd_extract")
+    def test_mixed_modes_match_sacd_extract(self):
+        m = _plain_disc(self.dir / "m.iso", ["One", "Two"], "CAT-M", mch=True)
+        n = 0
+        for iso, seqs in ((self.a, OWN_SEQUENCES), (m, OWN_MCH_SEQUENCES)):
+            for seq in seqs:
+                with self.subTest(disc=iso.stem, seq=seq):
+                    n += 1
+                    ours, theirs = self.out(f"ours{n}"), self.out(f"theirs{n}")
+                    for args in seq:
+                        self.pysacd(ours, iso, args)
+                        subprocess.run([SACD_EXTRACT, *args, f"-i{iso}"], cwd=theirs, capture_output=True, check=False)
+                    a, b = self.tree(ours), self.tree(theirs)
+                    self.assertEqual(sorted(a), sorted(b))
+                    for k in a:
+                        # apart from the documented version lines and DSDIFF creating-machine comment
+                        self.assertTrue(a[k] == b[k] or documented_only(ours / k, theirs / k), k)
 
 
 if __name__ == "__main__":

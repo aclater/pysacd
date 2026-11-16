@@ -41,9 +41,38 @@ verified file by file against the real thing:
 ln -s "$(command -v pysacd-extract)" ~/bin/sacd_extract    # that's the whole migration
 ```
 
-```sh
-pip install pysacd     # wheels for Linux, macOS and Windows; engine and libFLAC included
-```
+## Quick start
+
+You need Python 3.10 or later on Linux or macOS, and an SACD disc image. The commands use
+`album.iso` in the current folder; type your image's name instead.
+
+1. Install pysacd in a virtual environment of its own (wheels for Linux, macOS and Windows;
+   engine and libFLAC included):
+
+   ```sh
+   python3 -m venv pysacd-env
+   . pysacd-env/bin/activate
+   pip install pysacd
+   ```
+
+2. Read the disc's table of contents: album, areas and tracks.
+
+   ```sh
+   pysacd toc album.iso
+   ```
+
+3. Extract the stereo area to DSF files, as `sacd_extract` would:
+
+   ```sh
+   pysacd-extract -2 -s -i album.iso
+   ```
+
+   *You should see* `Exporting DSF output in folder:` and the album's title, then a folder of that
+   name with one `.dsf` file per track.
+
+Next: FLAC and WAV with your own naming and MusicBrainz tags in [converting](docs/converting.md),
+Windows and building from source in the [quick start guide](docs/quickstart.md), and the Python
+API in [the Python library](docs/library.md).
 
 ## Why pysacd
 

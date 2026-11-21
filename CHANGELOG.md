@@ -9,6 +9,11 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Changed
+- The engine links scarletbook 0.6.1 (was 0.5.9): the same C ABI and the same output. The build
+  accepts the link that the library's archives now hold beside the shared library, and leaves it
+  out (#188).
+
 ### Fixed
 - `pysacd-extract -z` with a track selection that leaves a track out (`-t 1,3`): the bytes left
   over at the end of the file before the gap are no longer carried into the next file;

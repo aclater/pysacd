@@ -48,7 +48,8 @@ decoder were removed with it; they are in the history up to v0.2.2.
 **What is linked.** `scarletbook.lock` pins one scarletbook release: its version, C ABI, commit,
 and the SHA-256 of `scarletbook-ffi-<version>-<target>.tar.gz` for every target it is built for.
 `tools/scarletbook.py fetch` downloads the archive for the target the C compiler builds for
-(`$CC -dumpmachine`), refuses it unless its SHA-256 is the pinned one, and unpacks it. The
+(`$CC -dumpmachine`), refuses it unless its SHA-256 is the pinned one, and unpacks its regular
+files (the link from the shared library's old name, in archives from 0.6.0, is left out). The
 Makefile then links `lib/libscarletbook_ffi.a` into `_sacdconv` with the system libraries listed
 in the archive's `native-static-libs.txt`.
 
@@ -71,7 +72,7 @@ in the archive's `native-static-libs.txt`.
   release with cancellation, progress, and stored and decoded frames in one pass, 0.5.1
   the first with the TOC's timecodes as stored, 0.5.2 the first with the whole TOC in one call
   (`sb_disc_toc`), and 0.5.4 the first whose output API can lay out `sacd_extract`'s DSF and
-  DSDIFF files byte for byte (scarletbook-rs#169). The pin is 0.5.9 (see [performance](performance.md#scarletbook-rs-059)), which changes no output over 0.5.8 (0.5.8 changed no speed over 0.5.7, [performance](performance.md#scarletbook-rs-058); 0.5.7 won back 0.5.6's one-thread DST regression, [performance](performance.md#scarletbook-rs-057)). 0.5.5 added the DST decoder, which chooses an AVX2/BMI2 build of
+  DSDIFF files byte for byte (scarletbook-rs#169). The pin is 0.6.1 (see [performance](performance.md#scarletbook-rs-061)), which changes no output over 0.5.9 (0.5.9 changed none over 0.5.8, [performance](performance.md#scarletbook-rs-059); 0.5.8 changed no speed over 0.5.7, [performance](performance.md#scarletbook-rs-058); 0.5.7 won back 0.5.6's one-thread DST regression, [performance](performance.md#scarletbook-rs-057)). 0.5.5 added the DST decoder, which chooses an AVX2/BMI2 build of
   itself at run time on x86-64 (#109; [performance](performance.md#where-dst-time-goes-109)); 0.5.4
   still works, more slowly.
 - **Logged.** `_native.build_info()` (in `pysacd --version` and in log files) names the
@@ -284,9 +285,11 @@ included, along with a `sacd_extract` that failed or wrote nothing. `--no-values
 
 **Moving to another scarletbook release:**
 
-1. Download its `scarletbook-ffi-*` assets, check each with `sha256sum -c` and
-   `gh attestation verify <file> -R aclater/scarletbook-rs`, and read its changelog.
-2. Update `version`, `commit` and every digest in `scarletbook.lock`. If the C ABI changed, also
+1. Download its `scarletbook-ffi-*` assets, check each with `sha256sum -c`, and read its
+   changelog and any migration page.
+2. Update `version`, `commit` and every digest in `scarletbook.lock`, then run
+   `python3 tools/scarletbook.py attest`: it checks each archive's signed build provenance with
+   the release workflow, the tag and the commit pinned. If the C ABI changed, also
    update `abi`, the check in `csrc/sacdconv.c` and `SB_ABI` in `_native.py`, and port the
    code that calls it.
 3. Update the versions of the Rust crates in `licenses/scarletbook-rs-runtime-MIT` if they

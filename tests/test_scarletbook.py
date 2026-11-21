@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import sys
 import tarfile
@@ -113,11 +114,34 @@ class Fetch(unittest.TestCase):
             self._fetch(_tarball(self.archive, self.top, [evil]))
         self.assertFalse((self.tmp / "evil").exists())
 
+    def _link(self, name: str, target: str, kind: bytes = tarfile.SYMTYPE) -> tarfile.TarInfo:
+        link = tarfile.TarInfo(f"{self.top}/{name}")
+        link.type, link.linkname = kind, target
+        return link
+
     def test_link_member_is_refused(self):
-        link = tarfile.TarInfo(f"{self.top}/lib/link")
-        link.type, link.linkname = tarfile.SYMTYPE, "/etc/passwd"
+        for target in ("/etc/passwd", "../include/scarletbook.h", "lib/libscarletbook_ffi.a", "missing.so.2",
+                       "..", ".", ""):
+            with self.subTest(target=target), self.assertRaisesRegex(sbtool.FetchError, "not to a file beside it"):
+                self._fetch(_tarball(self.archive, self.top, [self._link("lib/link", target)]))
+            self.assertFalse((self.tmp / "out").exists())
+        # a link to a directory, and a hard link
+        with self.assertRaisesRegex(sbtool.FetchError, "not to a file beside it"):
+            self._fetch(_tarball(self.archive, self.top, [self._link("link", "lib")]))
         with self.assertRaisesRegex(sbtool.FetchError, "not a regular file"):
-            self._fetch(_tarball(self.archive, self.top, [link]))
+            self._fetch(_tarball(self.archive, self.top,
+                                 [self._link("lib/link", f"{self.top}/lib/libscarletbook_ffi.a", tarfile.LNKTYPE)]))
+
+    def test_link_to_a_file_beside_it_is_left_out(self):
+        """scarletbook 0.6.0 and later: lib/libscarletbook_ffi.so -> libscarletbook_ffi.so.2 (#188)."""
+        real = tarfile.TarInfo(f"{self.top}/lib/libscarletbook_ffi.so.2")
+        real.size = 4
+        link = self._link("lib/libscarletbook_ffi.so", "libscarletbook_ffi.so.2")
+        out = self._fetch(_tarball(self.archive, self.top, [link, real]))   # the link comes first
+        self.assertTrue((out / "lib" / "libscarletbook_ffi.so.2").is_file())
+        self.assertTrue((out / "lib" / "libscarletbook_ffi.a").is_file())
+        self.assertFalse(os.path.lexists(out / "lib" / "libscarletbook_ffi.so"))
+        self.assertFalse(any(p.is_symlink() for p in out.rglob("*")))
 
     def test_plain_http_is_refused(self):
         with self.assertRaisesRegex(sbtool.FetchError, "non-HTTPS"):

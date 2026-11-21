@@ -140,15 +140,28 @@ def obtain(lock: dict, target: str, archive: Path | None, work: Path) -> Path:
 
 def unpack(archive: Path, top: str, dest: Path) -> None:
     """Unpack archive's top/ directory into dest: regular files and directories only, nothing
-    outside top/ (the archive was checked against the pin, but stay strict anyway)."""
+    outside top/ (the archive was checked against the pin, but stay strict anyway). From
+    scarletbook 0.6.0 the archive also holds a symbolic link from the shared library's old name
+    to its versioned file; such a link, to a regular file beside it in the archive, is accepted
+    and left out: pysacd links lib/libscarletbook_ffi.a only. Any other link is refused."""
     with tarfile.open(archive, "r:gz") as tar:
-        members = tar.getmembers()
-        for m in members:
+        members, links = [], []
+        for m in tar.getmembers():
             parts = Path(m.name).parts
             if not parts or parts[0] != top or ".." in parts or Path(m.name).is_absolute():
                 raise FetchError(f"{archive}: unexpected member {m.name!r}")
-            if not (m.isfile() or m.isdir()):
+            if m.issym():
+                links.append(m)
+            elif m.isfile() or m.isdir():
+                members.append(m)
+            else:
                 raise FetchError(f"{archive}: {m.name!r} is not a regular file or directory")
+        files = {Path(m.name) for m in members if m.isfile()}
+        for m in links:
+            target = m.linkname
+            if not target or target in (".", "..") or "/" in target or "\\" in target \
+                    or Path(m.name).parent / target not in files:
+                raise FetchError(f"{archive}: {m.name!r} is a link to {target!r}, not to a file beside it")
         with tempfile.TemporaryDirectory(dir=dest.parent) as tmp:
             if hasattr(tarfile, "data_filter"):
                 tar.extractall(tmp, members=members, filter="data")

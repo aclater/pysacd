@@ -48,7 +48,8 @@ decoder were removed with it; they are in the history up to v0.2.2.
 **What is linked.** `scarletbook.lock` pins one scarletbook release: its version, C ABI, commit,
 and the SHA-256 of `scarletbook-ffi-<version>-<target>.tar.gz` for every target it is built for.
 `tools/scarletbook.py fetch` downloads the archive for the target the C compiler builds for
-(`$CC -dumpmachine`), refuses it unless its SHA-256 is the pinned one, and unpacks it. The
+(`$CC -dumpmachine`), refuses it unless its SHA-256 is the pinned one, and unpacks its regular
+files (the link from the shared library's old name, in archives from 0.6.0, is left out). The
 Makefile then links `lib/libscarletbook_ffi.a` into `_sacdconv` with the system libraries listed
 in the archive's `native-static-libs.txt`.
 
@@ -284,9 +285,11 @@ included, along with a `sacd_extract` that failed or wrote nothing. `--no-values
 
 **Moving to another scarletbook release:**
 
-1. Download its `scarletbook-ffi-*` assets, check each with `sha256sum -c` and
-   `gh attestation verify <file> -R aclater/scarletbook-rs`, and read its changelog.
-2. Update `version`, `commit` and every digest in `scarletbook.lock`. If the C ABI changed, also
+1. Download its `scarletbook-ffi-*` assets, check each with `sha256sum -c`, and read its
+   changelog and any migration page.
+2. Update `version`, `commit` and every digest in `scarletbook.lock`, then run
+   `python3 tools/scarletbook.py attest`: it checks each archive's signed build provenance with
+   the release workflow, the tag and the commit pinned. If the C ABI changed, also
    update `abi`, the check in `csrc/sacdconv.c` and `SB_ABI` in `_native.py`, and port the
    code that calls it.
 3. Update the versions of the Rust crates in `licenses/scarletbook-rs-runtime-MIT` if they

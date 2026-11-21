@@ -1,9 +1,8 @@
 # Code scanning: semantic security analysis of the Python package, the C
 # engine (it parses untrusted disc images) and the workflows themselves.
 #
-# The repository is private without GitHub Advanced Security, so results
-# can't be uploaded to the Security tab: the SARIF is kept as an artifact
-# and any result fails the check instead.
+# Results are not uploaded to the Security tab: the SARIF is kept as an
+# artifact and any result fails the check instead.
 
 name: codeql
 

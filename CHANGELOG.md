@@ -9,6 +9,23 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+## 0.5.3 (2026-11-21)
+
+Two `pysacd-extract -z` cases are now byte-identical to `sacd_extract`'s, and the engine links
+scarletbook 0.6.1. Other output is unchanged (release checks, below). DST discs extract faster on
+all threads: 9 % less time for a stereo DST disc and 6 % less for a 5.1 one on the machine measured
+([performance](docs/performance.md#scarletbook-rs-061)).
+
+Release checks for 0.5.3 (docs/development.md, "To release"), on this release's source before the
+version bump: `tools/extract_compare.py --require-sacd-extract` against `sacd_extract` built from
+CI's pinned commit, 0.5.2 against this release, on five real discs (plain stereo with 5.1 DST,
+hybrid; stereo and 5.1, both DST; stereo DST; plain stereo, hybrid, no disc text; plain stereo,
+single-layer) in all 37 modes (185 runs, 1,386 files). 175 runs show no difference between 0.5.2
+and this release. The other 10 are the two `-z` modes fixed below, on each disc, where this
+release's files are now identical to `sacd_extract`'s. `-P` matches `sacd_extract` on all five. Of
+`sacd_extract`'s 698 files, 434 are identical, 262 differ only where docs/sacd_extract.md says so,
+and 2 differ by the known `-z` block carry below; none differs otherwise.
+
 ### Changed
 - The engine links scarletbook 0.6.1 (was 0.5.9): the same C ABI and the same output. The build
   accepts the link that the library's archives now hold beside the shared library, and leaves it

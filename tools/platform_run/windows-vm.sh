@@ -26,7 +26,8 @@
 # requirements from the tag with --require-hashes, then the tag's whole suite against the
 # installed wheel, tests/wheel_smoke.py, and the README's Quick start in PowerShell (the README
 # writes it for bash; the same steps with Scripts\Activate.ps1) on a generated disc, checking
-# each "You should see". Output: OUT (default ./platform-run-windows-VERSION), with log.txt, junit.xml and
+# each "You should see". windows-guest.ps1 also runs on its own: put it in a folder of any
+# Windows VM with tree.tar and album.iso from make_payload, and run it there. Output: OUT (default ./platform-run-windows-VERSION), with log.txt, junit.xml and
 # report.json. Exit status 0 only when every step passed. Untimed.
 set -euo pipefail
 VERSION=${1:?usage: windows-vm.sh VERSION}

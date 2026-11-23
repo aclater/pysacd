@@ -51,6 +51,13 @@ if ! podman run --rm --arch "$ARCH" "$image" true 2>/dev/null; then
     exit 3
 fi
 
+# Under qemu-user the guest's setrlimit(RLIMIT_DATA) is accepted but not applied (it would limit
+# the emulator), so the suite's memory cap doesn't hold and its test of that cap can't pass; the
+# container's --memory is the cap there.
+emul=
+case $ARCH in arm64) [ "$(uname -m)" = aarch64 ] || emul=--deselect=tests/test_hardening.py::MemoryLimit::test_a_runaway_allocation_fails_instead_of_growing ;; esac
+[ -n "$emul" ] && echo "== emulated: the memory-cap test is deselected"
+
 src=$(mktemp -d "$OUT/src.XXXXXX")
 trap 'rm -rf "$src"' EXIT
 git -C "$repo" archive "$REF" | tar -x -C "$src"
@@ -59,7 +66,7 @@ git -C "$repo" archive "$REF" | tar -x -C "$src"
 start=$(date +%s)
 status=0
 podman run --rm --arch "$ARCH" --memory "$MEMORY" --memory-swap "$MEMORY" --cpus "$CPUS" \
-    --cap-add SYS_PTRACE -e MODE="$MODE" -e VERSION="$VERSION" -e CPUS="$CPUS" \
+    --cap-add SYS_PTRACE -e MODE="$MODE" -e VERSION="$VERSION" -e CPUS="$CPUS" -e EMUL="$emul" \
     -v "$src:/src:ro,Z" -v "$OUT:/out:Z" "$image" bash -euc '
 echo "== $(uname -m), $(nproc) CPUs"
 if [ "$MODE" = source ]; then
@@ -70,7 +77,7 @@ fi
 dnf -y -q install shadow-utils util-linux git-core gcc make pkgconf-pkg-config findutils binutils \
     diffutils file which python3.13 python3.13-devel $pkgs >/dev/null
 useradd -m -d /build ci && cp -a /src /build/pysacd && chown -R ci /build
-runuser -u ci -- env MODE="$MODE" VERSION="$VERSION" CPUS="$CPUS" HOME=/build bash -euc "
+runuser -u ci -- env MODE="$MODE" VERSION="$VERSION" CPUS="$CPUS" EMUL="$EMUL" HOME=/build bash -euc "
 cd ~/pysacd && mkdir -p ~/tmp && export TMPDIR=~/tmp LANG=C.UTF-8 MAKEFLAGS=-j\$CPUS
 python3.13 -m venv ~/venv && . ~/venv/bin/activate
 if [ \"\$MODE\" = source ]; then
@@ -87,7 +94,7 @@ fi
 pip list 2>/dev/null | grep -i pysacd
 fails=0
 PYSACD_TEST_MEMORY_MB=4096 PYSACD_TEST_REPORT=report.json PYTHONPATH=\$pp \
-    python -m pytest -q -p no:cacheprovider --junitxml=junit.xml -rfEs \$desel tests || fails=\$((fails + 1))
+    python -m pytest -q -p no:cacheprovider --junitxml=junit.xml -rfEs \$desel \$EMUL tests || fails=\$((fails + 1))
 cp report.json junit.xml /out/ || true
 if [ \"\$MODE\" = source ]; then
     python3 -I tools/check_skips.py --job tests report.json || fails=\$((fails + 1))

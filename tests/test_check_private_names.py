@@ -8,6 +8,7 @@ strings are assembled at run time so this file itself passes the check.
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,7 +20,11 @@ HIT = "a line naming " + FAKE + " here\n"
 PRIVATE_IP = "192." + "168.77.7"
 
 
-@unittest.skipUnless(shutil.which("git") and shutil.which("bash"), "needs git and bash")
+# CI runs the check on Linux only (the "no private" job, UBI 10 with GNU grep).
+@unittest.skipUnless(
+    sys.platform.startswith("linux") and shutil.which("git") and shutil.which("bash"),
+    "the check runs on Linux with git and bash",
+)
 class CheckPrivateNames(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/aclater/pysacd/master/docs/assets/icon-256.png" alt="" width="96">
+
 # pysacd documentation
 
 Start with the [README](../README.md) for what pysacd is. Then:

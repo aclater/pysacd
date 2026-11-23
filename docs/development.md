@@ -84,7 +84,7 @@ in the archive's `native-static-libs.txt`.
 
 **Where the pins come from.** Each pinned archive was downloaded from the release, checked
 against the release's own `.sha256` file, and checked with
-`gh attestation verify <file> -R aclater/scarletbook-rs`: a signed SLSA build provenance
+`gh attestation verify` on the file, with `-R aclater/scarletbook-rs`: a signed SLSA build provenance
 statement says that scarletbook-rs's release workflow built it from the pinned tag and commit.
 CI repeats that check on every pull request, in the `scarletbook provenance` job
 (`tools/scarletbook.py attest`, which needs `gh`). The wheel workflow runs it before building
@@ -590,10 +590,10 @@ To release:
 2. Bump `version` in `pyproject.toml` and `src/pysacd/__init__.py`, and merge.
 3. Tag `vX.Y.Z` on master and push the tag. The workflow then:
    - creates build provenance attestations for every wheel and the sdist;
-   - attaches the files to a GitHub release, each with its attestation bundle as
-     `<file>.intoto.jsonl` (verified in the job first). Check a download with
-     `gh attestation verify <file> --repo aclater/pysacd`, adding
-     `--bundle <file>.intoto.jsonl` to check against the attached bundle. OpenSSF
+   - attaches the files to a GitHub release, each with its attestation bundle beside it
+     (the file's name plus `.intoto.jsonl`, verified in the job first). Check a download with
+     `gh attestation verify` on the file, with `--repo aclater/pysacd`, adding
+     `--bundle` and the bundle's name to check against the attached bundle. OpenSSF
      Scorecard counts only these assets as provenance;
    - publishes to TestPyPI, if the repository variable `TESTPYPI_PUBLISH` is
      `true` (trusted publishing, environment `testpypi`);

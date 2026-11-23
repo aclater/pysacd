@@ -3,7 +3,7 @@
 """Write input frame files for pcm_vectors into a directory (default ./inputs).
 
 Files are named {kind}_{channels}ch.dsd, kind in silence, ff, music, 20 frames each.
-Frames are channel-interleaved: FRAME_BYTES_PER_CH bytes of channel 0, then channel 1, ...
+Frames are byte-interleaved, as dsd2pcm_frame reads them: byte i of channel c is at i * channels + c.
 
 The "music" input is SYNTHETIC: a 1 kHz plus a 7 kHz sine (amplitude 0.25 each)
 through a plain first-order 1-bit delta-sigma modulator at DSD64 (2822400 Hz).
@@ -48,8 +48,10 @@ def main():
         }
         buf = bytearray()
         for f in range(FRAMES):
+            frame = bytearray(FRAME_BYTES_PER_CH * ch)
             for c in range(ch):
-                buf += chans[c][f * FRAME_BYTES_PER_CH:(f + 1) * FRAME_BYTES_PER_CH]
+                frame[c::ch] = chans[c][f * FRAME_BYTES_PER_CH:(f + 1) * FRAME_BYTES_PER_CH]
+            buf += frame
         data["music"] = bytes(buf)
         for kind, b in data.items():
             with open(os.path.join(outdir, f"{kind}_{ch}ch.dsd"), "wb") as fh:

@@ -605,6 +605,29 @@ To release:
    only accepts `v*` tags, so nothing but a release tag can publish. No API token
    is stored anywhere.
 
+### Release timings
+
+`tools/bench_release.py` runs the by-release table of [performance](performance.md) on real discs
+(#212): the release plan's rows, plus plain DSD and FLAC at 88.2 kHz, and a DST stereo row on the
+CPU's low-end core (an E-core, or on a uniform CPU the lowest-ranked core). Trees alternate with
+the order rotated each round; each run is one row with one tree, under `benchlock run` when the host
+has it, pinned with `taskset`. It records wall time, peak RSS, bytes written, and the CPU temperature
+and throttle counters around each run, and fails (exit 2) when the newest tree is more than 5 %
+slower or uses more than 10 % more peak memory than the previous one.
+
+```sh
+python3 tools/bench_release.py setup --work ../bench v0.5.4 v0.5.5 new=master   # worktree, venv, make
+python3 tools/bench_release.py run --tree 0.5.4=../bench/trees/0.5.4 --tree 0.5.5=../bench/trees/0.5.5 \
+    --tree new=../bench/trees/new --disc dst2=DST_STEREO.iso --disc dst6=DST_MULTICHANNEL.iso \
+    --disc plain=PLAIN_DSD.iso --out ../bench/results --memory-max 12G
+python3 tools/bench_release.py clean --work ../bench
+```
+
+Results go to `runs.csv` and `table.md` in the `--out` folder; a run already in `runs.csv` is not
+repeated, so an interrupted run resumes. `--deadline` (epoch seconds) stops before a run that would
+end after it; `--dry-run` prints the commands. The test (`tests/test_bench_release.py`) runs it on a
+generated disc.
+
 ### Security releases
 
 A fix for a vulnerability stays private until the fixed release is on PyPI. Every step below was

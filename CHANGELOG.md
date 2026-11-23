@@ -10,7 +10,8 @@ behaviour, and a patch version only adds or fixes. Each release on
 ## Unreleased
 
 ### Changed
-- The engine links scarletbook 0.6.2 (was 0.6.1): the same C ABI and the same output (#191).
+- The engine links scarletbook 0.6.2 (was 0.6.1): the same C ABI, the same output and no measurable
+  change in speed ([performance](docs/performance.md#scarletbook-rs-062)) (#191).
 
 ## 0.5.3 (2026-11-21)
 

@@ -51,8 +51,12 @@ To check offline against the attached bundle, add
 On Linux or macOS, the build needs a C compiler and make, Rust (cargo 1.83 or later), and libFLAC
 for FLAC output. The build compiles the [dsd2pcm](https://github.com/aclater/dsd2pcm-rs) C library,
 which converts DSD to PCM, from the release source pinned in `dsd2pcm.lock`, checked by its SHA-256.
-`python3 tools/dsd2pcm.py toolchain --dest DIR` installs the pinned Rust release into DIR, for a
-machine without Rust; put DIR/bin on PATH.
+On a machine without Rust, this installs the pinned Rust release into `build/rust` of the source
+tree; then put the `build/rust/bin` folder it prints on your PATH for the build:
+
+```sh
+python3 tools/dsd2pcm.py toolchain --dest build/rust
+```
 
 The build downloads the [scarletbook-rs](https://github.com/aclater/scarletbook-rs) C library
 that the engine links, from its GitHub release, and checks it against the SHA-256 pinned in

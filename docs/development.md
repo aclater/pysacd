@@ -456,7 +456,9 @@ Every pull request runs:
   `src/`, the tests or the scarletbook pin change: the engine built with warnings as errors, then
   the test suite. On Windows the engine is built with MSYS2's UCRT64 toolchain.
 - **CodeQL** (Python, C, workflows) and **semgrep**.
-- **A check for private names**, in files and commit identities.
+- **A check for private names**, in files and commit identities (`scripts/check-private-names.sh`).
+  It fails when it cannot run, for example on an invalid name list;
+  `tests/test_check_private_names.py` tests it.
 - **scarletbook provenance**: every archive pinned in `scarletbook.lock` must match its digest
   and carry a valid build provenance attestation from scarletbook-rs's release workflow, for the
   pinned tag and commit (see [the scarletbook library](#the-scarletbook-library)).

@@ -14,7 +14,7 @@ One line is swapped, and only that one: `pip install pysacd` installs from PyPI,
 so the swap can't silently stop applying. The wheel's dependency (mutagen) still comes from PyPI,
 as for a user.
 
-Checks: every `literal` in a step's "*You should see*" paragraph must appear in that step's
+Checks: every `literal` in a step's "*You should see*" sentence must appear in that step's
 output; one that names a file extension (`.dsf`) must instead be the extension of files in one
 new folder of DIR, --tracks of them when given. `make-disc` writes the disc the README calls
 `album.iso`: a DST stereo area of three tracks from the repository's test generators
@@ -84,9 +84,10 @@ def steps(text: str) -> list[Step]:
 
 
 def should_see(prose: list[str]) -> list[str]:
-    """The `literals` of the "*You should see*" paragraph in this prose, if any."""
+    """The `literals` of the "*You should see*" sentence in this prose, if any. Only that sentence:
+    the ones after it may describe other discs ("On a disc that also has ...")."""
     text = "\n".join(prose)
-    m = re.search(r"\*You should see\*(.*?)(?:\n\s*\n|$)", text, re.DOTALL)
+    m = re.search(r"\*You should see\*(.*?\.)(?=\s|$)", text, re.DOTALL)
     return re.findall(r"`([^`]+)`", m.group(1)) if m else []
 
 

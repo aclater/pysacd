@@ -27,6 +27,8 @@ jobs:
         with:
           persist-credentials: false
 
+      # The README's icon uses an absolute raw URL so it renders on package
+      # indexes; it points at this repo's own docs/assets/ and is excluded.
       # Excluded: pages behind a MusicBrainz login, and badge images (generated
       # on request, and the Scorecard badge doesn't exist before its first run).
       - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8  # v2.9.0
@@ -36,5 +38,6 @@ jobs:
             --exclude '^https://musicbrainz\.org/account/'
             --exclude '^https://api\.scorecard\.dev/'
             --exclude '^https://img\.shields\.io/'
+            --exclude '^https://raw\.githubusercontent\.com/aclater/pysacd/master/docs/assets/'
             README.md 'docs/**/*.md'
           fail: true

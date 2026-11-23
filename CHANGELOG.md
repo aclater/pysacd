@@ -9,6 +9,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Changed
+- The engine links scarletbook 0.6.2 (was 0.6.1): the same C ABI, the same output and no measurable
+  change in speed ([performance](docs/performance.md#scarletbook-rs-062)) (#191).
+
 ## 0.5.3 (2026-11-21)
 
 Two `pysacd-extract -z` cases are now byte-identical to `sacd_extract`'s, and the engine links

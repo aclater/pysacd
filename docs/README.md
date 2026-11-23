@@ -1,15 +1,23 @@
 # pysacd documentation
 
-Start with the [README](../README.md) for what pysacd is. Then:
+Every document about pysacd, grouped by what it is for. Start with the [README](../README.md) for what pysacd is.
 
-## Using pysacd
+## Install
 
-- **[Quick start](quickstart.md)**: install, and a tour of the commands.
-  - [Install](quickstart.md#install)
-  - [Read a disc's TOC](quickstart.md#read-a-discs-toc)
-  - [Extract exactly as sacd_extract would](quickstart.md#extract-exactly-as-sacd_extract-would)
-  - [Convert into your library](quickstart.md#convert-into-your-library)
-  - [Use it as a library](quickstart.md#use-it-as-a-library)
+- **[Install](install/README.md)**: wheels, checking a download, building from source.
+  - [From PyPI](install/README.md#from-pypi)
+  - [Checking a download](install/README.md#checking-a-download)
+  - [From source](install/README.md#from-source)
+  - [Windows from source](install/README.md#windows-from-source)
+
+## Use
+
+- **[User guide](user-guide.md)**: a tour of the commands, and troubleshooting.
+  - [Read a disc's TOC](user-guide.md#read-a-discs-toc)
+  - [Extract exactly as sacd_extract would](user-guide.md#extract-exactly-as-sacd_extract-would)
+  - [Convert into your library](user-guide.md#convert-into-your-library)
+  - [Use it as a library](user-guide.md#use-it-as-a-library)
+  - [Troubleshooting](user-guide.md#troubleshooting)
 - **[pysacd-extract: a drop-in replacement for sacd_extract](sacd_extract.md)**: migrating from sacd_extract, compatibility policy, verification.
   - [Migrating](sacd_extract.md#migrating)
   - [Compatibility policy](sacd_extract.md#compatibility-policy)
@@ -17,10 +25,14 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Don't take our word for it](sacd_extract.md#dont-take-our-word-for-it)
 - **[Converting with `pysacd convert`](converting.md)**: naming templates, tags, MusicBrainz, gapless PCM.
   - [Submitting ISRCs to MusicBrainz](converting.md#submitting-isrcs-to-musicbrainz)
-- **[The Python library](library.md)**: the Python API, what's parsed, image formats.
-  - [The parser](library.md#the-parser)
-  - [What's parsed](library.md#whats-parsed)
-  - [Image formats](library.md#image-formats)
+- **[Diagnostic logging](logging.md)**: what to attach when something fails.
+
+## Reference
+
+- **[Python API](api.md)**: the Python API, what's parsed, image formats.
+  - [The parser](api.md#the-parser)
+  - [What's parsed](api.md#whats-parsed)
+  - [Image formats](api.md#image-formats)
 - **[SACD Ripper network protocol (PS3 server)](ps3-protocol.md)**: reading from a PS3: usage, the wire protocol and the PS3's quirks.
   - [Reading from a PS3](ps3-protocol.md#reading-from-a-ps3)
   - [Transport](ps3-protocol.md#transport)
@@ -28,13 +40,17 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Reads](ps3-protocol.md#reads)
   - [Testing without a PS3](ps3-protocol.md#testing-without-a-ps3)
   - [Client](ps3-protocol.md#client)
-- **[Diagnostic logging](logging.md)**: what to attach when something fails.
-
-## Background
-
-- **[Why pysacd](why-pysacd.md)**: what pysacd brings, and a first Python example.
-  - [What it brings](why-pysacd.md#what-it-brings)
-- **[Author's note](author.md)**: why pysacd exists, in the author's words.
+- **[Security](security.md)**: hostile discs, servers and text.
+  - [Hostile text](security.md#hostile-text)
+  - [Threat model](security.md#threat-model)
+  - [Hostile images](security.md#hostile-images)
+  - [Running as root](security.md#running-as-root)
+  - [Files pysacd writes](security.md#files-pysacd-writes)
+  - [Network responses](security.md#network-responses)
+  - [Extra isolation](security.md#extra-isolation)
+  - [MusicBrainz credentials](security.md#musicbrainz-credentials)
+  - [PS3 network protocol](security.md#ps3-network-protocol)
+  - [Fuzzing](security.md#fuzzing)
 - **[Performance](performance.md)**: benchmarks and their conditions.
   - [Conditions](performance.md#conditions)
   - [Extracting to DSF](performance.md#extracting-to-dsf)
@@ -55,28 +71,10 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [scarletbook-rs 0.6.1](performance.md#scarletbook-rs-061)
   - [scarletbook-rs 0.6.2](performance.md#scarletbook-rs-062)
   - [scarletbook-rs 0.7.0](performance.md#scarletbook-rs-070)
-- **[Security](security.md)**: hostile discs, servers and text.
-  - [Hostile text](security.md#hostile-text)
-  - [Threat model](security.md#threat-model)
-  - [Hostile images](security.md#hostile-images)
-  - [Running as root](security.md#running-as-root)
-  - [Files pysacd writes](security.md#files-pysacd-writes)
-  - [Network responses](security.md#network-responses)
-  - [Extra isolation](security.md#extra-isolation)
-  - [MusicBrainz credentials](security.md#musicbrainz-credentials)
-  - [PS3 network protocol](security.md#ps3-network-protocol)
-  - [Fuzzing](security.md#fuzzing)
-- **[Clean room and licences](clean-room.md)**: where the code came from, licences, acknowledgements.
-  - [No Philips/ISO reference code, anywhere](clean-room.md#no-philipsiso-reference-code-anywhere)
-  - [The SACD engine: scarletbook-rs](clean-room.md#the-sacd-engine-scarletbook-rs)
-  - [Up to 0.2: pysacd's own DST decoder](clean-room.md#up-to-02-pysacds-own-dst-decoder)
-  - [sacd_extract only as a black box](clean-room.md#sacd_extract-only-as-a-black-box)
-  - [Licences](clean-room.md#licences)
-  - [Acknowledgements](clean-room.md#acknowledgements)
 
-## Contributing
+## Internals
 
-- **[Development](development.md)**: building, tests, CI, testing without a PS3.
+- **[Development](development.md)**: building, tests, CI, testing without a PS3, releases.
   - [Building](development.md#building)
   - [The scarletbook library](development.md#the-scarletbook-library)
   - [Tests](development.md#tests)
@@ -85,4 +83,19 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [Packaging and releases](development.md#packaging-and-releases)
   - [CI speed](development.md#ci-speed)
 
-Contributor rules are in [CLAUDE.md](../CLAUDE.md). This page is generated by `tools/docs_index.py`.
+## Project
+
+- **[Why pysacd](why-pysacd.md)**: what pysacd brings, and a first Python example.
+  - [What it brings](why-pysacd.md#what-it-brings)
+- **[Author's note](author.md)**: why pysacd exists, in the author's words.
+- **[Clean room and licences](clean-room.md)**: where the code came from, licences, acknowledgements.
+  - [No Philips/ISO reference code, anywhere](clean-room.md#no-philipsiso-reference-code-anywhere)
+  - [The SACD engine: scarletbook-rs](clean-room.md#the-sacd-engine-scarletbook-rs)
+  - [Up to 0.2: pysacd's own DST decoder](clean-room.md#up-to-02-pysacds-own-dst-decoder)
+  - [sacd_extract only as a black box](clean-room.md#sacd_extract-only-as-a-black-box)
+  - [Licences](clean-room.md#licences)
+  - [Acknowledgements](clean-room.md#acknowledgements)
+
+Contributor rules are in [CONTRIBUTING.md](../CONTRIBUTING.md) and [CLAUDE.md](../CLAUDE.md); changes by release in the [changelog](../CHANGELOG.md). This page is generated by `tools/docs_index.py`.
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

@@ -6,6 +6,10 @@
 
 # Performance
 
+Benchmarks of pysacd against `sacd_extract`, and of each scarletbook-rs release it links, with the
+conditions of every measurement. Each section gives its machine by CPU model; compare figures
+within a table only.
+
 ## Conditions
 
 - Images on local storage, in the page cache; output to local disk.
@@ -540,3 +544,11 @@ with `make`. Runs were pinned with `taskset`: `-c 0` for one thread, `-c 0,2,4,6
 - **Thermal throttling** was read around every run (cpu0's package count and the core counts of the
   pinned CPUs). None changed in any run. Every run exited 0, and each row wrote the same number of
   bytes in every tree.
+
+## See also
+
+- [Development](development.md#the-scarletbook-library): the scarletbook library
+- [Why pysacd](why-pysacd.md)
+- [Changelog](../CHANGELOG.md)
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

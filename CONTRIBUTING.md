@@ -21,7 +21,7 @@ Blu-ray player running SACD Ripper or AutoScript are especially useful (#10).
    while yours waits, merge it into your branch (no force-push) and let the checks run again.
 3. **Run the checks before you push:**
 
-   ```bash
+   ```sh
    ruff check .
    mypy src
    make && make test-tools

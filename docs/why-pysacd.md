@@ -31,7 +31,7 @@ Why it exists, in the author's words: [author's note](author.md).
   - **Failures** are exceptions, not exit codes and stderr.
   - **Progress** is a callback; to cancel, raise from it.
   - **The TOC reader** runs in-process, through scarletbook-rs: one call returns objects
-    (see [the Python library](library.md)).
+    (see [the Python API](api.md)).
 - **One pass, every output.** One call reads an area once and writes DSF,
   DSDIFF, WAV and FLAC (any mix), plus an ISO copy. DST is decoded on every
   core, with the GIL released.
@@ -52,3 +52,11 @@ Why it exists, in the author's words: [author's note](author.md).
 - **Faster than `sacd_extract`:** plain-DSD discs extract to DSF 3.6–4.0× faster, and DST
   discs 2.5× (all threads; measured on 0.3.0's scarletbook engine). See
   [performance](performance.md#through-scarletbook-rs-030).
+
+## See also
+
+- [Install](install/README.md)
+- [User guide](user-guide.md)
+- [Author's note](author.md)
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

@@ -96,3 +96,11 @@ compatible with GPL-2.0; their notices are in `licenses/` and in every wheel.
 - **[MusicBrainz](https://musicbrainz.org)** and the **Cover Art Archive**,
   for tags and covers.
 - The **PS3 SACD Ripper** homebrew, whose protocol pysacd speaks.
+
+## See also
+
+- [Third-party licences](../licenses/README.md)
+- [Contributing](../CONTRIBUTING.md#rules-that-keep-the-project-clean)
+- [Development](development.md#the-scarletbook-library): the scarletbook library
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

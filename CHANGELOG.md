@@ -9,6 +9,18 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+## 0.5.4 (2026-11-23)
+
+The engine links scarletbook 0.6.2. Output and speed are unchanged (release checks, below;
+[performance](docs/performance.md#scarletbook-rs-062)).
+
+Release checks for 0.5.4 (docs/development.md, "To release"), on this release's source before the
+version bump: `tools/extract_compare.py --require-sacd-extract` against `sacd_extract` built from
+CI's pinned commit, 0.5.3 against this release, on the same five real discs as for 0.5.3, in all
+37 modes (185 runs, 1,386 files). No run shows a difference between 0.5.3 and this release. Of
+`sacd_extract`'s 698 files, 434 are identical, 262 differ only where docs/sacd_extract.md says so,
+and 2 differ by the known `-z` block carry (#182); none differs otherwise.
+
 ### Changed
 - The engine links scarletbook 0.6.2 (was 0.6.1): the same C ABI, the same output and no measurable
   change in speed ([performance](docs/performance.md#scarletbook-rs-062)) (#191).

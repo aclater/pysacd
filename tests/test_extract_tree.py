@@ -257,6 +257,11 @@ CHAIN_CASES = [
     ("with -b", [128, 50, 60], [], ["-z", "-b"], [598016, 237568, 286720]),
     ("concatenation", [64, 64, 60], [], ["-z", "-k", "-t", "1,2"], [598016]),
     ("area ends on a block", [50, 78], [], ["-z"], [233472, 368640]),
+    ("first track of 256 frames", [256, 50, 60], [], ["-z"], [1200128, 237568, 286720]),
+    ("a block carried across two pauses", [128, 128, 60], [0, 10, 10], ["-z"], [598016, 557056, 237568]),
+    ("one track before the area's last", [50, 128, 60], [], ["-z", "-t", "2"], [598016]),
+    ("the area's last track alone", [50, 128], [], ["-z", "-t", "2"], [602112]),
+    ("with -e", [128, 50, 60], [], ["-z", "-e"], [598016, 237568, 286720]),
     # no file on a block: unchanged by 0.7.0
     ("127 frames", [127, 50, 60], [], ["-z"], [593920, 237568, 286720]),
     ("carry past a track not selected", [50, 50, 60, 60], [], ["-z", "-t", "1,3,4"], [233472, 278528, 286720]),
@@ -264,10 +269,12 @@ CHAIN_CASES = [
 ]
 
 # The one known -z difference left (docs/sacd_extract.md): a -k concatenation that holds the area's
-# last track. sacd_extract writes it unpadded, scarletbook pads it, as it pads the area's last file.
+# last track. sacd_extract writes it unpadded, and drops a whole block where it ends on one;
+# scarletbook pads it, as it pads the area's last file, and never shortens it.
 # name, frames per track, pauses, arguments, sacd_extract's sizes, pysacd's
 AREA_END_CASES = [
     ("concatenation to the area's end", [50, 50, 60], [], ["-z", "-k", "-t", "2,3"], [516096], [520192]),
+    ("concatenation to the area's end, on a block", [50, 78], [], ["-z", "-k", "-t", "1,2"], [598016], [602112]),
 ]
 
 
@@ -356,7 +363,9 @@ class ChainBoundaryAgainstSacdExtract(unittest.TestCase):
     def test_multichannel_dst(self):
         with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
             root = Path(tmp)
-            for name, frames, pauses, args, sizes in [*CHAIN_CASES[:3], CHAIN_CASES[7]]:
+            pick = ("first track", "two in a row", "middle track", "before a pause left out",
+                    "a block carried across two pauses")
+            for name, frames, pauses, args, sizes in [c for c in CHAIN_CASES if c[0] in pick]:
                 with self.subTest(name):
                     iso = chain_iso(root / "c.iso", frames, pauses, channels=6, dst_area=True)
                     self.check(iso, root, ["-m", *args], sizes, sizes)

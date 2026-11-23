@@ -1,3 +1,5 @@
+[pysacd](../../README.md) › [Documentation](../README.md) › Icon
+
 # Icon
 
 The pysacd icon (a terminal prompt), © the pysacd project, under the repository's licence, GPL-2.0-or-later. It is one of the DSD Toolbox icons: a silver disc on a navy rounded square, with the project's motif on an amber panel below it.
@@ -10,3 +12,10 @@ The pysacd icon (a terminal prompt), © the pysacd project, under the repository
 
 Every file here is exported from `icon.svg`. To change the icon, replace all of them together and
 keep the file names, so links to them keep working.
+
+## See also
+
+- [Documentation](../README.md)
+- [README](../../README.md)
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

@@ -32,6 +32,8 @@ Start with the [README](../README.md) for what pysacd is. Then:
 
 ## Background
 
+- **[Why pysacd](why-pysacd.md)**: what pysacd brings, and a first Python example.
+  - [What it brings](why-pysacd.md#what-it-brings)
 - **[Author's note](author.md)**: why pysacd exists, in the author's words.
 - **[Performance](performance.md)**: benchmarks and their conditions.
   - [Conditions](performance.md#conditions)

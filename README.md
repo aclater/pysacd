@@ -1,53 +1,38 @@
 # pysacd
 
-[![PyPI](https://img.shields.io/pypi/v/pysacd)](https://pypi.org/project/pysacd/)
-[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Faclater%2Fpysacd%2Fmaster%2Fpyproject.toml)](pyproject.toml)
-[![Wheel](https://img.shields.io/pypi/wheel/pysacd)](https://pypi.org/project/pysacd/#files)
-[![Implementation](https://img.shields.io/pypi/implementation/pysacd)](https://pypi.org/project/pysacd/)
-[![Downloads](https://static.pepy.tech/badge/pysacd/month)](https://pepy.tech/projects/pysacd)
-[![License](https://img.shields.io/pypi/l/pysacd)](COPYING)
-
 [![CI](https://github.com/aclater/pysacd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/aclater/pysacd/branch/master/graph/badge.svg)](https://codecov.io/gh/aclater/pysacd)
 [![CodeQL](https://github.com/aclater/pysacd/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/codeql.yml)
-[![Fuzzing](https://github.com/aclater/pysacd/actions/workflows/fuzz.yml/badge.svg)](https://github.com/aclater/pysacd/actions/workflows/fuzz.yml)
-[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue)](COPYING)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/aclater/pysacd/badge)](https://scorecard.dev/viewer/?uri=github.com/aclater/pysacd)
-[![SLSA Build L2](https://slsa.dev/images/gh-badge-level2.svg)](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
+[![PyPI](https://img.shields.io/pypi/v/pysacd)](https://pypi.org/project/pysacd/)
 
-**SACD in your Python process, and a clean-room, drop-in replacement for
-`sacd_extract`: the same options, the same file names, the same bytes.**
+pysacd reads SACD (Scarletbook) disc images, and PS3 SACD Ripper servers, straight from Python,
+and writes DSF, DSDIFF, WAV and FLAC in one pass with its multithreaded C engine. It also ships
+`pysacd-extract`, a clean-room, drop-in replacement for `sacd_extract`: the same options, the
+same file names, the same bytes.
 
-```python
-from pysacd import read_toc                 # in-process: no subprocess, no text to parse
+## Platforms
 
-disc = read_toc("album.iso")
-print(disc.artist, "-", disc.title)
-for t in disc.stereo.tracks:
-    print(t.number, t.title, t.duration)
-```
+| System | How | Guide |
+|---|---|---|
+| Linux | Wheels on PyPI for x86-64 and aarch64 with glibc 2.28 or later (manylinux), and x86-64 with musl 1.2 or later (musllinux). Engine, libFLAC and the scarletbook library included. Run-tested on the release's CI runners | [install](docs/quickstart.md#install) |
+| macOS | Wheels for Apple Silicon (macOS 11 or later) and Intel (macOS 10.13 or later). Not code-signed or notarised. Run-tested on macOS 15 only, on CI | [install](docs/quickstart.md#install) |
+| Windows | Wheel for x86-64. Not code-signed. Run-tested on the release's CI runner | [install](docs/quickstart.md#install) |
+| Anything else | Builds from source with a C compiler and make (libFLAC for FLAC output) | [from source](docs/quickstart.md#install) · [development](docs/development.md) |
 
-pysacd reads SACD (Scarletbook) disc images, and PS3 SACD Ripper servers,
-straight from Python. Its multithreaded C engine runs inside your process, so
-a script, a tagger or a library catalogue drives it with function calls and
-gets back structured results. It never spawns `sacd_extract` and parses its
-text.
-
-**Coming from `sacd_extract`?** `pysacd-extract` is a drop-in replacement,
-verified file by file against the real thing:
-
-```sh
-ln -s "$(command -v pysacd-extract)" ~/bin/sacd_extract    # that's the whole migration
-```
+Every wheel is for Python 3.10 or later and carries a build provenance attestation on its
+[GitHub release](https://github.com/aclater/pysacd/releases), checkable with
+`gh attestation verify`. On any system, pysacd also reads discs over the network from a PS3 or
+Blu-ray player running SACD Ripper ([reading from a PS3](docs/ps3-protocol.md#reading-from-a-ps3)).
 
 ## Quick start
 
 You need Python 3.10 or later on Linux or macOS, and an SACD disc image. The commands use
 `album.iso` in the current folder; type your image's name instead.
 
-1. Install pysacd in a virtual environment of its own (wheels for Linux, macOS and Windows;
-   engine and libFLAC included):
+1. Install pysacd in a virtual environment of its own:
 
    ```sh
    python3 -m venv pysacd-env
@@ -60,6 +45,8 @@ You need Python 3.10 or later on Linux or macOS, and an SACD disc image. The com
    ```sh
    pysacd toc album.iso
    ```
+
+   *You should see* `Disc:` with the artist and title, then a line per area and one per track.
 
 3. Extract the stereo area to DSF files, as `sacd_extract` would:
 
@@ -74,66 +61,46 @@ Next: FLAC and WAV with your own naming and MusicBrainz tags in [converting](doc
 Windows and building from source in the [quick start guide](docs/quickstart.md), and the Python
 API in [the Python library](docs/library.md).
 
-## Why pysacd
-
-Why it exists, in the author's words: [author's note](docs/author.md).
-
-- **No fork, no scraping.**
-  - **What you get back:** objects (or `--json`), not `sacd_extract -P` text.
-  - **Failures** are exceptions, not exit codes and stderr.
-  - **Progress** is a callback; to cancel, raise from it.
-  - **The TOC reader** runs in-process, through scarletbook-rs: one call returns objects
-    (see [the Python library](docs/library.md)).
-- **One pass, every output.** One call reads an area once and writes DSF,
-  DSDIFF, WAV and FLAC (any mix), plus an ISO copy. DST is decoded on every
-  core, with the GIL released.
-- **Byte-for-byte compatible** with `sacd_extract`, apart from a few
-  [deliberate exceptions](docs/sacd_extract.md#compatibility-policy).
-- **Clean by construction.** No Philips/ISO reference code, ever. The SACD
-  engine (TOC, sectors, DST decoding, and the layout of DSF and DSDIFF files) is
-  [scarletbook-rs](https://github.com/aclater/scarletbook-rs), a clean-room
-  library written only from published specifications. See
-  [clean room and licences](docs/clean-room.md).
-- **Goes further than `sacd_extract`:**
-  - gapless 24-bit FLAC/WAV;
-  - MusicBrainz tags and cover art, with your own naming;
-  - resume after a dropped PS3 connection;
-  - raw-sector (2064/2054-byte) images;
-  - protection against hostile disc text;
-  - logs you can diagnose a failure from.
-- **Faster than `sacd_extract`:** plain-DSD discs extract to DSF 3.6–4.0× faster, and DST
-  discs 2.5× (all threads; measured on 0.3.0's scarletbook engine). See
-  [performance](docs/performance.md#through-scarletbook-rs-030).
-
-## Why you shouldn't use pysacd (yet)
-
-- **Never tested against a real PS3.** The network client is verified against
-  a protocol simulator and `sacd_extract`, but not against hardware (#10).
-- **Optical drives:** like `sacd_extract`, it can't read a PC drive's SACD
-  layer. You need an ISO or a PS3.
-
 ## Documentation
 
 The [documentation index](docs/README.md) lists every document and its sections.
 
-| | |
-|---|---|
-| [Quick start](docs/quickstart.md) | install, and a tour of the commands |
-| [pysacd-extract](docs/sacd_extract.md) | migrating from `sacd_extract`, compatibility policy, verification |
-| [Converting](docs/converting.md) | naming templates, tags, MusicBrainz, gapless PCM |
-| [The Python library](docs/library.md) | the API, what's parsed, image formats |
-| [Performance](docs/performance.md) | benchmarks and their conditions |
-| [Reading from a PS3](docs/ps3-protocol.md) | usage, the wire protocol and the PS3's quirks |
-| [Logging](docs/logging.md) | what to attach when something fails |
-| [Security](docs/security.md) | hostile discs, servers and text; report vulnerabilities via [SECURITY.md](SECURITY.md) |
-| [Clean room and licences](docs/clean-room.md) | where the code came from, acknowledgements |
-| [Development](docs/development.md) | building, tests, CI; contributor rules in [CLAUDE.md](CLAUDE.md) |
-| [Contributing](CONTRIBUTING.md) | reporting bugs, the pull-request process, project rules |
-| [Changelog](CHANGELOG.md) | what changed in each release |
-| [Releases by major version](https://github.com/aclater/sacd/blob/main/RELEASES.md) | what each minor version brought, across the SACD projects |
+- [Why pysacd](docs/why-pysacd.md): what it brings, a first Python example, and the
+  [author's note](docs/author.md)
+- [Quick start guide](docs/quickstart.md): install options and a tour of the commands
+- [pysacd-extract](docs/sacd_extract.md): migrating from `sacd_extract`, compatibility policy
+- [Converting](docs/converting.md): naming templates, tags, MusicBrainz, gapless PCM
+- [The Python library](docs/library.md) · [reading from a PS3](docs/ps3-protocol.md) ·
+  [logging](docs/logging.md)
+- [Performance](docs/performance.md) · [security](docs/security.md) ·
+  [clean room and licences](docs/clean-room.md)
+- [Development](docs/development.md) · [contributing](CONTRIBUTING.md) ·
+  [changelog](CHANGELOG.md) · [releases](https://github.com/aclater/pysacd/releases) ·
+  [releases by major version](https://github.com/aclater/dsd-toolbox/blob/main/RELEASES.md)
 
-## License
+## Licence and credits
 
-GPL-2.0-or-later. The engine links the
-[scarletbook-rs](https://github.com/aclater/scarletbook-rs) C library statically, which pysacd
-uses under MIT (it is MIT OR Apache-2.0). See [clean room and licences](docs/clean-room.md).
+pysacd is free software under the [GNU General Public License](COPYING), version 2 or (at your
+option) any later version. Its DSD-to-PCM filter, `csrc/dsp.c` and `csrc/dsp.h`, is
+MIT OR Apache-2.0 ([licences](licenses/README.md)).
+
+- [scarletbook-rs](https://github.com/aclater/scarletbook-rs) (MIT OR Apache-2.0, used under MIT)
+  reads the images, decodes DST and lays out DSF and DSDIFF files; it is linked into the engine
+  with the Rust standard library and its crates (MIT OR Apache-2.0, used under MIT).
+- [sacd-spec](https://github.com/aclater/sacd-spec): the specification and corpus scarletbook-rs
+  was written from.
+- libFLAC, and on Windows libogg (BSD-3-Clause), are linked into the wheels for FLAC output; the
+  musllinux wheel carries GCC's `libgcc_s` (GPL-3.0-or-later with the GCC Runtime Library
+  Exception). [mutagen](https://github.com/quodlibet/mutagen) (GPL-2.0-or-later) writes tags.
+- The first DSD-to-PCM stage uses Sebastian Gesemann's byte-wise lookup-table technique
+  (BSD-3-Clause).
+- [sacd-ripper](https://github.com/sacd-ripper/sacd-ripper): `sacd_extract`'s behaviour, which
+  `pysacd-extract` reproduces, used only as a compiled binary. pysacd speaks the PS3 SACD Ripper
+  homebrew's network protocol.
+- FFmpeg's DST decoder by Peter Ross (LGPL-2.1-or-later) was the base of pysacd's own DST
+  decoder up to 0.2.
+- [MusicBrainz](https://musicbrainz.org) and the Cover Art Archive supply tags and covers.
+
+Details in [clean room and licences](docs/clean-room.md) and [licenses/](licenses/README.md).
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

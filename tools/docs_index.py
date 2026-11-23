@@ -29,6 +29,7 @@ GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("logging.md", "what to attach when something fails"),
     ]),
     ("Background", [
+        ("why-pysacd.md", "what pysacd brings, and a first Python example"),
         ("author.md", "why pysacd exists, in the author's words"),
         ("performance.md", "benchmarks and their conditions"),
         ("security.md", "hostile discs, servers and text"),

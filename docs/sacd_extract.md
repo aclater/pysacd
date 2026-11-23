@@ -12,8 +12,12 @@ with the same names and the same bytes.
 ## Migrating
 
 ```sh
+mkdir -p ~/bin
 ln -s "$(command -v pysacd-extract)" ~/bin/sacd_extract    # that's the whole migration
 ```
+
+`~/bin` must be on your `PATH`: Fedora and Ubuntu add it in new login shells once the folder
+exists.
 
 Scripts, `sacd_extract.cfg` (including `logging=1`) and muscle memory keep
 working:

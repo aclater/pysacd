@@ -10,9 +10,18 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Added
+- `tools/docs_commands.py` runs every command block of README.md and `docs/` against a release on
+  generated discs, with an explicit list of what can't run there and why
+  ([development](docs/development.md#docs-commands-against-a-release)) (#215).
+
 ### Changed
 - docs/security.md: the container example builds a local image named `pysacd` and reads
   `album.iso` from the current folder, with no placeholders, as tested (#216).
+- docs/sacd_extract.md: the migration creates `~/bin` first; on a new account the link failed
+  without it (found by `tools/docs_commands.py`, #215).
+- docs/logging.md: the `PYSACD_LOG` example writes `~/pysacd.log`, not a fixed `/tmp` name that
+  another user's file can block (found by `tools/docs_commands.py`, #215).
 
 ## [0.5.5] - 2026-11-23
 

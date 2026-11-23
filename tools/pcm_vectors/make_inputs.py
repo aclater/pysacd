@@ -52,7 +52,7 @@ def main():
                 buf += chans[c][f * FRAME_BYTES_PER_CH:(f + 1) * FRAME_BYTES_PER_CH]
         data["music"] = bytes(buf)
         for kind, b in data.items():
-            with open(os.path.join(outdir, "%s_%dch.dsd" % (kind, ch)), "wb") as fh:
+            with open(os.path.join(outdir, f"{kind}_{ch}ch.dsd"), "wb") as fh:
                 fh.write(b)
 
 

@@ -9,6 +9,21 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Changed
+- The engine links scarletbook 0.7.0 (was 0.6.2): the same C ABI. It moves `-z` chain boundaries
+  (below) and changes no other output; speed is unchanged
+  ([performance](docs/performance.md#scarletbook-rs-070)) (#194).
+- `tools/extract_compare.py` no longer excuses `sacd_extract`'s `-z` block carry ("known"): a file
+  that differs by it is a difference like any other.
+
+### Fixed
+- `pysacd-extract -z`: a file whose audio, with the bytes carried into it, ends exactly on a DSF
+  block (for example a first track of 128 frames) now ends one block earlier, and that block opens
+  the next file, or is dropped where the chain stops before the area's last track, as
+  `sacd_extract` does. These files are now byte-identical to `sacd_extract`'s; pysacd kept the
+  block in the file before (#182). A `-z -k` concatenation that holds the area's last track is
+  still padded (docs/sacd_extract.md).
+
 ## 0.5.4 (2026-11-23)
 
 The engine links scarletbook 0.6.2. Output and speed are unchanged (release checks, below;

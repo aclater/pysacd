@@ -16,6 +16,8 @@ behaviour, and a patch version only adds or fixes. Each release on
 - `tools/extract_compare.py` no longer excuses `sacd_extract`'s `-z` block carry ("known"): a file
   that differs by it is a difference like any other. A `-z` file that `sacd_extract` wrote without
   the last block pysacd keeps counts as documented.
+- The DSD-to-PCM filter (`csrc/dsp.c`, `csrc/dsp.h`) is now MIT OR Apache-2.0, relicensed by its
+  copyright holder; the rest of pysacd stays GPL-2.0-or-later ([licences](licenses/README.md)).
 
 ### Fixed
 - `pysacd-extract -z`: a file whose audio, with the bytes carried into it, ends exactly on a DSF

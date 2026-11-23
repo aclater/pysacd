@@ -6,7 +6,10 @@
  * Sebastian Gesemann's dsd2pcm (BSD-3-Clause, 2009), which FFmpeg and MPD
  * also use.
  *
- * SPDX-License-Identifier: GPL-2.0-or-later
+ * Relicensed from GPL-2.0-or-later by its copyright holder on 2026-11-23 (licenses/README.md;
+ * texts in licenses/dsp-LICENSE-MIT and licenses/dsp-LICENSE-APACHE).
+ *
+ * SPDX-License-Identifier: MIT OR Apache-2.0
  */
 
 #include <math.h>

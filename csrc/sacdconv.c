@@ -789,7 +789,9 @@ static void process_batch(engine_t *e, batch_t *b, dsd2pcm_t *dsp, const uint8_t
                     continue;
                 int32_t *dst = b->pcm + (size_t)got * ch;
                 for (int c = 0; c < ch; c++) {
-                    float dith = ((float)xorshift(&rng) - (float)xorshift(&rng)) * lsb;
+                    /* two draws in a fixed order (C leaves the order of operands unspecified) */
+                    uint32_t r1 = xorshift(&rng), r2 = xorshift(&rng);
+                    float dith = ((float)r1 - (float)r2) * lsb;
                     long v = lrintf(dsp->out[c][s] * scale + dith);
                     dst[c] = (int32_t)(v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v);
                 }

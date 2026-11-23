@@ -372,6 +372,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 -I tools/scarletbook.py attest --dir "$RUNNER_TEMP/scarletbook"
 
+  doc-versions:
+    # The version claims in README.md and docs/ (Python range, scarletbook pin) must match
+    # pyproject.toml and scarletbook.lock: a short list of known sentences (tools/check_doc_versions.py).
+    name: docs match the versions
+    runs-on: ubuntu-latest
+    container:
+      # UBI 10 (ubi10/ubi 10.3), pinned by digest; its python3 (3.12) is all the check needs.
+      image: registry.access.redhat.com/ubi10/ubi@sha256:1e9193f051ac70582821c8a941325c5053488c54c75cd0c31b577d871ac29dba
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the version claims
+        run: python3 -I tools/check_doc_versions.py
+
   privacy:
     # The repository must not carry hostnames or home-network names, in files
     # or in commit identities.  The generic pattern is always checked; extra

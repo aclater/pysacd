@@ -10,6 +10,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Changed
+- The engine links scarletbook 1.0.2 (was 0.7.0): the same C ABI and the same output; scarletbook's
+  interface is now stable (1.0).
+
 ## [0.5.5] - 2026-11-23
 
 `pysacd-extract -z` now splits a gapless chain where `sacd_extract` does, so those files are

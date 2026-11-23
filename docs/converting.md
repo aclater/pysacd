@@ -6,7 +6,7 @@
 
 `pysacd convert` turns an SACD image (or a PS3 disc) into tagged DSF, FLAC or WAV files with your own naming. For `sacd_extract`-compatible output use `pysacd-extract` instead.
 
-```
+```sh
 make                                      # builds src/pysacd/_sacdconv.so
 pysacd convert disc.iso                   # stereo area -> DSF, tagged
 pysacd convert -f flac disc.iso           # 24-bit/88.2 kHz FLAC
@@ -109,7 +109,7 @@ How it works:
   filter delay. Track joins are therefore sample-exact (gapless), and the
   output doesn't depend on the thread count.
 - **Tags:** the MusicBrainz release is found by barcode (the SACD's album
-  catalog number) or by catalog number. The match is checked against track
+  catalogue number) or by catalogue number. The match is checked against track
   count, durations and ISRCs, and picks the medium for the right layer:
   MusicBrainz lists "Hybrid SACD (SACD layer, 2 channels)" and "…multichannel"
   as separate media. If there's no confident match, the disc's own text is used.
@@ -132,7 +132,7 @@ pysacd submit-isrcs album.iso               # show the same table, ask, then sub
 pysacd convert --submit-isrcs album.iso     # offer it after the MusicBrainz match while converting
 ```
 
-- **Which release:** only one matched by barcode or catalog number, or named
+- **Which release:** only one matched by barcode or catalogue number, or named
   with `--mb-release`, never one found by title search. Track N of the area
   maps to track N of the matched medium (stereo and multichannel separately).
 - **What's skipped:** malformed or all-zero ISRCs, the same ISRC on two
@@ -150,3 +150,10 @@ pysacd convert --submit-isrcs album.iso     # offer it after the MusicBrainz mat
 - **Scripts:** `--yes` submits without asking. Without a terminal and
   without `--yes`, nothing is submitted.
 
+## See also
+
+- [User guide](user-guide.md)
+- [pysacd-extract](sacd_extract.md): `sacd_extract`-compatible output
+- [Security](security.md#musicbrainz-credentials): MusicBrainz credentials
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

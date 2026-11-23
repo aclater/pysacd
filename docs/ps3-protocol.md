@@ -19,7 +19,7 @@ already-decrypted ISO is indistinguishable from a PS3 to the client.
 
 Both CLIs accept a PS3 address wherever they take an ISO:
 
-```
+```sh
 pysacd-extract -I -i 192.0.2.10:2002          # copy the disc to an ISO
 pysacd-extract -s -I -i 192.0.2.10:2002       # ISO + DSF; the disc crosses the network once
 pysacd-extract -2 -s -i 192.0.2.10:2002       # DSF; only the TOCs and the stereo area are fetched
@@ -109,7 +109,7 @@ first block. That only affects the PS3's own decryption, not the bytes sent.
 
 ## Testing without a PS3
 
-```
+```sh
 pysacd ps3sim disc.iso                       # listen on 127.0.0.1:2002
 sacd_extract -I -i 127.0.0.1:2002            # copy the disc back as an ISO
 ```
@@ -161,3 +161,11 @@ through the simulator on a 3.39 GB plain-DSD disc:
 - `pysacd-extract -I` produced a byte-identical ISO.
 - `pysacd-extract -s` and `pysacd convert` produced the same DSF files as from the
   local ISO (24 tracks), and removed their temporary files.
+
+## See also
+
+- [User guide](user-guide.md)
+- [Security](security.md#ps3-network-protocol): the client's limits
+- [Development](development.md#testing-without-a-ps3): testing without a PS3
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

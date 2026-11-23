@@ -1,15 +1,16 @@
 # Changelog
 
-Notable changes in each release of pysacd. Versions follow
-[semantic versioning](https://semver.org/); before 1.0, a minor version may change
+Notable changes in each release of pysacd. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
+[semantic versioning](https://semver.org/spec/v2.0.0.html); before 1.0, a minor version may change
 behaviour, and a patch version only adds or fixes. Each release on
 [GitHub](https://github.com/aclater/pysacd/releases) and
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
-## Unreleased
+## [Unreleased]
 
-## 0.5.5 (2026-11-23)
+## [0.5.5] - 2026-11-23
 
 `pysacd-extract -z` now splits a gapless chain where `sacd_extract` does, so those files are
 byte-identical to its files, and the engine links scarletbook 0.7.0. Other output and speed are
@@ -45,7 +46,7 @@ on generated discs cover it.
   pysacd keeps it, by decision. That and a `-z -k` concatenation that holds the area's last track
   stay documented differences (docs/sacd_extract.md).
 
-## 0.5.4 (2026-11-23)
+## [0.5.4] - 2026-11-23
 
 The engine links scarletbook 0.6.2. Output and speed are unchanged (release checks, below;
 [performance](docs/performance.md#scarletbook-rs-062)).
@@ -61,7 +62,7 @@ and 2 differ by the known `-z` block carry (#182); none differs otherwise.
 - The engine links scarletbook 0.6.2 (was 0.6.1): the same C ABI, the same output and no measurable
   change in speed ([performance](docs/performance.md#scarletbook-rs-062)) (#191).
 
-## 0.5.3 (2026-11-21)
+## [0.5.3] - 2026-11-21
 
 Two `pysacd-extract -z` cases are now byte-identical to `sacd_extract`'s, and the engine links
 scarletbook 0.6.1. Other output is unchanged (release checks, below). DST discs extract faster on
@@ -115,7 +116,7 @@ and 2 differ by the known `-z` block carry below; none differs otherwise.
 - `TrackStop` markers of a DSDIFF edited master are passed to scarletbook with zero track flags,
   which it wrote anyway; the files are unchanged.
 
-## 0.5.2 (2026-11-15)
+## [0.5.2] - 2026-11-15
 
 Fixes for `pysacd-extract` writing into a folder that already holds files, byte-compatibility with
 `sacd_extract` for blank ISRC fields, hardening that followed the review of 0.5.0, and the build
@@ -201,7 +202,7 @@ its three points are fixed in this release.
   as on macOS and Windows. The audio is the same; the encoder's vendor string in each FLAC file
   names the new version (#153).
 
-## 0.5.1 (2026-11-14)
+## [0.5.1] - 2026-11-14
 
 A security release. A private review of 0.5.0, asked for by the maintainer, found three problems
 that a crafted disc image can trigger, and a number of smaller ones; all are fixed here. **Upgrade
@@ -332,7 +333,7 @@ also found three tests that assumed POSIX or Python 3.11.
   It now checks the ABI first, so the error says `engine ABI N, this pysacd needs M; rebuild it
   (make clean all)`. A clean `make` fixes such a tree (docs/development.md).
 
-## 0.5.0 (2026-11-05)
+## [0.5.0] - 2026-11-05
 
 0.5.0 is mostly about trust in what 0.3.0 to 0.4.3 shipped. **For those six releases (0.3.0, 0.3.1,
 0.4.0, 0.4.1, 0.4.2 and 0.4.3), CI did not compare pysacd with `sacd_extract` at all.** From #86 a check for the engine looked for a
@@ -394,7 +395,7 @@ reference checksums. (UBI offers no Python 3.15; Fedora 44 covers it.) The publi
   refused before reading, since 0.3.0: the sectors that exist are read, and a source is still
   never asked for one that doesn't.
 
-## 0.4.3 (2026-11-02)
+## [0.4.3] - 2026-11-02
 
 The release candidate 0.4.3rc1, installed from PyPI, passed `tests/wheel_smoke.py` on clean
 Fedora 44, UBI 10 and Debian 13 containers.
@@ -408,7 +409,7 @@ Fedora 44, UBI 10 and Debian 13 containers.
   on all threads 2.51 (2.57), DST 6-channel to DSF on all threads 9.24 (9.34), plain DSD to DSF
   on all threads 1.13 (1.16), mostly within the runs' spread (docs/performance.md).
 
-## 0.4.2 (2026-11-02)
+## [0.4.2] - 2026-11-02
 
 The release candidate 0.4.2rc1 passed its clean-machine smoke test (Fedora 44 and Debian 13 at
 20/20, UBI 10 at 19/20 as before).
@@ -429,7 +430,7 @@ The release candidate 0.4.2rc1 passed its clean-machine smoke test (Fedora 44 an
   all threads, medians of 3, within the runs' spread (docs/performance.md). The engine still
   accepts scarletbook 0.5.4.
 
-## 0.4.1 (2026-11-02)
+## [0.4.1] - 2026-11-02
 
 The release candidate 0.4.1rc1 installed and passed its tests on clean machines, matching 0.4.0
 (a Fedora 44 VM and Debian 13 at 20/20, UBI 10 at 19/20 as before).
@@ -441,7 +442,7 @@ The release candidate 0.4.1rc1 installed and passed its tests on clean machines,
   multichannel unchanged. Output is byte-identical in every mode (docs/performance.md). The
   engine still accepts scarletbook 0.5.4.
 
-## 0.4.0 (2026-11-01)
+## [0.4.0] - 2026-11-01
 
 The release candidate 0.4.0rc1 passed the clean-machine matrix with no regression against
 0.3.1: 10 Linux VMs and Windows 11 at 20/20, and 12 containers matching the baseline.
@@ -467,7 +468,7 @@ The release candidate 0.4.0rc1 passed the clean-machine matrix with no regressio
   master). `tools/output_compare.py`, which compared pysacd's files with scarletbook's layouts,
   is removed: the layouts are now the files'.
 
-## 0.3.1 (2026-11-01)
+## [0.3.1] - 2026-11-01
 
 pysacd moves onto scarletbook-rs 0.5.2 (#94). Reading a TOC is 4.9 times faster than in 0.3.0, as fast as 0.2's own parser was; DST extraction to DSF is a little faster; on x86-64 Linux the engine is marked for CET shadow stacks again. Output is byte-identical to 0.3.0. The release candidate 0.3.1rc1 passed the clean-machine matrix, identical to 0.3.0's baseline: 10 Linux VMs and Windows 11 at 20/20 each, and 12 containers (7 at 20/20; 5 at 19/20, where the image has no pipx package, as with 0.3.0).
 
@@ -498,7 +499,7 @@ pysacd moves onto scarletbook-rs 0.5.2 (#94). Reading a TOC is 4.9 times faster 
 - Docs: the author's note gets an update at the bottom for 0.3.0 (scarletbook-rs, sacdfs); the
   original text is kept as written.
 
-## 0.3.0 (2026-11-01)
+## [0.3.0] - 2026-11-01
 
 pysacd now reads and decodes SACD images through [scarletbook-rs](https://github.com/aclater/scarletbook-rs), linked into the engine from a verified release; pysacd's own TOC parser, demultiplexer and DST decoder are removed (#85). Output is byte-identical to 0.2.2 on the corpus and the real test discs, and beets-pysacd disc fingerprints are unchanged. DSF extraction stays 2.5× (DST) to 3.6–4.0× (plain DSD) faster than `sacd_extract`; DST extraction is up to 15 % slower than 0.2.2's own decoder, which is reported upstream (scarletbook-rs#146). See [performance](docs/performance.md).
 
@@ -548,7 +549,7 @@ pysacd now reads and decodes SACD images through [scarletbook-rs](https://github
 
 - Docs: credit Sebastian Gesemann's dsd2pcm (BSD-3-Clause) for the byte-lookup-table technique in the DSD-to-PCM converter's first stage (`csrc/dsp.c`, [clean room and licences](docs/clean-room.md)).
 
-## 0.2.2 (2026-10-30)
+## [0.2.2] - 2026-10-30
 
 DST discs now extract 2.4–2.6× faster than `sacd_extract` (all threads, 10-core machine) and
 3.0× faster on a single core, with byte-identical output. See
@@ -567,7 +568,7 @@ DST discs now extract 2.4–2.6× faster than `sacd_extract` (all threads, 10-co
 
 No security fixes.
 
-## 0.2.1 (2026-10-29)
+## [0.2.1] - 2026-10-29
 
 - `pysacd convert --pauses` (config `pauses`, `Options.pauses`) includes the pauses
   between tracks, with the same track ranges as `pysacd-extract -b`, so a library
@@ -578,7 +579,7 @@ No security fixes.
 
 No security fixes.
 
-## 0.2.0 (2026-10-29)
+## [0.2.0] - 2026-10-29
 
 First release on PyPI.
 
@@ -600,3 +601,20 @@ First release on PyPI.
   and demuxer, a corpus of deliberately broken images, and filtering of disc and
   MusicBrainz text before it reaches file names, tags or the terminal (see
   [security](docs/security.md)).
+
+[Unreleased]: https://github.com/aclater/pysacd/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/aclater/pysacd/compare/v0.5.4...v0.5.5
+[0.5.4]: https://github.com/aclater/pysacd/compare/v0.5.3...v0.5.4
+[0.5.3]: https://github.com/aclater/pysacd/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/aclater/pysacd/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/aclater/pysacd/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/aclater/pysacd/compare/v0.4.3...v0.5.0
+[0.4.3]: https://github.com/aclater/pysacd/compare/v0.4.2...v0.4.3
+[0.4.2]: https://github.com/aclater/pysacd/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/aclater/pysacd/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/aclater/pysacd/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/aclater/pysacd/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/aclater/pysacd/compare/v0.2.2...v0.3.0
+[0.2.2]: https://github.com/aclater/pysacd/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/aclater/pysacd/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/aclater/pysacd/releases/tag/v0.2.0

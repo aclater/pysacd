@@ -11,7 +11,7 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ### Changed
 - The engine links scarletbook 0.7.0 (was 0.6.2): the same C ABI. It moves `-z` chain boundaries
-  (below) and changes no other output; speed is unchanged
+  (below) and changes no other output
   ([performance](docs/performance.md#scarletbook-rs-070)) (#194).
 - `tools/extract_compare.py` no longer excuses `sacd_extract`'s `-z` block carry ("known"): a file
   that differs by it is a difference like any other.

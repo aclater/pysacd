@@ -10,6 +10,7 @@ on:
   pull_request:
     paths: ["setup.py", "pyproject.toml", "MANIFEST.in", "Makefile", "csrc/**", "tests/wheel_smoke.py",
             "scarletbook.lock", "tools/scarletbook.py", "tools/check_cet.py", "tools/check_release_tag.py",
+            "dsd2pcm.lock", "tools/dsd2pcm.py", "tools/mark_shstk.py",
             "src/pysacd/__init__.py", "licenses/**", "scripts/build-libflac.sh", ".github/workflows/workflow.yml"]
   push:
     tags: ["v*"]
@@ -123,6 +124,15 @@ jobs:
           echo "$(cygpath -w "$root/ucrt64/bin")" >> "$GITHUB_PATH"
           echo "$(cygpath -w "$root/usr/bin")" >> "$GITHUB_PATH"
 
+      # The dsd2pcm library is built from its pinned source (tools/dsd2pcm.py) with the pinned Rust:
+      # here on macOS and Windows; in the Linux containers, before anything else (CIBW_BEFORE_ALL_LINUX)
+      - name: Rust, pinned in dsd2pcm.lock (macOS, Windows)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python)
+          "$py" -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust" >> "$GITHUB_PATH"
+
       # A static libFLAC (no Ogg, no programs) for the wheel's minimum macOS, linked into the engine,
       # so delocate has nothing to bundle. Same libFLAC release as Homebrew's.
       - name: Build libFLAC from source (macOS)
@@ -155,9 +165,10 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: >-
             if command -v apk >/dev/null; then apk add curl pkgconf xz;
             elif ! command -v pkg-config >/dev/null; then dnf install -y pkgconf-pkg-config; fi &&
-            sh {project}/scripts/build-libflac.sh /opt/libflac
+            sh {project}/scripts/build-libflac.sh /opt/libflac &&
+            /opt/python/cp313-cp313/bin/python3 -I {project}/tools/dsd2pcm.py toolchain --dest /opt/rust
           CIBW_ENVIRONMENT_PASS_LINUX: FLAC_VERSION FLAC_SHA256
-          CIBW_ENVIRONMENT_LINUX: PKG_CONFIG_PATH=/opt/libflac/lib/pkgconfig
+          CIBW_ENVIRONMENT_LINUX: PKG_CONFIG_PATH=/opt/libflac/lib/pkgconfig PATH=/opt/rust/bin:$PATH
           # The wheel's minimum macOS (#142); libFLAC above and scarletbook's library target it or older.
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
           # The Windows DLL is static: nothing to bundle.
@@ -241,6 +252,9 @@ jobs:
 
       # build, the backend and pysacd's dependencies all come from the hash-locked
       # requirements-dev.txt (#14), so nothing unhashed is downloaded (#70).
+      - name: Rust, pinned in dsd2pcm.lock (builds the dsd2pcm library)
+        run: python3.13 -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust" >> "$GITHUB_PATH"
+
       - name: Install the build tools
         run: |
           python3.13 -m venv /tmp/sdist-check

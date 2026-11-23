@@ -49,6 +49,10 @@ jobs:
           queries: security-extended
           config-file: ./.github/codeql/codeql-config.yml
 
+      - name: Rust, pinned in dsd2pcm.lock (builds the dsd2pcm library)
+        if: matrix.build-mode == 'manual'
+        run: python3 -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust" >> "$GITHUB_PATH"
+
       - name: Build the C engine
         if: matrix.build-mode == 'manual'
         run: |

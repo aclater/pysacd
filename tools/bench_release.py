@@ -49,6 +49,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+DEADLINE = 75          # _one's rc when the lock came too late to finish before --deadline
 SLOWER_FAIL = 1.05
 MEMORY_FAIL = 1.10
 
@@ -183,6 +184,9 @@ def cpu_name() -> str:
 def one(args: argparse.Namespace) -> None:
     """Time one row with one tree; print a JSON line. Runs inside the lock and the memory scope."""
     cpus = _parse_list(args.cpus)
+    if time.time() > args.not_after:                # the lock came too late for the deadline
+        print(json.dumps({"rc": DEADLINE}))
+        return
     with open(args.disc, "rb") as f:                # into the page cache, as a user's second run
         while f.read(1 << 24):
             pass
@@ -306,14 +310,16 @@ def run(args: argparse.Namespace) -> int:
             for pos, name in enumerate(order(list(trees), rnd)):
                 if (str(rnd + 1), row.key, name) in done:
                     continue
-                guess = last.get((row.key, name), 0.0) * 1.2
+                same_row = [v for (k, _), v in last.items() if k == row.key]
+                guess = last.get((row.key, name), max(same_row, default=0.0)) * 1.2
                 if time.time() + guess > deadline:
                     print(f"deadline: stopping before round {rnd + 1} {row.key} {name}", file=sys.stderr)
                     return finish(out, args, ran, failed, started)
                 cmd = [sys.executable, str(Path(__file__).resolve()), "_one", "--tree", trees[name],
                        "--python", tree_python(Path(trees[name])), "--disc", discs[row.disc],
                        "--cpus", cpus_for[row.cpus], "--extract", shlex.join(row.args), "--tmp", args.tmp,
-                       "--log", str(out / "stderr.log")]
+                       "--log", str(out / "stderr.log"),
+                       "--not-after", str(min(deadline - guess, 1e12))]
                 if lock:
                     wait_for_yield(args.yield_to)
                     cmd = ["benchlock", "run", f"{args.label}-r{rnd + 1}-{row.key}-{name}", "--", *cmd]
@@ -327,6 +333,9 @@ def run(args: argparse.Namespace) -> int:
                 r = subprocess.run(cmd, capture_output=True, text=True, check=False)
                 lines = [ln for ln in r.stdout.splitlines() if ln.startswith("{")]
                 res = json.loads(lines[-1]) if lines else {"rc": r.returncode or -1}
+                if res["rc"] == DEADLINE:
+                    print(f"deadline: the lock for round {rnd + 1} {row.key} {name} came too late", file=sys.stderr)
+                    return finish(out, args, ran, failed, started)
                 rec = {"round": rnd + 1, "row": row.key, "tree": name, "position": pos + 1,
                        "cpus": cpus_for[row.cpus], "started": when, **res}
                 new = not csv_path.exists()
@@ -468,6 +477,7 @@ def main() -> None:
     o = sub.add_parser("_one")
     for name in ("--tree", "--python", "--disc", "--cpus", "--extract", "--tmp", "--log"):
         o.add_argument(name, required=True)
+    o.add_argument("--not-after", type=float, default=float("inf"))
     args = ap.parse_args()
     if args.cmd == "setup":
         setup(args)

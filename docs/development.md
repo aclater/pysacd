@@ -570,7 +570,8 @@ installed console scripts, and checks that the engine has the pinned scarletbook
 (version and commit) linked in. Building from the sdist downloads that release, as `make` does. Runtime SIMD dispatch needs glibc, so musllinux wheels
 use the plain filters.
 
-To release:
+To release, run the [release test plan](release-test-plan.md) and record it in the release issue.
+Its steps include:
 
 1. **Compare with `sacd_extract` on real discs,** which CI can't, before the version bump: pysacd's
    version is in its output (DSDIFF comment, cue, XML, `-P`, tags), so two trees compare equal only

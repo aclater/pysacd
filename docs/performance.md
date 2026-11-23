@@ -517,4 +517,26 @@ and pysacd keeps it, by decision (docs/sacd_extract.md). Everything else is unch
 - **The kept block** was planned after this comparison. No run on the five discs reaches it: such a
   file would have differed from 0.5.4 in `dsf-nopad-tracks`, `dsf-nopad-gap` or `dsf-nopad-concat`,
   and none did. The generated-disc tests cover it against `sacd_extract`.
-- **Timings** by release have not been measured for this change yet.
+
+0.7.0 makes no measurable difference to speed. On an Intel Core i9-13900H (kernel 7.3.4), under
+`benchlock`, five threads at most, as for 0.6.2. Trees alternated: pysacd 0.4.3 (scarletbook 0.5.7),
+0.5.2 (0.5.9), 0.5.4 (0.6.2) and this change (0.7.0). Median of 5 runs, range in brackets. The image
+was in the page cache, output went to `/dev/shm`, start-up time is included, and the engine was built
+with `make`. Runs were pinned with `taskset`: `-c 0` for one thread, `-c 0,2,4,6,8` for five.
+
+| Wall s | 0.4.3 (0.5.7) | 0.5.2 (0.5.9) | 0.5.4 (0.6.2) | this change (0.7.0) | vs 0.5.4 | vs 0.4.3 |
+|---|---|---|---|---|---|---|
+| DST stereo (`-2 -s`) to DSF, 1 thread | 86.32 (86.03-86.43) | 85.21 (85.19-85.25) | 84.38 (84.36-84.41) | 84.19 (84.16-84.21) | -0.2 % | -2.5 % |
+| DST stereo to DSF, 5 threads | 21.23 (21.19-21.26) | 21.14 (21.12-21.18) | 20.90 (20.86-20.91) | 20.89 (20.88-20.92) | -0.0 % | -1.6 % |
+| DST 6-channel (`-m -s`) to DSF, 5 threads | 53.02 (53.00-53.18) | 51.14 (51.03-51.27) | 51.90 (51.81-52.04) | 51.88 (51.84-51.92) | -0.0 % | -2.1 % |
+| DST 6-channel to DSF, 1 thread, track 1 | 17.23 (17.20-17.25) | 16.48 (16.47-16.49) | 16.83 (16.79-16.86) | 16.79 (16.78-16.83) | -0.3 % | -2.5 % |
+
+- Nothing differs from 0.5.4 by more than 0.3 %. Only the stereo one-thread row is outside the
+  spread of the runs (0.2 %, ranges not overlapping).
+- **6-channel since scarletbook 0.6.0:** this change is still 1.5 % (five threads) and 1.9 % (one
+  thread) slower than 0.5.2, with ranges that do not overlap, as in the 0.6.2 table.
+- **Comparable with the 0.6.2 table:** same machine, rows, pinning and discs. The 0.4.3 and 0.5.2
+  medians agree with it to within 0.5 %.
+- **Thermal throttling** was read around every run (cpu0's package count and the core counts of the
+  pinned CPUs). None changed in any run. Every run exited 0, and each row wrote the same number of
+  bytes in every tree.

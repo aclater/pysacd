@@ -83,8 +83,11 @@ The [documentation index](docs/README.md) lists every document and its sections.
 ## Licence and credits
 
 pysacd is free software under the [GNU General Public License](COPYING), version 2 or (at your
-option) any later version. Its DSD-to-PCM filter, `csrc/dsp.c` and `csrc/dsp.h`, is
-MIT OR Apache-2.0 ([licences](licenses/README.md)).
+option) any later version ([licences](licenses/README.md)).
+
+- [dsd2pcm](https://github.com/aclater/dsd2pcm-rs) (MIT OR Apache-2.0, used under MIT) converts DSD
+  to PCM with its `pysacd` filter, the filter pysacd contributed; it is linked into the engine with
+  the Rust standard library.
 
 - [scarletbook-rs](https://github.com/aclater/scarletbook-rs) (MIT OR Apache-2.0, used under MIT)
   reads the images, decodes DST and lays out DSF and DSDIFF files; it is linked into the engine
@@ -95,7 +98,7 @@ MIT OR Apache-2.0 ([licences](licenses/README.md)).
   musllinux wheel carries GCC's `libgcc_s` (GPL-3.0-or-later with the GCC Runtime Library
   Exception). [mutagen](https://github.com/quodlibet/mutagen) (GPL-2.0-or-later) writes tags.
 - The first DSD-to-PCM stage uses Sebastian Gesemann's byte-wise lookup-table technique
-  (BSD-3-Clause).
+  (BSD-3-Clause), credited by dsd2pcm.
 - [sacd-ripper](https://github.com/sacd-ripper/sacd-ripper): `sacd_extract`'s behaviour, which
   `pysacd-extract` reproduces, used only as a compiled binary. pysacd speaks the PS3 SACD Ripper
   homebrew's network protocol.

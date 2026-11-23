@@ -71,12 +71,14 @@ Every document about pysacd, grouped by what it is for. Start with the [README](
   - [scarletbook-rs 0.6.1](performance.md#scarletbook-rs-061)
   - [scarletbook-rs 0.6.2](performance.md#scarletbook-rs-062)
   - [scarletbook-rs 0.7.0](performance.md#scarletbook-rs-070)
+  - [dsd2pcm for PCM (preliminary)](performance.md#dsd2pcm-for-pcm-preliminary)
 
 ## Internals
 
 - **[Development](development.md)**: building, tests, CI, testing without a PS3, releases.
   - [Building](development.md#building)
   - [The scarletbook library](development.md#the-scarletbook-library)
+  - [The dsd2pcm library](development.md#the-dsd2pcm-library)
   - [Tests](development.md#tests)
   - [CI](development.md#ci)
   - [Testing without a PS3](development.md#testing-without-a-ps3)

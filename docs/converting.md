@@ -101,13 +101,14 @@ How it works:
 
   An ISO copy (`-I`) is written first, in one sequential pass, and the audio then read from
   that copy, so a PS3 is read only once. Even a single long DST track uses every core.
-- **PCM (FLAC/WAV):** a three-stage linear-phase FIR (2.8224 MHz → 352.8 →
-  176.4 → 88.2 kHz) with a stopband of about 105 dB and TPDF dither. The
-  default gain is 0 dB, which puts SACD's 0 dB reference at −6 dBFS, so
-  nothing clips; use `--gain-db 6` if you want louder files. Each batch is
-  filtered with two frames of context on either side and trimmed by the exact
-  filter delay. Track joins are therefore sample-exact (gapless), and the
-  output doesn't depend on the thread count.
+- **PCM (FLAC/WAV):** [dsd2pcm](https://github.com/aclater/dsd2pcm-rs)'s `pysacd` filter, a
+  three-stage linear-phase FIR (2.8224 MHz → 352.8 → 176.4 → 88.2 kHz) with a stopband of about
+  105 dB and TPDF dither. The default gain is 0 dB, which puts SACD's 0 dB reference at −6 dBFS, so
+  nothing clips; use `--gain-db 6` if you want louder files (−120 to +24 dB). Each batch is
+  converted with the frames on either side as context, and the dither is seeded per frame from its
+  position in the area. Track joins are therefore sample-exact (gapless), and a sample's bytes
+  depend only on the disc and its position: not on the CPU, the thread count or where a track or
+  range starts.
 - **Tags:** the MusicBrainz release is found by barcode (the SACD's album
   catalogue number) or by catalogue number. The match is checked against track
   count, durations and ISRCs, and picks the medium for the right layer:

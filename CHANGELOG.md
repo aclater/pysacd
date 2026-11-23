@@ -10,6 +10,19 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Changed
+- PCM conversion now uses [dsd2pcm](https://github.com/aclater/dsd2pcm-rs) (its `pysacd` filter, the
+  same three-stage filter and TPDF dither), linked into the engine in place of pysacd's own copy.
+  PCM bytes change once. Against 0.5.5's wheels, on generated test discs, half the samples are
+  unchanged and none moves by more than 5 LSB (24-bit) at 88.2 kHz or 4 LSB at 176.4 kHz
+  ([performance](docs/performance.md#dsd2pcm-for-pcm-preliminary)). Output is now the same on every
+  CPU (0.5.5's builds differed by up to 7 LSB from one CPU to another) and does not depend on the
+  thread count or on where a track or range starts: the dither is seeded per frame from its
+  position in the area. DSF, DSDIFF and ISO output is unchanged.
+- Building from source needs Rust (cargo 1.83 or later): the build compiles dsd2pcm from the
+  release source pinned in `dsd2pcm.lock`, checked by its SHA-256 ([development](docs/development.md#the-dsd2pcm-library)).
+- A PCM gain outside -120 to +24 dB is refused.
+
 ## [0.5.5] - 2026-11-23
 
 `pysacd-extract -z` now splits a gapless chain where `sacd_extract` does, so those files are

@@ -1,10 +1,13 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
 # DSD-to-PCM test vectors
 
-Produces DSD-to-PCM reference vectors from pysacd's filter (`csrc/dsp.c`) and
-its 24-bit quantiser (copied from `process_batch()` in `csrc/sacdconv.c`).
+Produces DSD-to-PCM reference vectors from pysacd's former filter (`dsp.c`, `dsp.h`, in
+`csrc/` up to 0.5.5) and its 24-bit quantiser (copied from `process_batch()` in
+`csrc/sacdconv.c` as it was then). Since 0.6.0 the engine converts with dsd2pcm's `pysacd`
+filter, a port of these files; the `ref` build with `frame` seeding is the reference its bytes
+are checked against (`tests/test_pcm_dsd2pcm.py`, and dsd2pcm's own golden hashes).
 
-Licence: MIT OR Apache-2.0 for this directory (as `csrc/dsp.c`).
+Licence: MIT OR Apache-2.0 for this directory (as `dsp.c`).
 
 ## Build and run
 
@@ -16,9 +19,13 @@ Or step by step:
     python3 tools/pcm_vectors/make_inputs.py inputs
     build/pcm_vectors_ref inputs/music_2ch.dsd 2 88200 0 0 out.f32 out.i32
 
-Arguments: `in.dsd channels rate gain_db tc0 out.f32 out.i32`. `run_all.sh` uses
-gain 0 dB and tc0 0 for channels {2, 6} x rates {88200, 176400} x inputs
-{silence, ff, music}.
+Arguments: `in.dsd channels rate gain_db tc0 out.f32 out.i32 [batch|frame]`.
+`batch` (the default) seeds the dither once from `tc0`, as pysacd up to 0.5 did for each batch;
+`frame` seeds it at the start of each frame from `tc0` plus the frame's index, as dsd2pcm's
+`pysacd` filter and pysacd since 0.6.0 do. With `frame`, the `ref` build reproduces the 50
+integer hashes in dsd2pcm-rs's `crates/dsd2pcm/tests/pysacd-ref/sha256.txt` from that
+directory's inputs. `run_all.sh` uses gain 0 dB, tc0 0 and `batch` for channels {2, 6} x
+rates {88200, 176400} x inputs {silence, ff, music}.
 
 ## Formats
 

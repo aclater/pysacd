@@ -13,7 +13,8 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
   that writes DSF, DSDIFF, WAV and FLAC in one pass per area. It links the
   scarletbook-rs C library statically (pinned in `scarletbook.lock`), which
   reads the images and decodes DST (#85; docs/development.md, "The scarletbook
-  library");
+  library"), and dsd2pcm's, built from the source pinned in `dsd2pcm.lock`, which converts
+  DSD to PCM (docs/development.md, "The dsd2pcm library");
 - `pysacd-extract`, a drop-in replacement for `sacd_extract`;
 - `pysacd convert`, with MusicBrainz tagging and configurable naming.
 
@@ -25,9 +26,11 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
   issues. Don't read it. DST decoding is scarletbook-rs's; pysacd has no DST
   decoder of its own since 0.3.0 (its test-only encoder stays).
   - `sacd_extract` may be used only as a compiled black box for comparisons.
-- **Licences.** All code is GPL-2.0-or-later, except the DSD-to-PCM filter
-  (`csrc/dsp.c`, `csrc/dsp.h`), which is MIT OR Apache-2.0 (licenses/README.md).
-  Add no dependency or copied code under incompatible terms. scarletbook-rs (MIT OR Apache-2.0) is used under MIT.
+- **Licences.** All code is GPL-2.0-or-later, except `tools/pcm_vectors/` (pysacd's former
+  DSD-to-PCM filter, kept for reference vectors), which is MIT OR Apache-2.0 (licenses/README.md).
+  Add no dependency or copied code under incompatible terms. scarletbook-rs and dsd2pcm (MIT OR
+  Apache-2.0) are used under MIT; tools/dsd2pcm.py refuses a crate without an MIT-compatible
+  licence alternative.
 - **scarletbook-rs is a separate clean room.** Use it only as its signed
   release binaries and documented C interface. Never send it code: anything
   pysacd needs from it goes to the owner as a requirement, to be filed there.

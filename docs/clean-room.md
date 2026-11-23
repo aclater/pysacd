@@ -64,21 +64,26 @@ established by running the binary and comparing output.
 | Part | Licence |
 |---|---|
 | pysacd as a whole | GPL-2.0-or-later |
-| its DSD-to-PCM filter, `csrc/dsp.c` and `csrc/dsp.h` | MIT OR Apache-2.0 (since 0.5.5) |
+| its former DSD-to-PCM filter, now `tools/pcm_vectors/` (reference vectors only) | MIT OR Apache-2.0 (since 0.5.5) |
+| [dsd2pcm](https://github.com/aclater/dsd2pcm-rs), linked into the engine for PCM conversion | MIT OR Apache-2.0, used under MIT |
 | [scarletbook-rs](https://github.com/aclater/scarletbook-rs), linked into the engine | MIT OR Apache-2.0, used under MIT |
-| the Rust standard library and crates inside it (rayon, crossbeam, either, thiserror) | MIT OR Apache-2.0, used under MIT |
+| the Rust standard library and crates inside scarletbook-rs (rayon, crossbeam, either, thiserror) | MIT OR Apache-2.0, used under MIT |
 | libFLAC, linked into the wheels for FLAC output (optional in a build from source) | BSD-3-Clause |
 | libogg, inside the Windows wheel's libFLAC | BSD-3-Clause |
 | GCC's `libgcc_s`, in the musllinux wheel | GPL-3.0-or-later with the GCC Runtime Library Exception |
 | mutagen, a dependency, for tagging | GPL-2.0-or-later |
 
-New code is GPL-2.0-or-later, and since 0.3.0 all of pysacd is, apart from the DSD-to-PCM
+New code is GPL-2.0-or-later, and since 0.3.0 all of pysacd is, apart from its former DSD-to-PCM
 filter: its copyright holder relicensed `csrc/dsp.c` and `csrc/dsp.h` as MIT OR Apache-2.0 in
-0.5.5 ([licences](../licenses/README.md)). `csrc/compat.h`, which was
+0.5.5 ([licences](../licenses/README.md)), and dsd2pcm took it over as its `pysacd` filter. Since
+0.6.0 the engine links dsd2pcm instead, and the two files live on in `tools/pcm_vectors/`, which
+makes the reference vectors dsd2pcm is checked against. `csrc/compat.h`, which was
 LGPL-2.1-or-later so that the FFmpeg-derived decoder could include it, is GPL-2.0-or-later now
 that the decoder is gone. No dependency or copied code under incompatible terms may be added.
-pysacd takes scarletbook-rs and its Rust dependencies under MIT, since Apache-2.0 isn't
-compatible with GPL-2.0; their notices are in `licenses/` and in every wheel.
+pysacd takes scarletbook-rs, dsd2pcm and their Rust dependencies under MIT, since Apache-2.0 isn't
+compatible with GPL-2.0; their notices are in `licenses/` and in every wheel. dsd2pcm is built
+without its FLAC reader, whose dependency (claxon) is Apache-2.0 only, and `tools/dsd2pcm.py`
+refuses any crate without an MIT-compatible licence alternative.
 
 ## Acknowledgements
 
@@ -90,9 +95,10 @@ compatible with GPL-2.0; their notices are in `licenses/` and in every wheel.
   Its compiled binary was the oracle throughout.
 - **FFmpeg's DST decoder** by Peter Ross (LGPL-2.1+), the base of pysacd's DST decoder up to
   0.2.
+- **[dsd2pcm](https://github.com/aclater/dsd2pcm-rs)**: pysacd's PCM conversion since 0.6.0.
 - **Sebastian Gesemann's dsd2pcm** (BSD-3-Clause), credited for the technique
-  in `csrc/dsp.c`'s first DSD-to-PCM stage: lookup tables of filter partial
-  sums indexed by whole DSD bytes.
+  in the first DSD-to-PCM stage of pysacd's former filter and of dsd2pcm's `pysacd` filter:
+  lookup tables of filter partial sums indexed by whole DSD bytes.
 - **[MusicBrainz](https://musicbrainz.org)** and the **Cover Art Archive**,
   for tags and covers.
 - The **PS3 SACD Ripper** homebrew, whose protocol pysacd speaks.

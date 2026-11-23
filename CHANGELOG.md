@@ -9,6 +9,23 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+## 0.5.5 (2026-11-23)
+
+`pysacd-extract -z` now splits a gapless chain where `sacd_extract` does, so those files are
+byte-identical to its files, and the engine links scarletbook 0.7.0. Other output and speed are
+unchanged (release checks, below; [performance](docs/performance.md#scarletbook-rs-070)). The
+DSD-to-PCM filter's source files are now MIT OR Apache-2.0.
+
+Release checks for 0.5.5 (docs/development.md, "To release"): `tools/extract_compare.py
+--require-sacd-extract` against `sacd_extract` built from CI's pinned commit, 0.5.4 against this
+release's source at #195's first reviewed commit, on the same five real discs as for 0.5.3, in all
+37 modes (185 runs, 1,386 files). One run differs between the trees: `-z` with pauses on the plain
+stereo hybrid disc, whose two files differed from `sacd_extract`'s by the block carry before and are
+now identical to them. Of `sacd_extract`'s 698 files, 436 are identical and 262 differ only where
+docs/sacd_extract.md says so; none differs otherwise. The later change that keeps the block
+`sacd_extract` drops at the end of a chain (#182) reaches none of these discs' runs, and the tests
+on generated discs cover it.
+
 ### Changed
 - The engine links scarletbook 0.7.0 (was 0.6.2): the same C ABI. It moves `-z` chain boundaries
   (below) and changes no other output

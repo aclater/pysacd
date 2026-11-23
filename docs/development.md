@@ -383,6 +383,20 @@ input goes, minimised, into `fuzz/regressions/fuzz_engine/` along with its fix.
 `tests/test_fuzz_engine.py` builds the same harness without libFuzzer (`make fuzz-replay`, any C
 compiler) and replays those inputs and the seeds, under ASan and UBSan, and under TSan, in CI.
 
+**Platforms CI doesn't test.** CI builds the aarch64 wheel and runs only its smoke test, and runs
+the suite on macOS and Windows from a source build, never from the published wheels. The scripts
+in `tools/platform_run/` cover that at release time (#214), each from a Linux machine; the header
+of each says what it needs:
+
+- `aarch64-container.sh wheel VERSION` runs the tag's suite against the published manylinux
+  aarch64 wheel, and `aarch64-container.sh source [REF]` the suite on a source build, in a Fedora
+  44 arm64 container: natively on an aarch64 machine, or under qemu-user emulation (untimed);
+- `windows-vm.sh VERSION` and `macos-vm.sh VERSION` install the published wheel in a throwaway
+  copy of a Windows 11 VM (libvirt) or a macOS arm64 VM (tart), and run the tag's suite against
+  it, `tests/wheel_smoke.py` and the README's Quick start on a generated disc.
+
+The VM scripts install python.org's Python, checked by SHA-256, when the VM has no 3.10 or later.
+
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
 ## CI

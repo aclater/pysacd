@@ -23,8 +23,8 @@ gain 0 dB and tc0 0 for channels {2, 6} x rates {88200, 176400} x inputs
 ## Formats
 
 - Input `*.dsd`: raw SACD frames, 4704 bytes per channel per frame,
-  channel-interleaved by whole per-channel blocks, MSB-first, as
-  `dsd2pcm_frame` takes them. `make_inputs.py` writes 20 frames each of
+  byte-interleaved (byte `i` of channel `c` at `i * channels + c`), MSB-first,
+  as `dsd2pcm_frame` reads them. `make_inputs.py` writes 20 frames each of
   silence (0x69), all 0xFF, and a synthetic "music" signal (1 kHz + 7 kHz
   sines through a first-order 1-bit delta-sigma modulator at DSD64; not a
   recording).
@@ -56,10 +56,10 @@ float output.
     664e0bebcb9c43af1e181cb3ffcc65e930789188f9ffd4e308059c38458ee7e7  ff_2ch_88200.i32
     991e2ed7baded73e72a98ac826b1fc4ea71b127f64bb89ccbd1d8015de3779f1  ff_6ch_176400.i32
     f76b54c48bcfb626962d61c3444cdfddf9a14f9179792523e5c45a2b39359bdf  ff_6ch_88200.i32
-    2572fe056718bb1d4c9a24dae403882f5ad80c3c755b719bcc5784ef11db9f31  music_2ch_176400.i32
-    2bad5fe4f8dc1ebf48231f1a8c2cbd93fc2c163c68e7b1b0cb85573869d31940  music_2ch_88200.i32
-    26edbf5b4ba3865ad58088831a2be93f11eea4d080761581a7f418a189f47628  music_6ch_176400.i32
-    dd8af40a1c4eec6b2c251683922658f62f3615b7f495b38763ad4503b2e9a242  music_6ch_88200.i32
+    9721467bd65c9be139c54ab86d480c589857106f5186faae6646aa8e05a6ede7  music_2ch_176400.i32
+    91950a281c6d4521ed55510daa51dd6248b0cfc8e5516cd35eb3950b800e222f  music_2ch_88200.i32
+    aef7e5e9296baabd67236484153d04cd99df590299ea9d50bc8f9daabc2aa810  music_6ch_176400.i32
+    4242c4335e0d1b461f314bb4e1b5013e1e292616f8311628408314ef0bb5fc65  music_6ch_88200.i32
     1cec0ebe5630f70fed2703645cbc534ef526bae152cf4c8ce4cd8b998d93d39d  silence_2ch_176400.i32
     e51c398d168df53c17197ccfc22d513117350363eb5d4a9e33c370cdafdc061e  silence_2ch_88200.i32
     be1a942057cef6720691e41020186495c2f5c968fe7221859ae8473cfeb0be8a  silence_6ch_176400.i32

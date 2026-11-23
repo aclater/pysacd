@@ -97,7 +97,8 @@ int main(int argc, char **argv)
             if (pos < skip)
                 continue;
             for (int c = 0; c < ch; c++) {
-                float dith = ((float)xorshift(&rng) - (float)xorshift(&rng)) * lsb;
+                uint32_t r1 = xorshift(&rng), r2 = xorshift(&rng); /* fixed order, as in sacdconv.c */
+                float dith = ((float)r1 - (float)r2) * lsb;
                 long v = lrintf(dsp->out[c][s] * scale + dith);
                 put_le32(fq, (uint32_t)(int32_t)(v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v));
             }

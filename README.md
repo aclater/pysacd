@@ -105,13 +105,6 @@ Why it exists, in the author's words: [author's note](docs/author.md).
   discs 2.5× (all threads; measured on 0.3.0's scarletbook engine). See
   [performance](docs/performance.md#through-scarletbook-rs-030).
 
-## Why you shouldn't use pysacd (yet)
-
-- **Never tested against a real PS3.** The network client is verified against
-  a protocol simulator and `sacd_extract`, but not against hardware (#10).
-- **Optical drives:** like `sacd_extract`, it can't read a PC drive's SACD
-  layer. You need an ISO or a PS3.
-
 ## Documentation
 
 The [documentation index](docs/README.md) lists every document and its sections.
@@ -130,7 +123,7 @@ The [documentation index](docs/README.md) lists every document and its sections.
 | [Development](docs/development.md) | building, tests, CI; contributor rules in [CLAUDE.md](CLAUDE.md) |
 | [Contributing](CONTRIBUTING.md) | reporting bugs, the pull-request process, project rules |
 | [Changelog](CHANGELOG.md) | what changed in each release |
-| [Releases by major version](https://github.com/aclater/sacd/blob/main/RELEASES.md) | what each minor version brought, across the SACD projects |
+| [Releases by major version](https://github.com/aclater/dsd-toolbox/blob/main/RELEASES.md) | what each minor version brought, across the DSD Toolbox projects |
 
 ## License
 

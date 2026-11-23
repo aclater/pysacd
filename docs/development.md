@@ -122,6 +122,7 @@ Its `read_sectors()` reads 2048-byte logical sectors whatever the image's sector
   library can't read a path, it is opened in Python instead, so a missing or unreadable file
   raises the `OSError` it always did. A failing read is an `OSError`, an image scarletbook
   rejects a `SACDError`.
+- **Library TOC check.** `tools/library_toc_check.py DIR [--compare OLD.tsv]` reads the TOC of every `.iso` under DIR, one image at a time with a timeout, and writes a TSV (no paths) and a summary; release test plan step 2 (#213).
 - **Checked against the old reader.** `tools/toc_compare.py --old OLD_SRC --new NEW_SRC IMAGE...`
   compares the repr of every Disc, Area and Track and the bytes of `toc --json` between two
   source trees, with `--mutations N` on mutated copies too. The one-call reader matched the

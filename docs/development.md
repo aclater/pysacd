@@ -464,7 +464,19 @@ Every pull request runs:
   [Codecov](https://codecov.io/gh/aclater/pysacd) for the README badge, authenticated
   with the job's GitHub OIDC token (no stored secret); pull requests from forks skip
   the upload, and a failed upload fails CI only on `master`.
-- **A link check** (lychee) of README.md and `docs/` when they change.
+- **A link check** (lychee) of README.md and `docs/` when they change, `#fragment` links to
+  headings included; weekly too.
+- **The README's Quick start, as written** (`tools/readme_quickstart.py`, the `quickstart`
+  workflow; weekly too): an sdist and a wheel from it, built as the release's sdist job does, then
+  the README's own `sh` blocks under "Quick start" run in order in one shell, as a normal user, on
+  a generated DST stereo `album.iso`. The one change: `pip install pysacd` installs the built
+  wheel instead of PyPI's. Each `literal` in a step's "*You should see*" must appear in its
+  output (an extension such as `.dsf` must be the files of the new folder). Editing the Quick start
+  changes what runs; to see the steps, `python3 -I tools/readme_quickstart.py print`.
+- **Version claims** in README.md and `docs/` (`tools/check_doc_versions.py`, the `docs match the
+  versions` job): "Python 3.N or later", the badge, "Python 3.N to 3.M" and "The pin is X.Y.Z"
+  must match `requires-python`, the classifiers and `scarletbook.lock`. A reworded sentence fails
+  until the pattern there follows it.
 - **An AI review** from a second model, using PR-Agent. It needs the
   `GEMINI_API_KEY` repository secret. **This sends each PR's title,
   description and diff to Google's Gemini API**, a third party. The repository is

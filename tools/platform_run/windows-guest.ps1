@@ -42,7 +42,8 @@ $env:PYSACD_TEST_REPORT = "$PSScriptRoot\report.json"
 $desel = 'tests/test_check_release_tag.py::CheckReleaseTag::test_this_repository_agrees_with_itself'
 $out = python -m pytest -q -p no:cacheprovider "--junitxml=$PSScriptRoot\junit.xml" -rfEs --deselect $desel tests 2>&1
 if ($LASTEXITCODE) { $fails++ }
-$out | Select-Object -Last 80 | ForEach-Object { "$_" }
+# everything but the skip lines (report.json lists the skips with their reasons)
+$out | ForEach-Object { "$_" } | Where-Object { $_ -notmatch '^SKIPPED ' }
 Remove-Item Env:PYSACD_TEST_REPORT
 Pop-Location
 "== tests/wheel_smoke.py"

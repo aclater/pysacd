@@ -87,7 +87,7 @@ python -m pip list 2>/dev/null | grep -i pysacd
 fails=0
 echo "== the $VERSION suite against the installed wheel"
 (cd tree && PYSACD_TEST_REPORT=../report.json python -m pytest -q -p no:cacheprovider \
-    --junitxml=../junit.xml -rfEs --deselect tests/test_check_release_tag.py::CheckReleaseTag::test_this_repository_agrees_with_itself tests 2>&1 | tail -n 80) || fails=$((fails + 1))
+    --junitxml=../junit.xml -rfEs --deselect tests/test_check_release_tag.py::CheckReleaseTag::test_this_repository_agrees_with_itself tests 2>&1 | grep -v '^SKIPPED ') || fails=$((fails + 1))
 echo "== tests/wheel_smoke.py"
 (cd work && python -I ../tree/tests/wheel_smoke.py) || fails=$((fails + 1))
 echo "== README Quick start"

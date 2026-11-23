@@ -348,7 +348,7 @@ the TOC reader and the `ps3sim` handler. It runs 300 cases per target by default
 `PYSACD_FUZZ=5000` runs more. A failure names the seed that reproduces it.
 
 The engine has a libFuzzer harness in `fuzz/`, `fuzz_engine`. It needs clang, and builds in
-FLAC output when libFLAC is found. An input is a disc image, which the harness opens with
+FLAC output when libFLAC is found. An input is an SACD image, which the harness opens with
 scarletbook before running `sacdconv_area_run()` on each area, in one of two ways:
 - a plain image: the whole area, capped at 600 frames, to DSF, DSDIFF, FLAC and, for a DST area,
   DSDIFF with the stored frames, in one pass; then the last track to WAV, through a sector source

@@ -10,8 +10,8 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/aclater/pysacd/badge)](https://scorecard.dev/viewer/?uri=github.com/aclater/pysacd)
 [![PyPI](https://img.shields.io/pypi/v/pysacd)](https://pypi.org/project/pysacd/)
 
-pysacd reads SACD (Scarletbook) disc images, and PS3 SACD Ripper servers, straight from Python,
-and writes DSF, DSDIFF, WAV and FLAC in one pass with its multithreaded C engine. It also ships
+pysacd reads SACD (Scarletbook) images, and PS3 SACD Ripper servers, straight from Python,
+and writes DSF, DFF (DSDIFF), WAV and FLAC in one pass with its multithreaded C engine. It also ships
 `pysacd-extract`, a clean-room, drop-in replacement for `sacd_extract`: the same options, the
 same file names, the same bytes.
 
@@ -31,7 +31,7 @@ Blu-ray player running SACD Ripper ([reading from a PS3](docs/ps3-protocol.md#re
 
 ## Quick start
 
-You need Python 3.10 or later on Linux or macOS, and an SACD disc image. The commands use
+You need Python 3.10 or later on Linux or macOS, and an SACD image. The commands use
 `album.iso` in the current folder; type your image's name instead.
 
 1. Install pysacd in a virtual environment of its own:

@@ -6,7 +6,7 @@
 
 # Security
 
-pysacd reads disc images and metadata that may come from anyone. This document records what
+pysacd reads SACD images and metadata that may come from anyone. This document records what
 pysacd treats as untrusted, and how each kind of input is validated. The realistic adversaries
 are corrupt images, buggy players and odd disc text, so the defence is input validation.
 Containment against a hypothetical exploit (sandboxing, attackers on the LAN, hostile local
@@ -68,7 +68,7 @@ writer and printer. Extend it when you add one.
 
 | Actor | Controls | Must not be able to |
 |---|---|---|
-| Whoever made a disc image | every byte of the image, including TOC text and audio frames | write outside the output directory, run commands, drive the terminal, crash or hang pysacd, corrupt another disc's output |
+| Whoever made an SACD image | every byte of the image, including TOC text and audio frames | write outside the output directory, run commands, drive the terminal, crash or hang pysacd, corrupt another disc's output |
 | A PS3 server, or anything on port 2002 | everything the client receives | the above, plus make the client allocate, write or wait without bound |
 | A client of `ps3sim` | requests | read anything but the served ISO, crash the server, or hold it for ever |
 | An on-path attacker | the unauthenticated, unencrypted PS3 traffic | anything a hostile server couldn't. Reading or altering sectors is possible and accepted (trusted networks only) |
@@ -85,7 +85,7 @@ in particular names that differ only in case on a case-insensitive filesystem
 
 ## Hostile images
 
-A disc image decides every length, count and position pysacd reads. Each one is bounded before
+An SACD image decides every length, count and position pysacd reads. Each one is bounded before
 use, and a bad value makes pysacd skip the structure with a warning (TOC) or replace the frame
 (audio), never read, allocate or write without limit. The limits sit far outside anything a real
 disc uses: a survey of 110 discs found area TOCs of 5 to 41 sectors, at most 0.6 frames per

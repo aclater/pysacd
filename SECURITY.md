@@ -27,7 +27,7 @@ Please include:
 - the pysacd version (`pysacd --version` shows it and how the engine was built), your OS
   and Python version;
 - the command line or API call;
-- the input that triggers it: a disc image, a network capture, or best of all a
+- the input that triggers it: an SACD image, a network capture, or best of all a
   `tests/sacdgen.py` script that builds a hostile image. Don't send copyrighted disc
   contents; a synthetic image or the few sectors involved are enough;
 - what happens (crash, hang, memory or disk use, a file written where it shouldn't be) and,
@@ -53,7 +53,7 @@ crediting you unless you'd rather not be named.
 
 pysacd treats these as attacker-controlled:
 
-- disc images and their TOC text;
+- SACD images and their TOC text;
 - everything a PS3 (SACD Ripper) server sends;
 - MusicBrainz and cover-art responses.
 

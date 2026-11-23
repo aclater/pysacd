@@ -11,7 +11,7 @@ disc.
 ```
 pysacd-extract -2 -s -i 192.0.2.10:2002 --log-file pysacd.log
 pysacd --log-file pysacd.log convert disc.iso
-PYSACD_LOG=debug:/tmp/pysacd.log pysacd-extract ...    # for GUIs and scripts
+PYSACD_LOG=debug:/tmp/pysacd.log pysacd-extract -2 -s -i album.iso   # for GUIs and scripts
 ```
 
 A log file records everything at `debug` level unless `--log-level` says

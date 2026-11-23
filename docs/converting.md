@@ -14,12 +14,12 @@ pysacd convert -f flac -r 176400 -a both -o ~/Music disc.iso
 pysacd convert -n disc.iso                # dry run: show the MB match and paths
 ```
 
-Requirements:
+A wheel from PyPI has everything `convert` needs: the engine, libFLAC and mutagen (for tags).
+The `make` line above is for a source checkout, which needs:
 
-- gcc and make
+- gcc and make;
 - `flac-devel`, for FLAC output only. `make` builds without it, and DSF and
   WAV still work.
-- `mutagen`, for tagging.
 
 The defaults are set in `~/.config/pysacd/config.toml` (`$XDG_CONFIG_HOME/pysacd/config.toml`
 when `XDG_CONFIG_HOME` is an absolute path; an empty or relative one is ignored), using the same
@@ -92,7 +92,7 @@ How it works:
     threads decodes DST ahead of it, and groups them into batches of 32 frames. Where a DSDIFF
     output keeps the DST frames as stored (edit master, `-p` without `-c`), scarletbook hands
     out each position's stored frame next to its decoded audio, from the same read.
-  - **Worker pool** (`-j` or `--threads`, defaulting to the CPU count; one worker when plain
+  - **Worker pool** (`-j` for `pysacd convert`, `--threads` for `pysacd-extract`; the CPU count by default; one worker when plain
     DSD goes to DSF or DSDIFF, where there is nothing to decode or filter, #137): converts DSD
     to PCM and lays out DSF blocks. scarletbook's decoding pool has one thread fewer, so the reader,
     which works on every frame, has a CPU of its own (#94).

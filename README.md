@@ -55,7 +55,8 @@ You need Python 3.10 or later on Linux or macOS, and an SACD disc image. The com
    ```
 
    *You should see* `Exporting DSF output in folder:` and the album's title, then a folder of that
-   name with one `.dsf` file per track.
+   name with one `.dsf` file per track. On a disc that also has a multichannel area, the tracks are
+   in a `Stereo` folder inside it, as `sacd_extract` writes them.
 
 Next: FLAC and WAV with your own naming and MusicBrainz tags in [converting](docs/converting.md),
 Windows and building from source in the [quick start guide](docs/quickstart.md), and the Python

@@ -1,4 +1,9 @@
-/* DSD64 -> PCM conversion (see dsp.c). */
+/* DSD64 -> PCM conversion (see dsp.c).
+ *
+ * See dsp.c and licenses/README.md for the licence.
+ *
+ * SPDX-License-Identifier: MIT OR Apache-2.0
+ */
 #ifndef PYSACD_DSP_H
 #define PYSACD_DSP_H
 

@@ -440,6 +440,9 @@ def report_dir(out: Path) -> int:
         notes.append(f"CPU temperature after runs: {min(temps):.0f} to {max(temps):.0f} °C"
                      + (f"; throttle counters changed in {sum(1 for t in thr if t)} runs." if thr else
                         "; this CPU has no throttle counters."))
+    profiles = sorted({d["platform_profile"] for d in data if d.get("platform_profile")})
+    if profiles:
+        notes.append(f"Platform profile: {', '.join(profiles)}.")
     text = "\n".join(lines + [""] + mlines + notes) + "\n"
     (out / "table.md").write_text(text)
     print(text)

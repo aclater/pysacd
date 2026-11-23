@@ -233,9 +233,11 @@ both hold (see [performance](performance.md)).
     bytes left over cross a pause left out (without `-b`) into the next track's file, but not a
     track that isn't selected: there `sacd_extract` drops them (#182). Where a file's bytes would
     end exactly on a block, the plan ends it one block earlier and that block opens the next file
-    (scarletbook 0.7.0, scarletbook-rs#359); a file that ends a chain before the area's last track
-    drops the block, as `sacd_extract` does (#182). A carry of a whole block across a pause takes a
-    lead range of 128 frames.
+    (scarletbook 0.7.0, scarletbook-rs#359). Where no file takes that block (a chain that stops
+    before the area's last track), `sacd_extract` drops it and its audio is in no file; pysacd plans
+    that chain without the extra frame, so the file keeps the block (by decision, #182; a
+    documented difference). A carry of a whole block across a pause takes a lead range of 128
+    frames.
   - DSDIFF: `DIIN` with `DIAR` and `DITI`, their pad byte counted; `DSTI` offsets at the frame
     data; `LSCO` 65 535 for an unspecified layout; local chunks in `sacd_extract`'s order. A
     track file has no `EMID` (option 33) and takes `DIAR` and `DITI` from its track, or else
@@ -279,7 +281,9 @@ multichannel edited master). The new tree must give the same files, names and by
 `sacd_extract` file by file wherever the old one did. Both trees need the same `__version__`,
 which pysacd writes into its output. Each run also reports, per file format, how
 both trees compare with `sacd_extract`: identical, identical apart from the documented exceptions,
-or different with where the files part. `--require-sacd-extract` makes any unexplained difference
+(in a `-z` run also a DSF file that `sacd_extract` wrote without the last block pysacd keeps, #182:
+the tool checks that only that block and the header's sizes differ), or different with where the
+files part. `--require-sacd-extract` makes any unexplained difference
 a failure, in every mode, `-b` and `-z` included, along with a `sacd_extract` that failed or wrote
 nothing. `--no-values` reports counts only.
 

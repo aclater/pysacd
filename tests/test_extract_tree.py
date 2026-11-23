@@ -242,24 +242,19 @@ class TrackStopFlagsAgainstSacdExtract(unittest.TestCase):
 # with -s and these arguments, measured with the real sacd_extract on a Fedora 44 machine (plain DSD
 # and DST, 2 and 6 channels, with and without -b give the same counts): where a file's audio, with
 # the bytes carried into it, ends on a whole block, sacd_extract ends it one block earlier and moves
-# the block to the next file of the chain, or drops it. scarletbook 0.7.0's chain plan does the same,
-# so pysacd's files are sacd_extract's, byte for byte (before 0.7.0 pysacd kept the block).
+# the block to the next file of the chain, or drops it. scarletbook 0.7.0's chain plan moves it the
+# same way, so these files are sacd_extract's, byte for byte (before 0.7.0 pysacd kept the block).
 CHAIN_CASES = [
     # name, frames per track, pauses, arguments, sizes (sacd_extract's and pysacd's)
     ("first track", [128, 50, 60], [], ["-z"], [598016, 237568, 286720]),
     ("two in a row", [128, 128, 60], [], ["-z"], [598016, 602112, 286720]),
     ("middle track", [50, 78, 60], [], ["-z"], [233472, 364544, 286720]),
-    ("last of the chain", [50, 78, 60], [], ["-z", "-t", "1,2"], [233472, 364544]),
-    ("one track", [128, 50, 60], [], ["-z", "-t", "1"], [598016]),
-    ("before a track not selected", [128, 50, 60], [], ["-z", "-t", "1,3"], [598016, 282624]),
     ("after a track not selected", [50, 50, 128, 60], [], ["-z", "-t", "1,3,4"], [233472, 598016, 286720]),
     ("before a pause left out", [128, 50, 60], [0, 10, 0], ["-z"], [598016, 188416, 286720]),
     ("with -b", [128, 50, 60], [], ["-z", "-b"], [598016, 237568, 286720]),
-    ("concatenation", [64, 64, 60], [], ["-z", "-k", "-t", "1,2"], [598016]),
     ("area ends on a block", [50, 78], [], ["-z"], [233472, 368640]),
     ("first track of 256 frames", [256, 50, 60], [], ["-z"], [1200128, 237568, 286720]),
     ("a block carried across two pauses", [128, 128, 60], [0, 10, 10], ["-z"], [598016, 557056, 237568]),
-    ("one track before the area's last", [50, 128, 60], [], ["-z", "-t", "2"], [598016]),
     ("the area's last track alone", [50, 128], [], ["-z", "-t", "2"], [602112]),
     ("with -e", [128, 50, 60], [], ["-z", "-e"], [598016, 237568, 286720]),
     # no file on a block: unchanged by 0.7.0
@@ -268,13 +263,26 @@ CHAIN_CASES = [
     ("concatenation not on a block", [50, 50, 60], [], ["-z", "-k", "-t", "1,2"], [466944]),
 ]
 
-# The one known -z difference left (docs/sacd_extract.md): a -k concatenation that holds the area's
+# Where a chain stops before the area's end and its last file ends on a block, sacd_extract drops
+# that block, so its audio is in no file; pysacd keeps it, by decision (#182, docs/sacd_extract.md).
+# Every other byte is the same, and tools/extract_compare.py counts such a file as documented.
+# name, frames per track, pauses, arguments, sacd_extract's sizes, pysacd's
+KEPT_BLOCK_CASES = [
+    ("last of the chain", [50, 78, 60], [], ["-z", "-t", "1,2"], [233472, 364544], [233472, 368640]),
+    ("one track", [128, 50, 60], [], ["-z", "-t", "1"], [598016], [602112]),
+    ("before a track not selected", [128, 50, 60], [], ["-z", "-t", "1,3"], [598016, 282624], [602112, 282624]),
+    ("concatenation", [64, 64, 60], [], ["-z", "-k", "-t", "1,2"], [598016], [602112]),
+    ("one track before the area's last", [50, 128, 60], [], ["-z", "-t", "2"], [598016], [602112]),
+    # a -k concatenation to the area's end, on a block: sacd_extract drops the block there too
+    ("concatenation to the area's end, on a block", [50, 78], [], ["-z", "-k", "-t", "1,2"], [598016], [602112]),
+]
+
+# The other known -z difference (docs/sacd_extract.md): a -k concatenation that holds the area's
 # last track. sacd_extract writes it unpadded, and drops a whole block where it ends on one;
 # scarletbook pads it, as it pads the area's last file, and never shortens it.
 # name, frames per track, pauses, arguments, sacd_extract's sizes, pysacd's
 AREA_END_CASES = [
     ("concatenation to the area's end", [50, 50, 60], [], ["-z", "-k", "-t", "2,3"], [516096], [520192]),
-    ("concatenation to the area's end, on a block", [50, 78], [], ["-z", "-k", "-t", "1,2"], [598016], [602112]),
 ]
 
 
@@ -319,7 +327,7 @@ class ChainBoundary(unittest.TestCase):
         from pysacd import extract
         with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
             root = Path(tmp)
-            for name, frames, pauses, args, *_theirs, ours in CHAIN_CASES + AREA_END_CASES:
+            for name, frames, pauses, args, *_theirs, ours in CHAIN_CASES + KEPT_BLOCK_CASES + AREA_END_CASES:
                 with self.subTest(name):
                     iso = chain_iso(root / "c.iso", frames, pauses)
                     out = root / "py"
@@ -338,7 +346,8 @@ class ChainBoundaryAgainstSacdExtract(unittest.TestCase):
     """CHAIN_CASES against the real sacd_extract: its sizes as measured, and pysacd's files
     byte-identical to its files; AREA_END_CASES left as a difference."""
 
-    def check(self, iso: Path, root: Path, args: list[str], theirs: list[int], ours: list[int]) -> None:
+    def check(self, iso: Path, root: Path, args: list[str], theirs: list[int], ours: list[int],
+              kept: bool = False) -> None:
         env = {**os.environ, "PYTHONPATH": SRC}
         py = extract_dsf(PYSACD, iso, root / "py", args, env)
         for _ in range(3):      # sacd_extract now and then leaves out a file (see Trees)
@@ -347,11 +356,14 @@ class ChainBoundaryAgainstSacdExtract(unittest.TestCase):
                 break
         self.assertEqual(dsf_sizes(se), theirs)
         self.assertEqual(dsf_sizes(py), ours)
-        vs = cmp.against_sacd_extract(py, se, cmp.tree(py), cmp.tree(se), False)["dsf"]
-        if theirs != ours:      # padded at the area's end
+        vs = cmp.against_sacd_extract(py, se, cmp.tree(py), cmp.tree(se), False, True)["dsf"]
+        moved = sum(a != b for a, b in zip(theirs, ours, strict=True))
+        if kept:                # sacd_extract drops the block: documented
+            self.assertEqual((vs["documented"], vs["identical"], vs["different"]), (moved, len(theirs) - moved, []))
+        elif theirs != ours:    # padded at the area's end
             self.assertEqual((vs["identical"], len(vs["different"])), (0, 1))
-            return
-        self.assertEqual((vs["identical"], vs["different"]), (len(theirs), []))
+        else:
+            self.assertEqual((vs["identical"], vs["different"]), (len(theirs), []))
 
     def test_stereo_plain_dsd(self):
         with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
@@ -359,6 +371,9 @@ class ChainBoundaryAgainstSacdExtract(unittest.TestCase):
             for name, frames, pauses, args, *sizes in CHAIN_CASES + AREA_END_CASES:
                 with self.subTest(name):
                     self.check(chain_iso(root / "c.iso", frames, pauses), root, args, sizes[0], sizes[-1])
+            for name, frames, pauses, args, theirs, ours in KEPT_BLOCK_CASES:
+                with self.subTest(name):
+                    self.check(chain_iso(root / "c.iso", frames, pauses), root, args, theirs, ours, kept=True)
 
     def test_multichannel_dst(self):
         with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
@@ -369,10 +384,15 @@ class ChainBoundaryAgainstSacdExtract(unittest.TestCase):
                 with self.subTest(name):
                     iso = chain_iso(root / "c.iso", frames, pauses, channels=6, dst_area=True)
                     self.check(iso, root, ["-m", *args], sizes, sizes)
+            for name, frames, pauses, args, theirs, ours in KEPT_BLOCK_CASES[1:2]:
+                with self.subTest(name):
+                    iso = chain_iso(root / "c.iso", frames, pauses, channels=6, dst_area=True)
+                    self.check(iso, root, ["-m", *args], theirs, ours, kept=True)
 
     def test_compare_tool_modes(self):
         """The -z modes of the release comparison, and -b, on a disc with a first track of 128
-        frames: every file is sacd_extract's."""
+        frames: every file is sacd_extract's, but for the block pysacd keeps before a track not
+        selected (-t 1,3), which is documented."""
         with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
             iso = chain_iso(Path(tmp) / "c.iso", [128, 50, 60, 40], [])
             for mode in ("dsf-nopad", "dsf-nopad-pauses", "dsf-nopad-tracks", "dsf-nopad-gap",
@@ -381,7 +401,8 @@ class ChainBoundaryAgainstSacdExtract(unittest.TestCase):
                     r = Trees.compare(iso, mode)
                     self.assertEqual(cmp.sacd_extract_problems(r), [])
                     vs = r["vs_sacd_extract"]["new"]["dsf"]
-                    self.assertEqual(vs["identical"], vs["theirs"])
+                    self.assertEqual(vs["documented"], 1 if mode == "dsf-nopad-gap" else 0)
+                    self.assertEqual(vs["identical"] + vs["documented"], vs["theirs"])
 
 
 class HarnessDetects(unittest.TestCase):
@@ -493,23 +514,53 @@ class HarnessDetects(unittest.TestCase):
 
     def test_block_carry_is_a_difference(self):
         """sacd_extract's -z block carry (#182) was once excused in -z runs; since scarletbook
-        0.7.0 pysacd writes it too, so files that differ by it are different, in every mode."""
+        0.7.0 pysacd writes it too. The file that gives up the block looks like a dropped block
+        (documented), but the next one, which starts with it, is different, so the run fails."""
         rnd = random.Random(182)
         row = lambda: rnd.randbytes(2 * 4096)
         a, b = [row() for _ in range(3)], [row() for _ in range(2)]
         ours = [self.dsf(a, 3 * 4096), self.dsf(b, 2 * 4096)]
         theirs = [self.dsf(a[:2], 2 * 4096), self.dsf([a[2], *b], 3 * 4096)]
         with tempfile.TemporaryDirectory(prefix="pysacd-carry") as tmp:
+            se, py = self.trees(Path(tmp), ours, theirs)
+            vs = cmp.against_sacd_extract(py, se, cmp.tree(py), cmp.tree(se), False, True)["dsf"]
+            self.assertEqual((vs["identical"], vs["documented"], len(vs["different"])), (0, 1, 1))
+
+    def test_dropped_block_is_narrow(self):
+        """The documented -z difference (#182): sacd_extract's file is pysacd's without its last
+        row of blocks, header sizes and sample count smaller by as much, and nothing else."""
+        rnd = random.Random(182)
+        rows = [rnd.randbytes(2 * 4096) for _ in range(3)]
+        ours = self.dsf(rows, 3 * 4096)
+        with tempfile.TemporaryDirectory(prefix="pysacd-drop") as tmp:
             root = Path(tmp)
-            se, py = root / "se", root / "py"
-            for d, files in ((se, theirs), (py, ours)):
-                d.mkdir()
-                for i, data in enumerate(files):
-                    (d / f"0{i + 1} - T.dsf").write_bytes(data)
-            vs = cmp.against_sacd_extract(py, se, cmp.tree(py), cmp.tree(se), False)["dsf"]
-            self.assertEqual((vs["identical"], len(vs["different"])), (0, 2))
-            vs = cmp.against_sacd_extract(se, se, cmp.tree(se), cmp.tree(se), False)["dsf"]
-            self.assertEqual((vs["identical"], vs["different"]), (2, []))
+
+            def vs(theirs: bytes, nopad: bool = True) -> dict:
+                se, py = self.trees(root / str(len(list(root.iterdir()))), [ours], [theirs])
+                return cmp.against_sacd_extract(py, se, cmp.tree(py), cmp.tree(se), False, nopad)["dsf"]
+
+            self.assertEqual(vs(self.dsf(rows[:2], 2 * 4096))["documented"], 1)
+            self.assertEqual(len(vs(self.dsf(rows[:2], 2 * 4096), nopad=False)["different"]), 1)  # only -z
+            self.assertEqual(len(vs(self.dsf(rows[:2], 2 * 4096 - 1))["different"]), 1)           # the count
+            self.assertEqual(len(vs(self.dsf(rows[:2], 2 * 4096, b"ID3taG"))["different"]), 1)     # the tag
+            self.assertEqual(len(vs(self.dsf(rows[:1], 4096))["different"]), 1)                   # two rows
+            self.assertEqual(len(vs(self.dsf([rows[0], rows[2]], 2 * 4096))["different"]), 1)      # a middle row
+            bad = bytearray(self.dsf(rows[:2], 2 * 4096))
+            bad[92 + 100] ^= 1
+            self.assertEqual(len(vs(bytes(bad))["different"]), 1)                                 # a byte of audio
+            padded = self.dsf(rows, 3 * 4096 - 1000)                # pysacd's file padded: never this
+            se, py = self.trees(root / "padded", [padded], [self.dsf(rows[:2], 2 * 4096 - 1000)])
+            vs_p = cmp.against_sacd_extract(py, se, cmp.tree(py), cmp.tree(se), False, True)["dsf"]
+            self.assertEqual(len(vs_p["different"]), 1)
+
+    @staticmethod
+    def trees(root: Path, ours: list[bytes], theirs: list[bytes]) -> tuple[Path, Path]:
+        se, py = root / "se", root / "py"
+        for d, files in ((se, theirs), (py, ours)):
+            d.mkdir(parents=True)
+            for i, data in enumerate(files):
+                (d / f"0{i + 1} - T.dsf").write_bytes(data)
+        return se, py
 
 
 if __name__ == "__main__":

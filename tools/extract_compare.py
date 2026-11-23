@@ -18,8 +18,10 @@ SHA-256) plus its standard output for -P.
 Each run also says, per file format, how the output compares with sacd_extract's, for both
 trees ("vs_sacd_extract"): identical; identical apart from the documented exceptions
 (docs/sacd_extract.md: the DSDIFF creating-machine comment, text pad bytes and TrackStop marker
-flags, the version lines of cue and XML); or different, with what differs. Anything in
-"different" is a difference nobody has explained, in every mode, -b and -z included.
+flags, the version lines of cue and XML; in a -z run, a DSF file at the end of a chain that stops
+before the area's end where sacd_extract drops a whole last block and pysacd keeps it, #182); or
+different, with what differs. Anything in "different" is a difference nobody has explained, in
+every mode, -b and -z included.
 
 --no-values reports counts and mode names only (no file names), for private discs. Exit
 status 1 on any difference between the trees, or, with --require-sacd-extract, on any
@@ -271,9 +273,69 @@ def documented_only(ours: Path, theirs: Path) -> bool:
     return all(f == 0 for f in _dff_stop_flags(ours)) and all(f < 16 for f in _dff_stop_flags(theirs))
 
 
+# A DSF file: the DSD chunk (28 bytes: total size at 12, metadata pointer at 20), the fmt chunk (52
+# bytes: channels at 52, sample count at 64), the data chunk's header (12 bytes: size at 84), then
+# the audio in rows of a 4096-byte block per channel, and the metadata (an ID3 tag) after it.
+_DSF_AUDIO = 92
+_DSF_BLOCK = 4096
+
+
+def _dsf_fields(f) -> dict | None:
+    """The fields of a DSF file that move with its audio's length; None if it isn't one."""
+    head = f.read(_DSF_AUDIO)
+    if len(head) < _DSF_AUDIO or head[:4] != b"DSD " or head[28:32] != b"fmt " or head[80:84] != b"data":
+        return None
+    ch = int.from_bytes(head[52:56], "little")
+    data = int.from_bytes(head[84:92], "little") - 12
+    if not 1 <= ch <= 6 or data < 0 or data % (ch * _DSF_BLOCK):
+        return None
+    return {"head": head, "ch": ch, "audio": data, "samples": int.from_bytes(head[64:72], "little"),
+            "total": int.from_bytes(head[12:20], "little"), "meta": int.from_bytes(head[20:28], "little")}
+
+
+def _same_range(a, b, a_off: int, b_off: int, n: int) -> bool:
+    a.seek(a_off)
+    b.seek(b_off)
+    while n > 0:
+        k = min(n, 1 << 20)
+        x, y = a.read(k), b.read(k)
+        if x != y or len(x) < k:
+            return False
+        n -= k
+    return True
+
+
+def dropped_block(ours: Path, theirs: Path) -> bool:
+    """True if `theirs` is `ours` without its last row of blocks (4096 bytes per channel), with
+    the sizes and the sample count in the header smaller by as much, and every other byte the
+    same: sacd_extract's -z file at the end of a chain that stops before the area's end, where
+    pysacd keeps the block by decision (docs/sacd_extract.md, #182). Only an unpadded file."""
+    with open(ours, "rb") as a, open(theirs, "rb") as b:
+        fa, fb = _dsf_fields(a), _dsf_fields(b)
+        if fa is None or fb is None or fa["ch"] != fb["ch"]:
+            return False
+        row = fa["ch"] * _DSF_BLOCK
+        if fa["audio"] < 2 * row or fa["samples"] != fa["audio"] // fa["ch"] * 8:
+            return False
+        want = bytearray(fa["head"])
+        want[12:20] = (fa["total"] - row).to_bytes(8, "little")
+        if fa["meta"]:
+            want[20:28] = (fa["meta"] - row).to_bytes(8, "little")
+        want[64:72] = (fa["samples"] - row // fa["ch"] * 8).to_bytes(8, "little")
+        want[84:92] = (fa["audio"] + 12 - row).to_bytes(8, "little")
+        if fb["head"] != want:
+            return False
+        size_a, size_b = a.seek(0, 2), b.seek(0, 2)
+        tail = size_a - _DSF_AUDIO - fa["audio"]
+        return (size_b == size_a - row and
+                _same_range(a, b, _DSF_AUDIO, _DSF_AUDIO, fa["audio"] - row) and
+                _same_range(a, b, _DSF_AUDIO + fa["audio"], _DSF_AUDIO + fa["audio"] - row, tail))
+
+
 def against_sacd_extract(root: Path, se_root: Path, files: dict[str, str], se_files: dict[str, str],
-                         hide_names: bool) -> dict:
-    """Per file format, how a tree compares with sacd_extract's."""
+                         hide_names: bool, nopad: bool = False) -> dict:
+    """Per file format, how a tree compares with sacd_extract's. With `nopad` (a -z run), a DSF
+    file that sacd_extract wrote without its last block (dropped_block) counts as documented."""
     out: dict[str, dict] = {}
 
     def entry(name: str) -> dict:
@@ -287,7 +349,8 @@ def against_sacd_extract(root: Path, se_root: Path, files: dict[str, str], se_fi
             e["different"].append({"file": "" if hide_names else name, "why": "only sacd_extract wrote it"})
         elif files[name] == h:
             e["identical"] += 1
-        elif documented_only(root / name, se_root / name):
+        elif documented_only(root / name, se_root / name) or (
+                nopad and name.lower().endswith(".dsf") and dropped_block(root / name, se_root / name)):
             e["documented"] += 1
         else:
             d = _first_difference(root / name, se_root / name)
@@ -352,7 +415,7 @@ def compare(image: Path, mode: str, srcs: dict[str, str], sacd_extract: str | No
             res["old"] = res["new"]
         if res["sacd_extract"] is not None:
             vs = {w: against_sacd_extract(work / w, work / "sacd_extract", res[w]["files"], res["sacd_extract"]["files"],
-                                          hide_names) for w in (("new",) if same else ("old", "new"))}
+                                          hide_names, "-z" in args) for w in (("new",) if same else ("old", "new"))}
             if same:
                 vs["old"] = vs["new"]
     finally:

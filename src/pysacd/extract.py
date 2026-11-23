@@ -491,7 +491,9 @@ def _dsf_chains(img, area: Area, groups, o: Opts) -> tuple[dict, dict]:
     one block earlier, and that block opens the next file (scarletbook 0.7.0, #182). A `-k`
     concatenation is one range. A chain that stops before the area's last track gets one more
     range, never written, so its last file ends unpadded too and drops the bytes it would carry,
-    a whole block included, as sacd_extract does. sacd_extract also carries the bytes left over
+    as sacd_extract does; but where those bytes are a whole block, sacd_extract drops audio, and
+    pysacd keeps the block in the file instead (by decision, #182; docs/sacd_extract.md).
+    sacd_extract also carries the bytes left over
     into the next track's file when that track's range doesn't start where the previous one
     ended (a pause left out without -b), but not past a track that isn't selected: there they
     are dropped, and the next file starts at its own range. A chain can't hold a carry across a
@@ -521,13 +523,22 @@ def _dsf_chains(img, area: Area, groups, o: Opts) -> tuple[dict, dict]:
             # 128 gives each
             lead = next((k for k in range(1, 129) if (k * sbwriter.FRAME_BYTES_PER_CH - 1) % 4096 + 1 == carry), 0)
             bounds.insert(0, bounds[0] - lead)
-        if last < ntracks - 1 and end < playtime:
+        unwritten = last < ntracks - 1 and end < playtime
+        if unwritten:
             bounds.append(end + 1)      # not the area's last track: its file ends unpadded too
+        # no file takes this chain's left-over bytes: the last track, or one before a track not selected
+        dropped = nxt is None or firsts[idx + 1] != last + 1
         log.debug("DSF chain of %d files: frames %s", len(run), bounds)
         try:
             if bounds[0] < 0 or (carry and not lead):
                 raise sbwriter.OutputError(f"DSF chain: can't carry {carry} bytes into frame {bounds[0] + lead}")
             files = sbwriter.dsf_chain(img, area, bounds)[1 if lead else 0:]
+            if unwritten and dropped and files[len(run) - 1].tail_bytes == 4096:
+                # The last file would end one block early and that block would be dropped:
+                # sacd_extract does so, and the audio is then in no file. pysacd keeps the block,
+                # by decision (#182): without the unwritten range the chain ends on that block.
+                bounds.pop()
+                files = sbwriter.dsf_chain(img, area, bounds)[1 if lead else 0:]
             if lead and files[0].head_bytes != carry:
                 raise sbwriter.OutputError(f"DSF chain: carries {files[0].head_bytes} bytes, not {carry}")
             for k, f in zip(run, files, strict=False):

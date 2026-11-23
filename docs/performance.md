@@ -504,7 +504,8 @@ the page cache, output went to `/dev/shm`, start-up time is included, and the en
 0.7.0 keeps the C ABI and changes one thing pysacd writes: in a `-z` chain, a file whose bytes would
 end exactly on a DSF block now ends one block earlier, and that block opens the next file
 (scarletbook-rs#359). pysacd's `-z` files are now byte-identical to `sacd_extract`'s at those
-boundaries (#182). Everything else is unchanged.
+boundaries (#182), except where no file follows to take the block: there `sacd_extract` drops it,
+and pysacd keeps it, by decision (docs/sacd_extract.md). Everything else is unchanged.
 
 - **Output** against 0.5.4 (scarletbook 0.6.2), in every mode of `tools/extract_compare.py
   --require-sacd-extract` on the same five discs as for 0.6.2: 185 runs, 1,386 files. The trees
@@ -513,4 +514,7 @@ boundaries (#182). Everything else is unchanged.
 - **Against `sacd_extract`:** of its 698 files, 436 are identical and 262 differ only where
   docs/sacd_extract.md says so. None is known or unexplained. In one run (`iso+dsf`, stereo DST disc)
   `sacd_extract` wrote only the first 1 MiB of the ISO; that mode, run three more times, matched each time.
+- **The kept block** was planned after this comparison. No run on the five discs reaches it: such a
+  file would have differed from 0.5.4 in `dsf-nopad-tracks`, `dsf-nopad-gap` or `dsf-nopad-concat`,
+  and none did. The generated-disc tests cover it against `sacd_extract`.
 - **Timings** by release have not been measured for this change yet.

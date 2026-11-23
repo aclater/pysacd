@@ -52,6 +52,7 @@ Start with the [README](../README.md) for what pysacd is. Then:
   - [scarletbook-rs 0.5.9](performance.md#scarletbook-rs-059)
   - [scarletbook-rs 0.6.1](performance.md#scarletbook-rs-061)
   - [scarletbook-rs 0.6.2](performance.md#scarletbook-rs-062)
+  - [scarletbook-rs 0.7.0](performance.md#scarletbook-rs-070)
 - **[Security](security.md)**: hostile discs, servers and text.
   - [Hostile text](security.md#hostile-text)
   - [Threat model](security.md#threat-model)

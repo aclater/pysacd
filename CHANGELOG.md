@@ -10,8 +10,23 @@ behaviour, and a patch version only adds or fixes. Each release on
 ## Unreleased
 
 ### Changed
+- The engine links scarletbook 0.7.0 (was 0.6.2): the same C ABI. It moves `-z` chain boundaries
+  (below) and changes no other output
+  ([performance](docs/performance.md#scarletbook-rs-070)) (#194).
+- `tools/extract_compare.py` no longer excuses `sacd_extract`'s `-z` block carry ("known"): a file
+  that differs by it is a difference like any other. A `-z` file that `sacd_extract` wrote without
+  the last block pysacd keeps counts as documented.
 - The DSD-to-PCM filter (`csrc/dsp.c`, `csrc/dsp.h`) is now MIT OR Apache-2.0, relicensed by its
   copyright holder; the rest of pysacd stays GPL-2.0-or-later ([licences](licenses/README.md)).
+
+### Fixed
+- `pysacd-extract -z`: a file whose audio, with the bytes carried into it, ends exactly on a DSF
+  block (for example a first track of 128 frames) now ends one block earlier, and that block opens
+  the next file, as `sacd_extract` does. These files are now byte-identical to `sacd_extract`'s;
+  pysacd kept the block in the file before (#182). Where no file follows to take the block (a
+  chain that stops before the area's last track), `sacd_extract` drops it, losing that audio;
+  pysacd keeps it, by decision. That and a `-z -k` concatenation that holds the area's last track
+  stay documented differences (docs/sacd_extract.md).
 
 ## 0.5.4 (2026-11-23)
 

@@ -3,7 +3,9 @@
 #
 # make_payload VERSION DIR fills DIR with what a VM needs to test a published pysacd release:
 #   tree.tar   the repository at tag vVERSION without src/, so every test, and every subprocess
-#              the tests start, imports pysacd from the installed wheel, not from a checkout
+#              the tests start, imports pysacd from the installed wheel, not from a checkout;
+#              the one test that reads src/ (test_this_repository_agrees_with_itself, a check
+#              of the repository, not the platform) is deselected
 #   qs.tar     this checkout's README.md and tools/readme_quickstart.py (the README's Quick start
 #              as the release test plan runs it; tags up to 0.5.5 predate the tool)
 #   album.iso  the disc the Quick start reads, made by `readme_quickstart.py make-disc` in a

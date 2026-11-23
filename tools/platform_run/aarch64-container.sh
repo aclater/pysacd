@@ -77,17 +77,17 @@ if [ \"\$MODE\" = source ]; then
     pip -q install --require-hashes -r requirements-dev.txt
     pip -q install --no-deps --no-build-isolation -e .
     make && make test-tools
-    pp=src
+    pp=src; desel=
 else
     pip -q install --only-binary :all: pysacd==\$VERSION
     pip -q install --require-hashes -r requirements-test.txt
     make test-tools
-    pp=
+    pp=; desel=--deselect=tests/test_check_release_tag.py::CheckReleaseTag::test_this_repository_agrees_with_itself
 fi
 pip list 2>/dev/null | grep -i pysacd
 fails=0
 PYSACD_TEST_MEMORY_MB=4096 PYSACD_TEST_REPORT=report.json PYTHONPATH=\$pp \
-    python -m pytest -q -p no:cacheprovider --junitxml=junit.xml -rfEs tests || fails=\$((fails + 1))
+    python -m pytest -q -p no:cacheprovider --junitxml=junit.xml -rfEs \$desel tests || fails=\$((fails + 1))
 cp report.json junit.xml /out/ || true
 if [ \"\$MODE\" = source ]; then
     python3 -I tools/check_skips.py --job tests report.json || fails=\$((fails + 1))

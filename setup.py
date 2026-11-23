@@ -3,13 +3,18 @@
 The engine is a plain shared library loaded through ctypes, not a CPython
 extension module, so one wheel per platform serves every Python version
 (tag py3-none-<platform>). It is built with `make PORTABLE=1`: generic
-x86-64/aarch64 code, with the PCM filters' SIMD picked at load time.
+x86-64/aarch64 code (the PCM conversion picks its SIMD level at run time).
 Set PYSACD_NATIVE=1 to build for this machine's CPU instead (-march=native).
 
 The scarletbook-rs C library is linked into it statically (#85): tools/scarletbook.py
 downloads the release pinned in scarletbook.lock for the compiler's target and checks its
 SHA-256 first. SCARLETBOOK_DIR=DIR uses a library unpacked there instead, and
 PYSACD_SCARLETBOOK_CACHE=DIR keeps the downloaded archives for the next build.
+
+The dsd2pcm C library (PCM conversion) is linked in the same way: tools/dsd2pcm.py takes the
+release pinned in dsd2pcm.lock for the target, or builds it from the pinned source where the
+release has no archive (that needs Rust's cargo). DSD2PCM_DIR=DIR uses a library there instead,
+and PYSACD_DSD2PCM_CACHE=DIR keeps the downloads.
 """
 
 import os
@@ -49,10 +54,18 @@ class BuildEngine(build_py):
                 if fetched.returncode:
                     sys.exit("pysacd: fetching the scarletbook library failed (see above). Offline, set "
                              "SCARLETBOOK_DIR to an unpacked copy; see docs/development.md.")
+            d2p_dir = os.environ.get("DSD2PCM_DIR")
+            if not d2p_dir:
+                d2p_dir = (Path(tmp) / "dsd2pcm").as_posix()
+                fetched = subprocess.run([sys.executable, "-I", (ROOT / "tools" / "dsd2pcm.py").as_posix(),
+                                          "fetch", "--dest", d2p_dir], check=False)
+                if fetched.returncode:
+                    sys.exit("pysacd: fetching or building the dsd2pcm library failed (see above). Offline, set "
+                             "DSD2PCM_DIR to a built copy; see docs/development.md.")
             try:
                 # forward slashes: MSYS make on Windows mangles backslashes
                 subprocess.run(["make", "-C", ROOT.as_posix(), f"BUILD={Path(tmp).as_posix()}",
-                                f"LIB={(dest / LIB).as_posix()}", f"SCARLETBOOK_DIR={sb_dir}",
+                                f"LIB={(dest / LIB).as_posix()}", f"SCARLETBOOK_DIR={sb_dir}", f"DSD2PCM_DIR={d2p_dir}",
                                 *([] if native else ["PORTABLE=1"])], check=True)
             except FileNotFoundError:
                 sys.exit("pysacd: building from source needs `make` and a C compiler (gcc or clang; MinGW-w64 "

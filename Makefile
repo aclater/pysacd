@@ -1,5 +1,5 @@
 # Builds the native helper src/pysacd/_sacdconv.so (DSF/DSDIFF/WAV always, FLAC if libFLAC is found),
-# with the scarletbook-rs C library linked in statically (#85).
+# with the scarletbook-rs C library (#85) and the dsd2pcm C library linked in statically.
 #   make                 build, tuned for this CPU (-march=native)
 #   make PORTABLE=1      build for generic x86-64
 #   make HARDEN=0        without the hardening flags (sanitizer builds)
@@ -7,6 +7,8 @@
 #   make test-tools      also build the test-only DST encoder (build/dstenc.so)
 #   make SCARLETBOOK_DIR=DIR   use the scarletbook C library unpacked in DIR (include/, lib/,
 #                        native-static-libs.txt) instead of downloading the pinned release
+#   make DSD2PCM_DIR=DIR use the dsd2pcm C library in DIR (include/dsd2pcm.h, lib/libdsd2pcm.a)
+#                        instead of tools/dsd2pcm.py's (the pinned release, or built from its source)
 
 .DEFAULT_GOAL := all
 
@@ -30,6 +32,8 @@ OS_DEFS  := -D__USE_MINGW_ANSI_STDIO=1
 SB_WHOLE = -Wl,--whole-archive $(1) -Wl,--no-whole-archive
 SB_EXPORTS = $(BUILD)/exports.def -Wl,--gc-sections
 SB_EXPORTS_DEP = $(BUILD)/exports.def
+D2P_PRELINK = $(CC) -r -nostdlib -o $(1).tmp -Wl,--whole-archive $(2) -Wl,--no-whole-archive && \
+    $(OBJCOPY) --wildcard --keep-global-symbol='dsd2pcm_*' $(1).tmp $(1) && rm -f $(1).tmp
 else ifeq ($(UNAME_S),Darwin)
 # macOS: clang, a .dylib, and -mcpu=native on Apple silicon (#8)
 CC      ?= cc
@@ -40,6 +44,8 @@ SB_WHOLE = -Wl,-force_load,$(1)
 # export the engine's functions and scarletbook's C ABI only, not Rust's internals; drop the rest
 SB_EXPORTS := -Wl,-exported_symbols_list,csrc/exports.darwin -Wl,-dead_strip
 SB_EXPORTS_DEP := csrc/exports.darwin
+# ld -r turns the symbols it doesn't export into local ones (unless -keep_private_externs)
+D2P_PRELINK = $(CC) -r -nostdlib -o $(1) -Wl,-exported_symbol,'_dsd2pcm_*' -Wl,-force_load,$(2)
 else
 CC      ?= gcc
 LIBEXT  := so
@@ -49,10 +55,16 @@ SB_WHOLE = -Wl,--whole-archive $(1) -Wl,--no-whole-archive
 # export the engine's functions and scarletbook's C ABI only, not Rust's internals; drop the rest
 SB_EXPORTS := -Wl,--version-script=csrc/exports.map -Wl,--gc-sections
 SB_EXPORTS_DEP := csrc/exports.map
+# x86-64: the object is marked for CET shadow stacks, which Rust's toolchains don't do, so that the
+# engine keeps its mark (#94; tools/mark_shstk.py says why that is sound)
+D2P_PRELINK = $(CC) -r -nostdlib -o $(1).tmp -Wl,--whole-archive $(2) -Wl,--no-whole-archive && \
+    $(OBJCOPY) --remove-section=.group --wildcard --keep-global-symbol='dsd2pcm_*' $(1).tmp $(1) && rm -f $(1).tmp \
+    $(if $(filter x86_64,$(UNAME_M)),&& $(PYTHON) tools/mark_shstk.py --objcopy $(OBJCOPY) $(1))
 endif
+OBJCOPY ?= objcopy
 ifdef PORTABLE
-# generic x86-64, with the PCM filters picked at load time for the CPU (see csrc/dsp.c)
-ARCH    := -DSC_DISPATCH
+# generic x86-64 (the PCM conversion, dsd2pcm's, picks its SIMD level at run time)
+ARCH    := -DPYSACD_PORTABLE
 else
 ARCH    := $(NATIVE)
 endif
@@ -95,6 +107,8 @@ endif
 # the target $(CC) builds for. SCARLETBOOK_DIR=DIR (make's command line or the environment) uses
 # a library unpacked there instead, with the release archive's layout; nothing is downloaded.
 PYTHON ?= python3
+# BUILD and LIB can be overridden: the wheel build (setup.py) uses a private directory.
+BUILD ?= build
 ifeq ($(origin SCARLETBOOK_DIR),undefined)
 SCARLETBOOK_DIR := build/scarletbook
 SB_READY := $(SCARLETBOOK_DIR)/.pysacd-scarletbook
@@ -110,9 +124,30 @@ SB_LIBS = $(shell cat $(SCARLETBOOK_DIR)/native-static-libs.txt)
 SB_STRIP = $(if $(filter -g -g%,$(CFLAGS)),,-Wl,-S)
 override CFLAGS += -I$(SCARLETBOOK_DIR)/include
 
-SRC := $(addprefix csrc/,sacdconv.c dsp.c)
-# BUILD and LIB can be overridden: the wheel build (setup.py) uses a private directory.
-BUILD ?= build
+# The dsd2pcm C library (dsd2pcm.lock): its pysacd filter converts DSD to PCM. tools/dsd2pcm.py
+# downloads the pinned release's archive for the target $(CC) builds for, checked against its
+# SHA-256, or builds it from the pinned source where the release has none (that needs cargo).
+# DSD2PCM_DIR=DIR uses a library there instead. Two Rust static libraries can't be linked side by
+# side (each carries Rust's standard library), so dsd2pcm's is first linked into one object whose
+# only global symbols are dsd2pcm_* (D2P_PRELINK); scarletbook's runtime and dsd2pcm's then
+# never meet, and nothing of dsd2pcm is exported.
+ifeq ($(origin DSD2PCM_DIR),undefined)
+DSD2PCM_DIR := build/dsd2pcm
+D2P_READY := $(DSD2PCM_DIR)/.pysacd-dsd2pcm
+$(D2P_READY): dsd2pcm.lock tools/dsd2pcm.py tools/scarletbook.py
+	$(PYTHON) tools/dsd2pcm.py fetch --cc "$(CC)" --dest $(DSD2PCM_DIR)
+else
+D2P_READY := $(DSD2PCM_DIR)/include/dsd2pcm.h
+endif
+D2P_OBJ := $(BUILD)/dsd2pcm-prelinked.o
+override CFLAGS += -I$(DSD2PCM_DIR)/include
+
+$(D2P_OBJ): $(D2P_READY) tools/mark_shstk.py
+	@mkdir -p $(dir $@)
+	$(call D2P_PRELINK,$@,$(DSD2PCM_DIR)/lib/libdsd2pcm.a)
+
+SRC := $(addprefix csrc/,sacdconv.c)
+# LIB can be overridden: the wheel build (setup.py) uses a private directory (BUILD too, above).
 OBJ := $(patsubst csrc/%.c,$(BUILD)/%.o,$(SRC))
 LIB ?= src/pysacd/_sacdconv.$(LIBEXT)
 
@@ -121,8 +156,8 @@ ifeq ($(FLAC_LIBS),)
 	@echo "note: libFLAC not found; built without FLAC output (install flac-devel and 'make clean all')"
 endif
 
-$(LIB): $(OBJ) $(SB_READY) $(SB_EXPORTS_DEP)
-	$(CC) $(SHARED) $(CFLAGS) $(LDFLAGS) $(SB_EXPORTS) $(SB_STRIP) -o $@ $(OBJ) \
+$(LIB): $(OBJ) $(D2P_OBJ) $(SB_READY) $(SB_EXPORTS_DEP)
+	$(CC) $(SHARED) $(CFLAGS) $(LDFLAGS) $(SB_EXPORTS) $(SB_STRIP) -o $@ $(OBJ) $(D2P_OBJ) \
 	    $(call SB_WHOLE,$(SB_LIB)) $(SB_LIBS) $(LDLIBS)
 
 # Windows: every function declared in scarletbook.h and every sacdconv_* function defined in
@@ -133,7 +168,7 @@ $(BUILD)/exports.def: $(SB_READY) csrc/sacdconv.c
 	  sed -n 's/^[A-Za-z][A-Za-z0-9_ ]*[ *]\(sb_[a-z0-9_]*\)(.*/    \1/p' $(SCARLETBOOK_DIR)/include/scarletbook.h; \
 	  sed -n 's/^[A-Za-z][A-Za-z0-9_ ]*[ *]\(sacdconv_[a-z0-9_]*\)(.*/    \1/p' csrc/sacdconv.c; } > $@
 
-$(BUILD)/%.o: csrc/%.c $(wildcard csrc/*.h) $(SB_READY)
+$(BUILD)/%.o: csrc/%.c $(wildcard csrc/*.h) $(SB_READY) $(D2P_READY)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
@@ -155,32 +190,28 @@ build/dstenc.so: tests/native/dstenc.c
 FUZZ_CC    ?= clang
 FUZZ_SAN   ?= address,undefined
 FUZZ_FLAGS := -O1 -g -fno-omit-frame-pointer -fsanitize=fuzzer,$(FUZZ_SAN) \
-              $(if $(findstring undefined,$(FUZZ_SAN)),-fno-sanitize-recover=undefined) -std=gnu17 -pthread -DSC_DISPATCH \
+              $(if $(findstring undefined,$(FUZZ_SAN)),-fno-sanitize-recover=undefined) -std=gnu17 -pthread \
               -fsanitize-coverage-ignorelist=fuzz/coverage-ignore.txt
-FUZZ_SRC   := csrc/sacdconv.c csrc/dsp.c
+FUZZ_SRC   := csrc/sacdconv.c
 FUZZ_FLAC_CFLAGS := $(if $(FLAC_LIBS),-DHAVE_FLAC $(FLAC_DEFS) $(FLAC_CFLAGS))
 # The same harness without libFuzzer, for any compiler: tests/test_fuzz_engine.py replays the
 # regression inputs and seeds with it (REPLAY_FLAGS: the sanitizer CI jobs' flags), with FLAC output
 # when libFLAC is found
 REPLAY_FLAGS ?= -O1 -g
-# Not with TSan: built with gcc's TSan, the replay crashed at start-up, before the runtime could report
-# (#157). SC_DISPATCH makes gcc build ifunc resolvers (csrc/dsp.c), which an executable runs while it
-# is relocated, before the TSan runtime is initialised
-REPLAY_DISPATCH = $(if $(findstring sanitize=thread,$(REPLAY_FLAGS)),,-DSC_DISPATCH)
 
 fuzz: build/fuzz_engine
 
-build/fuzz_engine: fuzz/fuzz_engine.c fuzz/coverage-ignore.txt $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
+build/fuzz_engine: fuzz/fuzz_engine.c fuzz/coverage-ignore.txt $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY) $(D2P_OBJ)
 	@mkdir -p $(dir $@)
-	$(FUZZ_CC) $(FUZZ_FLAGS) $(FUZZ_FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ $< $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) \
+	$(FUZZ_CC) $(FUZZ_FLAGS) $(FUZZ_FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -I$(DSD2PCM_DIR)/include -o $@ $< $(FUZZ_SRC) $(D2P_OBJ) $(SB_LIB) $(SB_LIBS) \
 	    $(FLAC_LIBS) -lm
 
 fuzz-replay: build/replay_engine
 
-build/replay_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
+build/replay_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY) $(D2P_OBJ)
 	@mkdir -p $(dir $@)
-	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread $(REPLAY_DISPATCH) $(FUZZ_FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ \
-	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) $(FLAC_LIBS) -lm
+	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread $(FUZZ_FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -I$(DSD2PCM_DIR)/include -o $@ \
+	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(D2P_OBJ) $(SB_LIB) $(SB_LIBS) $(FLAC_LIBS) -lm
 
 # The engine's leak check (#122): the same harness with FLAC output added, and no interpreter
 # whose own allocations would hide the engine's. LEAK_FLAGS: -fsanitize=leak, or -g for valgrind.
@@ -188,15 +219,15 @@ LEAK_FLAGS ?= -O1 -g -fno-omit-frame-pointer
 
 leak-driver: build/leak_engine
 
-build/leak_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
+build/leak_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY) $(D2P_OBJ)
 	@test -n "$(FLAC_LIBS)" || { echo "the leak check covers FLAC output: install libFLAC's development files" >&2; exit 1; }
 	@mkdir -p $(dir $@)
-	$(CC) $(LEAK_FLAGS) -std=gnu17 -pthread -DSC_DISPATCH -DHAVE_FLAC $(FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ \
-	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) $(FLAC_LIBS) -lm
+	$(CC) $(LEAK_FLAGS) -std=gnu17 -pthread -DHAVE_FLAC $(FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -I$(DSD2PCM_DIR)/include -o $@ \
+	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(D2P_OBJ) $(SB_LIB) $(SB_LIBS) $(FLAC_LIBS) -lm
 
-# `make clean` keeps the downloaded scarletbook library (build/scarletbook); distclean removes it too.
+# `make clean` keeps the downloaded libraries (build/scarletbook, build/dsd2pcm); distclean removes them too.
 clean:
-	find build -mindepth 1 -maxdepth 1 ! -name scarletbook -exec rm -rf {} + 2>/dev/null || true
+	find build -mindepth 1 -maxdepth 1 ! -name scarletbook ! -name dsd2pcm -exec rm -rf {} + 2>/dev/null || true
 	rm -rf src/pysacd/_sacdconv.so src/pysacd/_sacdconv.dylib src/pysacd/_sacdconv.dll
 
 distclean: clean

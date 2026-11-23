@@ -1,0 +1,63 @@
+{
+  "comment": "dsd2pcm's C library, which pysacd links statically for PCM conversion (its pysacd filter). tools/dsd2pcm.py builds it from the release's source (SHA-256 below) without the FLAC reader, so that nothing outside Rust's standard library is linked, with the pinned Rust toolchain. 'use_archives': true would take the release's C library archives instead where it has one for the target (digests in 'assets'); off while they lack CET marks (0.1.1 also carries the Apache-2.0-only FLAC reader). See docs/development.md, 'The dsd2pcm library'.",
+  "repository": "aclater/dsd2pcm-rs",
+  "version": "0.1.1",
+  "abi": 1,
+  "commit": "fe83aefec955305fa3496f36dd2939a8f16db2f5",
+  "signer_workflow": ".github/workflows/release.yml",
+  "source": {
+    "sha256": "8373caba58bfc51d4523d4d7885e78b49e76a2fc4b20d226d3c9aec201a9a7a3"
+  },
+  "use_archives": false,
+  "assets": {
+    "aarch64-apple-darwin": {
+      "name": "aarch64-macos",
+      "sha256": "99e88d14bebaaf1054fb0eadf09c5cb5f637e114193a676323ff6d8ca3b64fd6"
+    },
+    "aarch64-unknown-linux-gnu": {
+      "name": "aarch64-linux",
+      "sha256": "11178cf56a5d551e7dbd074e0b636ffb6158d2e8ff6ac89febf023fba7426fca"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "name": "x86_64-linux",
+      "sha256": "7278fbabdb0a6411d3f92e436f628dd76bd0bf2da69daf0ad91d6a435016747e"
+    }
+  },
+  "rust": {
+    "version": "1.99.0",
+    "date": "2026-10-01",
+    "hosts": {
+      "aarch64-apple-darwin": {
+        "rustc": "334a66714ca316d71bbe5efe44f71762d0b276cea73be2987374693a837f7450",
+        "cargo": "76abff0ad79a10a3152dff640ea0d8b3c37637d9300bf55da41b95c3ddc069c1",
+        "rust-std": "a7c6de8aa21e7c31163a7656295b321bb85f5dce55ed8ea95ac9ac561202bb5b"
+      },
+      "aarch64-unknown-linux-gnu": {
+        "rustc": "89c0f1a3a44df63c95e5d5f2ba093d0a12c5f5f57f8635f8a7a0ce50cf86600e",
+        "cargo": "113229fcc16cc1ba004923a4cc275fbf3281dafaaf8b97269f9c00189d497fd4",
+        "rust-std": "1cf7e2ef58ed1cfa6f1adea18e155cbf254c1951f39e5f5e3376879f55fd64a4"
+      },
+      "x86_64-apple-darwin": {
+        "rustc": "7460910254f059b49b99ee3ddbcf7197d16b9505b59c166e14a1465ee323a81d",
+        "cargo": "939b71952afd63ae73bc00f3517c19f0dd7ac54884b5fac16a813ee50985d14d",
+        "rust-std": "18ee81961a73c3ae966ecb1e8f6096438c90aeefece8856201a6ecc17f5bc850"
+      },
+      "x86_64-pc-windows-gnu": {
+        "rustc": "015f770c3ca0b3226a24fe159f30b03782a91679ba16159f7d83550f768fb795",
+        "cargo": "36dc7cba4be341c5a6cb3e10f660c4565b6f87f318d3cb87519b2cfe8c630bca",
+        "rust-std": "a2382bf189d5621e09db647da419a8e1d4c604d60941cb116da00ce34042b1dd",
+        "rust-mingw": "ad2b4b41362a99a86e20a8dbcec4be81b99f2d507f6408a72c7a139bc1919080"
+      },
+      "x86_64-unknown-linux-gnu": {
+        "rustc": "77171ba2a0345fdf2abc4fedda55d6de078dae7a68527c28be8c77dcc9604bd5",
+        "cargo": "d7674918d28093097614cd9728b6ca60db9ea3038f640f0bd1e9a4188c7568ce",
+        "rust-std": "3e58dff2d0b72196b5ea4e90536e174d400de88564a52694686b81e091169933"
+      },
+      "x86_64-unknown-linux-musl": {
+        "rustc": "fa4fa63f0bf10fad6665f40004d8848b19cf15c98c72668e49afb05bb11bba5a",
+        "cargo": "0f60a28de17fc24ac3a12e23a298cc3f9caf82c2fdd44e47232db6e2fcb421eb",
+        "rust-std": "b106b0aa4565cc3525fd3161c69203a9e39044e6e6b4d618f261c3eeda14ad50"
+      }
+    }
+  }
+}

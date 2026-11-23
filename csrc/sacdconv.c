@@ -9,10 +9,12 @@
  *                   ahead of the reader, which receives every position in
  *                   order (missing ones as 0x69 silence, invalid DST frames as
  *                   0x55) and groups them into batches of BATCH_FRAMES
- *   N workers       convert DSD->PCM per batch; each batch carries PRE/POST
- *                   context frames so the PCM filters see exactly what a
- *                   continuous run would (gapless, and the result does not
- *                   depend on the thread count)
+ *   N workers       convert DSD->PCM per batch with dsd2pcm's pysacd filter
+ *                   (its frame-run C interface, linked in statically). Each
+ *                   batch carries the frames before and after it as context
+ *                   and its first frame's index in the area, which seeds the
+ *                   dither per frame: a sample's bytes depend only on the disc
+ *                   and its position, not on threads, batches or range start
  *   writer thread   takes batches in order and writes every output that
  *                   overlaps them (DSF, DSDIFF DSD/DST, WAV, FLAC). A DSF
  *                   file's bytes, audio included, are scarletbook's layout
@@ -44,11 +46,18 @@
 #endif
 
 #include "compat.h"
-#include "dsp.h"
+#include "dsd2pcm.h"
 #include "sacd.h"
 #include "scarletbook.h"
 
 _Static_assert(MAX_FRAME_SIZE >= SB_MAX_FRAME_BYTES, "a stage slot holds any stored frame scarletbook returns");
+
+/* dsd2pcm (dsd2pcm.lock, tools/dsd2pcm.py) converts DSD to PCM. This file is written against its
+   C ABI 1; _native.py's build info names the linked version. */
+#if !defined(DSD2PCM_ABI_VERSION) || DSD2PCM_ABI_VERSION != 1
+#error "pysacd needs the dsd2pcm C library with DSD2PCM_ABI_VERSION 1 (see dsd2pcm.lock)"
+#endif
+_Static_assert(DSD2PCM_FRAME_BYTES_PER_CHANNEL == FRAME_BYTES_PER_CH, "dsd2pcm and pysacd agree on the frame size");
 
 /* The scarletbook-rs C library is linked in statically (#85; Makefile, scarletbook.lock), and
  * its sb_* functions are exported from this library for _native.py. This file is written
@@ -59,8 +68,8 @@ _Static_assert(MAX_FRAME_SIZE >= SB_MAX_FRAME_BYTES, "a stage slot holds any sto
 #endif
 
 #define BATCH_FRAMES   32
-#define PRE_FRAMES     2               /* PCM filter warm-up context */
-#define POST_FRAMES    1               /* covers the filter group delay (< 1 frame) */
+#define PRE_FRAMES     2               /* context kept before a batch (the PCM filter needs one) */
+#define POST_FRAMES    1               /* context after a batch (the PCM filter's reach is < 1 frame) */
 #define SLOT_FRAMES    (PRE_FRAMES + BATCH_FRAMES + POST_FRAMES)
 #define READ_SECTORS   1024            /* 2 MiB reads */
 #define OUT_BUFFER     (1 << 20)
@@ -111,7 +120,7 @@ typedef struct {
     sc_area_t      *a;
     sc_output_t    *outs;
     int             nouts;
-    int             channels, frame_bytes, opf, delay;
+    int             channels, frame_bytes, opf;
     uint32_t        need_lo, need_hi;           /* frame range any output needs */
 
     pthread_mutex_t mu;
@@ -758,66 +767,62 @@ out:
 
 /* ------------------------------------------------------------ workers */
 
-static inline uint32_t xorshift(uint32_t *s)
+/* PCM for the batch's core frames: dsd2pcm's pysacd filter, with the frame before and after the
+   core as context, and the first core frame's index in the area, which seeds the dither. The
+   filter reaches less than a frame either way, so every frame with its neighbours present gets
+   the bytes of a whole-area conversion. With no frame before (b->pre 0), dsd2pcm takes the run as
+   the start of the area: exact at frame 0; the reader's first batch of a later range starts
+   PRE_FRAMES before the first frame any output needs, and those leading frames are not written.
+   With no frame after (the reader's last batch, which ends past what any output needs), the input
+   beyond is idle DSD. */
+static void process_batch(engine_t *e, batch_t *b, dsd2pcm_frames *conv)
 {
-    uint32_t x = *s;
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    return *s = x;
+    if (!b->need_pcm)
+        return;
+    size_t fb = e->frame_bytes;
+    dsd2pcm_run run = DSD2PCM_RUN_INIT;
+    run.before = b->pre ? b->dsd + (size_t)(b->pre - 1) * fb : NULL;
+    run.before_len = b->pre ? fb : 0;
+    run.frames = b->dsd + (size_t)b->pre * fb;
+    run.frames_len = (size_t)b->n * fb;
+    run.after = b->post ? b->dsd + (size_t)(b->pre + b->n) * fb : NULL;
+    run.after_len = b->post ? fb : 0;
+    run.first_frame = b->tc0;
+    size_t out_bytes = sizeof(int32_t) * (size_t)b->n * e->opf * e->channels;
+    int rc = dsd2pcm_frames_convert(conv, &run, DSD2PCM_FORMAT_I32, b->pcm, out_bytes, NULL, 0, NULL);
+    if (rc != DSD2PCM_OK)
+        set_error(e, "PCM conversion failed at frame %u: %s: %s", b->tc0, dsd2pcm_status_str(rc),
+                  dsd2pcm_last_error());
 }
 
-static void process_batch(engine_t *e, batch_t *b, dsd2pcm_t *dsp, const uint8_t *silence)
+/* A dsd2pcm converter for this run's PCM settings (one per worker: a converter is used by one
+   thread at a time); NULL with the message in err */
+static dsd2pcm_frames *pcm_converter(sc_area_t *a, int channels, char *err, size_t errlen)
 {
-    int nf = b->pre + b->n + b->post;
-    size_t fb = e->frame_bytes;
-
-    if (b->need_pcm) {
-        int ch = e->channels, opf = e->opf;
-        uint32_t skip = (uint32_t)b->pre * opf + e->delay;
-        uint32_t keep = (uint32_t)b->n * opf, got = 0, pos = 0;
-        uint32_t rng = 0x9E3779B9u ^ (b->tc0 * 2654435761u);
-        const float scale = 8388607.0f * (float)pow(10.0, e->a->gain_db / 20.0);
-        const float lsb = 1.0f / 4294967296.0f;
-
-        dsd2pcm_reset(dsp);
-        for (int i = 0; got < keep; i++) {
-            /* past the staged frames (end of stream): flush with silence */
-            dsd2pcm_frame(dsp, i < nf ? b->dsd + i * fb : silence);
-            for (int s = 0; s < opf && got < keep; s++, pos++) {
-                if (pos < skip)
-                    continue;
-                int32_t *dst = b->pcm + (size_t)got * ch;
-                for (int c = 0; c < ch; c++) {
-                    /* two draws in a fixed order (C leaves the order of operands unspecified) */
-                    uint32_t r1 = xorshift(&rng), r2 = xorshift(&rng);
-                    float dith = ((float)r1 - (float)r2) * lsb;
-                    long v = lrintf(dsp->out[c][s] * scale + dith);
-                    dst[c] = (int32_t)(v > 8388607 ? 8388607 : v < -8388608 ? -8388608 : v);
-                }
-                got++;
-            }
-        }
+    dsd2pcm_frames_config cfg = DSD2PCM_FRAMES_CONFIG_INIT;
+    cfg.rate_hz = (uint32_t)a->pcm_rate;
+    cfg.channels = (uint32_t)channels;
+    cfg.filter = DSD2PCM_FILTER_PYSACD;
+    cfg.cutoff = DSD2PCM_CUTOFF_STANDARD;
+    cfg.gain_db = a->gain_db;
+    dsd2pcm_frames *conv = NULL;
+    int rc = dsd2pcm_frames_new(&cfg, &conv);
+    if (rc != DSD2PCM_OK) {
+        snprintf(err, errlen, "PCM converter: %s: %s", dsd2pcm_status_str(rc), dsd2pcm_last_error());
+        return NULL;
     }
+    return conv;
 }
 
 static void *worker_main(void *arg)
 {
     engine_t *e = arg;
-    dsd2pcm_t *dsp = NULL;
-    uint8_t *silence = malloc(e->frame_bytes);
+    dsd2pcm_frames *conv = NULL;
 
-    if (!silence) {
-        set_error(e, "out of memory");
-        return NULL;
-    }
-    memset(silence, DSD_SILENCE, e->frame_bytes);
     if (e->a->pcm_rate) {
-        dsp = malloc(sizeof(*dsp));
-        if (!dsp || dsd2pcm_init(dsp, e->channels, e->a->pcm_rate) < 0) {
-            set_error(e, "out of memory");
-            free(dsp);
-            free(silence);
+        char err[256];
+        if (!(conv = pcm_converter(e->a, e->channels, err, sizeof(err)))) {
+            set_error(e, "%s", err);
             return NULL;
         }
     }
@@ -836,7 +841,7 @@ static void *worker_main(void *arg)
             e->work_tail = NULL;
         pthread_mutex_unlock(&e->mu);
 
-        process_batch(e, b, dsp, silence);
+        process_batch(e, b, conv);
 
         pthread_mutex_lock(&e->mu);
         e->done[b->seq % e->npool] = b;
@@ -844,11 +849,7 @@ static void *worker_main(void *arg)
         pthread_mutex_unlock(&e->mu);
     }
 
-    if (dsp) {
-        dsd2pcm_free(dsp);
-        free(dsp);
-    }
-    free(silence);
+    dsd2pcm_frames_free(conv);
     return NULL;
 }
 
@@ -1391,9 +1392,10 @@ const char *sacdconv_build_info(void)
 #elif defined(__SSE4_2__)
            ", SSE4.2"
 #endif
-#ifdef SC_DISPATCH
-           ", portable (PCM filter SIMD chosen at load time)"
+#ifdef PYSACD_PORTABLE
+           ", portable"
 #endif
+           ", PCM by dsd2pcm (pysacd filter)"
 #ifdef __SANITIZE_ADDRESS__
            ", ASan"
 #endif
@@ -1580,16 +1582,14 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
     a->sectors_done = 0;
 
     if (want_pcm) {
-        dsd2pcm_t *probe = malloc(sizeof(*probe));
-        if (!probe || dsd2pcm_init(probe, a->channels, a->pcm_rate) < 0) {
-            free(probe);
-            snprintf(a->error, sizeof(a->error), "out of memory");
+        /* checks the settings (dsd2pcm takes -120 to +24 dB) before anything starts */
+        dsd2pcm_frames *probe = pcm_converter(a, a->channels, a->error, sizeof(a->error));
+        if (!probe)
             return -1;
-        }
-        e.opf = probe->out_per_frame;
-        e.delay = probe->delay;
-        dsd2pcm_free(probe);
-        free(probe);
+        e.opf = (int)dsd2pcm_frames_samples_per_frame(probe);
+        dsd2pcm_frames_free(probe);
+        sc_log(a, SC_DEBUG, "dsd2pcm %s: pysacd filter, %d samples per frame, %+.2f dB", dsd2pcm_version(),
+               e.opf, a->gain_db);
     }
 
     nworkers = a->threads > 0 ? a->threads : sc_ncpus();

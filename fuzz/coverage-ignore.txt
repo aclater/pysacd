@@ -1,5 +1,4 @@
-# Sanitizer-coverage ignore list for the libFuzzer build (make fuzz, #157): the PCM filters
-# (csrc/dsp.c) are fixed arithmetic over whole frames, with no branch on the input's content for
-# coverage to guide, and their per-sample loops instrumented made each input several times
-# slower. ASan, UBSan and TSan still check them.
-src:*csrc/dsp.c
+# Sanitizer-coverage ignore list for the libFuzzer build (make fuzz, #157). The PCM conversion is
+# dsd2pcm's (Rust, linked as built, not instrumented), so nothing of pysacd's own code is left
+# out at present; the file stays so that the build flag keeps working.
+src:*csrc/none-ignored.c

@@ -32,4 +32,12 @@ its own licence.
 pysacd takes the dual-licensed code under MIT because MIT is compatible with GPL-2.0, and
 Apache-2.0 is not compatible with GPL-2.0 (only with GPL-3.0).
 
-pysacd itself is GPL-2.0-or-later ([COPYING](../COPYING)).
+pysacd itself is GPL-2.0-or-later ([COPYING](../COPYING)), except for its DSD-to-PCM filter.
+
+**The DSD-to-PCM filter** (`csrc/dsp.c`, `csrc/dsp.h`) is MIT OR Apache-2.0
+([dsp-LICENSE-MIT](dsp-LICENSE-MIT), [dsp-LICENSE-APACHE](dsp-LICENSE-APACHE)). Its copyright
+holder, the only author of both files, relicensed them from GPL-2.0-or-later on 2026-11-23, so that
+other projects can reuse the filter. Earlier versions of the two files remain available under
+GPL-2.0-or-later as well. The byte-wise lookup-table technique in its first stage is credited to
+Sebastian Gesemann's dsd2pcm (BSD-3-Clause), as the file says. Inside pysacd,
+the files are combined with the rest of the program under GPL-2.0-or-later.

@@ -9,6 +9,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## Unreleased
 
+### Changed
+- The DSD-to-PCM filter (`csrc/dsp.c`, `csrc/dsp.h`) is now MIT OR Apache-2.0, relicensed by its
+  copyright holder; the rest of pysacd stays GPL-2.0-or-later ([licences](licenses/README.md)).
+
 ## 0.5.4 (2026-11-23)
 
 The engine links scarletbook 0.6.2. Output and speed are unchanged (release checks, below;

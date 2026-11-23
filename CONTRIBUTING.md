@@ -21,7 +21,7 @@ Blu-ray player running SACD Ripper or AutoScript are especially useful (#10).
    while yours waits, merge it into your branch (no force-push) and let the checks run again.
 3. **Run the checks before you push:**
 
-   ```bash
+   ```sh
    ruff check .
    mypy src
    make && make test-tools
@@ -53,8 +53,9 @@ vulnerability follows [development: security releases](docs/development.md#secur
   is [scarletbook-rs](https://github.com/aclater/scarletbook-rs)'s, a separate clean room:
   changes it needs go to it as issues, never as code. See
   [clean room and licences](docs/clean-room.md).
-- **Licences.** Code is GPL-2.0-or-later. Add no dependency or code under incompatible
-  terms.
+- **Licences.** Code is GPL-2.0-or-later, apart from the DSD-to-PCM filter (`csrc/dsp.c`,
+  `csrc/dsp.h`), which is MIT OR Apache-2.0 ([licences](licenses/README.md)). Add no dependency
+  or code under incompatible terms.
 - **Untrusted input.** Disc images, network data, disc text and MusicBrainz data are
   hostile: bound every length, and send any text that is written or printed through
   `pysacd.safetext` (see [security](docs/security.md)).

@@ -6,9 +6,13 @@
 
 # Development
 
+How pysacd is built, tested and released: the C engine and the scarletbook-rs library it links,
+the test suite and CI, and the release steps. Contributor rules are in
+[CONTRIBUTING.md](../CONTRIBUTING.md).
+
 ## Building
 
-```
+```sh
 make                 # src/pysacd/_sacdconv.so, tuned for this CPU
 make PORTABLE=1      # generic x86-64; the PCM filters still use AVX2/AVX-512 when the CPU has them
 make test-tools      # the test-only DST encoder
@@ -131,7 +135,7 @@ Its `read_sectors()` reads 2048-byte logical sectors whatever the image's sector
   (catalogue numbers, language codes, manufacturer data, ISRCs), `_sbtoc` renders them as that
   parser did. scarletbook trims an ISRC's spaces, which `sacd_extract` keeps: for its output,
   `sbcompat.read_stored_isrcs()` reads the fields from the area TOC scarletbook used (#175). The warnings are the specification's codes (see
-  [the Python library](library.md#the-parser)).
+  [the Python API](api.md#the-parser)).
 - **Timecodes as stored.** scarletbook gives play times and track times as frame counts, and,
   since 0.5.1, as stored (`sb_area_playtime_stored`, `sb_track_timecodes_stored`; requested by
   pysacd, [scarletbook-rs#127](https://github.com/aclater/scarletbook-rs/issues/127)). A
@@ -321,7 +325,7 @@ non-executable stack. See [performance](performance.md#hardening).
 
 ## Tests
 
-```
+```sh
 make && PYTHONPATH=src python3 -m unittest discover -s tests
 PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s tests
 ```
@@ -443,11 +447,14 @@ Every pull request runs:
   in sacdfs, whose `benchmark` job has the same design through the mount (sacdfs's #162); only
   `scripts/bench_workload.py` differs. To run it by hand on two built trees:
 
-  ```bash
+  ```sh
   python3 -I scripts/bench_workload.py generate build/bench-discs   # needs numpy and make test-tools
   BENCH_DISCS=$PWD/build/bench-discs python3 -I scripts/bench_compare.py --base OLD_TREE --head NEW_TREE \
       --measure "python3 -I scripts/bench_workload.py" dst-stereo dst-multichannel plain-dsd
   ```
+- **Tests on macOS and Windows** (the `portability` workflow, Python 3.13), when the engine,
+  `src/`, the tests or the scarletbook pin change: the engine built with warnings as errors, then
+  the test suite. On Windows the engine is built with MSYS2's UCRT64 toolchain.
 - **CodeQL** (Python, C, workflows) and **semgrep**.
 - **A check for private names**, in files and commit identities.
 - **scarletbook provenance**: every archive pinned in `scarletbook.lock` must match its digest
@@ -455,7 +462,7 @@ Every pull request runs:
   pinned tag and commit (see [the scarletbook library](#the-scarletbook-library)).
 - **zizmor**, the GitHub Actions security linter, when `.github/workflows/` changes
   (offline audits; run it locally with
-  `pipx run zizmor==1.30.1 --offline .github/workflows`).
+  `pipx run zizmor==1.32.0 --offline .github/workflows`).
 - **Dependency review**: a pull request that adds a dependency with a known high or
   critical vulnerability fails.
 - **Coverage**: the Python 3.13 leg runs the suite under coverage.py (settings in
@@ -472,6 +479,7 @@ Every pull request runs:
 
 Scheduled runs, besides the weekly fuzzing and portability runs:
 
+- **CodeQL**, weekly, to pick up new queries without a code change.
 - **OpenSSF Scorecard**, weekly and on every push to master. The results are published
   (the README badge) and appear under code scanning.
 - **A live MusicBrainz lookup**, weekly (or by hand from the Actions tab): the test suite
@@ -542,7 +550,7 @@ macOS: 11.0 on arm64, 10.13 on x86-64 (#142); the job checks each macOS wheel's 
 libFLAC and libogg statically.
 GitHub has no runner older than macOS 15, so no wheel is run on an older macOS in CI; the published
 0.5.1 arm64 wheel was also run on macOS 15 in a VM on Apple hardware, with no developer libraries. macOS 11 to 14 and
-Intel Macs below 15 are untested, and docs/quickstart.md says so (#142). The Windows DLL is
+Intel Macs below 15 are untested, and docs/install/README.md says so (#142). The Windows DLL is
 linked statically. Their licences ship in the wheel (`licenses/`), with the notice for the GCC runtime
 library that auditwheel copies into the musllinux wheel. Every wheel, and a build from the sdist, runs `tests/wheel_smoke.py`
 in a clean environment: it converts a synthetic disc to DSF and FLAC with the
@@ -558,7 +566,7 @@ To release:
    the commit pinned in `.github/workflows/ci.yml`, and discs covering plain DSD, DST, hybrid and
    multichannel; raw-sector images need `pysacd-extract -I` first, since `sacd_extract` refuses them:
 
-   ```
+   ```sh
    python3 tools/extract_compare.py --old PREVIOUS_RELEASE/src --new src --sacd-extract BIN \
        --no-values --require-sacd-extract IMAGE...
    ```
@@ -622,3 +630,12 @@ run for 0.5.1, except where marked.
 ## CI speed
 
 A pull request's checks finish in about 3 min, and a new push cancels the superseded run (`concurrency`; master runs are never cancelled). The test matrix caches pip downloads. Every required check runs on every pull request: none is path-filtered at the workflow level, because a skipped required check stays pending and blocks the merge. Keep new jobs short, and put slow, rarely-failing ones on master, tags or a schedule. The informational `benchmark` job is path-filtered, because it is never required.
+
+## See also
+
+- [Contributing](../CONTRIBUTING.md)
+- [Install](install/README.md): building from source
+- [Clean room and licences](clean-room.md)
+- [Performance](performance.md)
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

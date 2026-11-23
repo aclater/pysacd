@@ -95,7 +95,7 @@ def with_nav(text: str, name: str = "") -> str:
 
 
 def index() -> str:
-    out = ["# pysacd documentation", "",
+    out = ['<img src="assets/icon-256.png" alt="" width="96">', "", "# pysacd documentation", "",
            ("Every document about pysacd, grouped by what it is for. Start with the "
            "[README](../README.md) for what pysacd is."), ""]
     for group, docs in GROUPS:
@@ -115,7 +115,9 @@ def index() -> str:
 def main() -> int:
     check = "--check" in sys.argv[1:]
     listed = {name for _, docs in GROUPS for name, _ in docs}
-    present = {p.relative_to(DOCS).as_posix() for p in DOCS.rglob("*.md")} - {"README.md"}
+    # docs/assets/ holds the icon files and their README, not documentation pages
+    present = {p.relative_to(DOCS).as_posix() for p in DOCS.rglob("*.md")
+               if p.relative_to(DOCS).parts[0] != "assets"} - {"README.md"}
     problems = [f"docs/{n} is not in tools/docs_index.py GROUPS" for n in sorted(present - listed)]
     problems += [f"docs/{n} is listed but missing" for n in sorted(listed - present)]
     if problems:

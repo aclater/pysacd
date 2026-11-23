@@ -64,12 +64,17 @@ established by running the binary and comparing output.
 | Part | Licence |
 |---|---|
 | pysacd as a whole | GPL-2.0-or-later |
+| its DSD-to-PCM filter, `csrc/dsp.c` and `csrc/dsp.h` | MIT OR Apache-2.0 (since 0.5.5) |
 | [scarletbook-rs](https://github.com/aclater/scarletbook-rs), linked into the engine | MIT OR Apache-2.0, used under MIT |
 | the Rust standard library and crates inside it (rayon, crossbeam, either, thiserror) | MIT OR Apache-2.0, used under MIT |
-| libFLAC (optional, for FLAC output) | BSD-3-Clause |
-| mutagen (optional, for tagging) | GPL-2.0-or-later |
+| libFLAC, linked into the wheels for FLAC output (optional in a build from source) | BSD-3-Clause |
+| libogg, inside the Windows wheel's libFLAC | BSD-3-Clause |
+| GCC's `libgcc_s`, in the musllinux wheel | GPL-3.0-or-later with the GCC Runtime Library Exception |
+| mutagen, a dependency, for tagging | GPL-2.0-or-later |
 
-New code is GPL-2.0-or-later, and since 0.3.0 all of pysacd is. `csrc/compat.h`, which was
+New code is GPL-2.0-or-later, and since 0.3.0 all of pysacd is, apart from the DSD-to-PCM
+filter: its copyright holder relicensed `csrc/dsp.c` and `csrc/dsp.h` as MIT OR Apache-2.0 in
+0.5.5 ([licences](../licenses/README.md)). `csrc/compat.h`, which was
 LGPL-2.1-or-later so that the FFmpeg-derived decoder could include it, is GPL-2.0-or-later now
 that the decoder is gone. No dependency or copied code under incompatible terms may be added.
 pysacd takes scarletbook-rs and its Rust dependencies under MIT, since Apache-2.0 isn't

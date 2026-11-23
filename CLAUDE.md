@@ -25,8 +25,9 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
   issues. Don't read it. DST decoding is scarletbook-rs's; pysacd has no DST
   decoder of its own since 0.3.0 (its test-only encoder stays).
   - `sacd_extract` may be used only as a compiled black box for comparisons.
-- **Licences.** All code is GPL-2.0-or-later. Add no dependency or copied code
-  under incompatible terms. scarletbook-rs (MIT OR Apache-2.0) is used under MIT.
+- **Licences.** All code is GPL-2.0-or-later, except the DSD-to-PCM filter
+  (`csrc/dsp.c`, `csrc/dsp.h`), which is MIT OR Apache-2.0 (licenses/README.md).
+  Add no dependency or copied code under incompatible terms. scarletbook-rs (MIT OR Apache-2.0) is used under MIT.
 - **scarletbook-rs is a separate clean room.** Use it only as its signed
   release binaries and documented C interface. Never send it code: anything
   pysacd needs from it goes to the owner as a requirement, to be filed there.
@@ -35,9 +36,10 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
 - **sacd_extract compatibility is byte-for-byte.** For the same options,
   `pysacd-extract` must produce the same files, names and bytes as
   `sacd_extract`: DSF, DSDIFF, edit master, cue, xml and `-P` text. The only
-  exceptions are documented in docs/sacd_extract.md: the creating-machine comment and
-  version lines, and keeping a different disc out of a folder that
-  `sacd_extract` would silently mix or overwrite (#4).
+  exceptions are the deliberate ones in docs/sacd_extract.md ("Compatibility
+  policy"), such as the creating-machine comment and version lines, and keeping
+  a different disc out of a folder that `sacd_extract` would silently mix or
+  overwrite (#4).
   Any change to `sbcompat.py`, `extract.py` or the writers needs a
   comparison test.
 - **Diagnosable failures.** Code that talks to devices, servers or disc
@@ -85,7 +87,8 @@ PYTHONPATH=src pytest -q tests
 
 CI also runs:
 
-- the tests under ASan and UBSan, and the engine leak check (`scripts/leak-check.sh`);
+- the tests under ASan and UBSan, and under TSan, and the engine leak check
+  (`scripts/leak-check.sh`);
 - the comparison tests against a `sacd_extract` built from a pinned upstream commit, on generated
   discs (real discs run by hand at release, docs/development.md);
 - a check that only the skips listed in `tests/expected-skips.json` happen, each with its reason;
@@ -108,7 +111,8 @@ path from an environment variable and skip without it; a new skip in CI must be 
   ("🤖 Claude Code picking up this issue."), and log decisions and results
   there.
 - Work on a branch and open a PR against `master`; never push to `master`
-  directly. PRs say `Closes #N`.
+  directly. PRs say `Closes #N` only when they fully resolve the issue, else
+  `Part of #N` (CONTRIBUTING.md).
 - **Docs always ship with the change** (README, docs/, this file, usage text),
   and anything a user would notice gets a `CHANGELOG.md` entry. A release dates
   its changelog section, and that section becomes the GitHub release notes.

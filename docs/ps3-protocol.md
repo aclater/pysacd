@@ -98,8 +98,9 @@ previous request. Clients must loop until they have all the sectors they asked f
 
 The block size starts at 0 on each connection. So on a single-area disc, a new connection
 whose first read starts after the audio area gets `result = 0`, and keeps getting it. That
-matters when resuming after a dropped connection. `RemoteDisc` reads one sector at LSN 0
-right after `DISC_OPEN`, which sets the block size before any other read. A client that
+matters when resuming after a dropped connection. `RemoteDisc` reads the master TOC
+(LSN 510–519, before the first area) right after `DISC_OPEN`, which sets the block size before
+any other read; on an image too small to hold it, it reads one sector at LSN 0. A client that
 starts by reading the TOC (as `sacd_extract` does) gets the same effect.
 
 The first time an encrypted range is read, the server checks whether the disc is
@@ -109,7 +110,7 @@ first block. That only affects the PS3's own decryption, not the bytes sent.
 ## Testing without a PS3
 
 ```
-pysacd ps3sim disc.iso                       # listen on 0.0.0.0:2002
+pysacd ps3sim disc.iso                       # listen on 127.0.0.1:2002
 sacd_extract -I -i 127.0.0.1:2002            # copy the disc back as an ISO
 ```
 

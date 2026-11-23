@@ -448,6 +448,9 @@ Every pull request runs:
   BENCH_DISCS=$PWD/build/bench-discs python3 -I scripts/bench_compare.py --base OLD_TREE --head NEW_TREE \
       --measure "python3 -I scripts/bench_workload.py" dst-stereo dst-multichannel plain-dsd
   ```
+- **Tests on macOS and Windows** (the `portability` workflow, Python 3.13), when the engine,
+  `src/`, the tests or the scarletbook pin change: the engine built with warnings as errors, then
+  the test suite. On Windows the engine is built with MSYS2's UCRT64 toolchain.
 - **CodeQL** (Python, C, workflows) and **semgrep**.
 - **A check for private names**, in files and commit identities.
 - **scarletbook provenance**: every archive pinned in `scarletbook.lock` must match its digest
@@ -455,7 +458,7 @@ Every pull request runs:
   pinned tag and commit (see [the scarletbook library](#the-scarletbook-library)).
 - **zizmor**, the GitHub Actions security linter, when `.github/workflows/` changes
   (offline audits; run it locally with
-  `pipx run zizmor==1.30.1 --offline .github/workflows`).
+  `pipx run zizmor==1.32.0 --offline .github/workflows`).
 - **Dependency review**: a pull request that adds a dependency with a known high or
   critical vulnerability fails.
 - **Coverage**: the Python 3.13 leg runs the suite under coverage.py (settings in
@@ -472,6 +475,7 @@ Every pull request runs:
 
 Scheduled runs, besides the weekly fuzzing and portability runs:
 
+- **CodeQL**, weekly, to pick up new queries without a code change.
 - **OpenSSF Scorecard**, weekly and on every push to master. The results are published
   (the README badge) and appear under code scanning.
 - **A live MusicBrainz lookup**, weekly (or by hand from the Actions tab): the test suite

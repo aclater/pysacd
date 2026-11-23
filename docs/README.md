@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/aclater/pysacd/master/docs/assets/icon-256.png" alt="" width="96">
+<img src="assets/icon-256.png" alt="" width="96">
 
 # pysacd documentation
 

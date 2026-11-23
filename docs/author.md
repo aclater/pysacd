@@ -4,6 +4,9 @@
 
 # Author's note
 
+Why pysacd exists, in the author's words, as written in October 2026, with an update for
+0.3.0 at the end.
+
 Back in 2024 I was using beets to catalogue, and eventually normalise, my collection of 90.000+ audio files. Then I hit a wall: beets can't read SACD ISOs. The usual answer is sacd_extract, but driving it from a beets plugin means forking a process for every disc and scraping its text output. Slow and fragile.
 
 So I tried to re-implement the SACD reading in Python, working with ChatGPT. After a few days of banging my head against it I got nowhere. Scarletbook is a niche format, DST decoding is genuinely hard, and I shelved it.
@@ -38,3 +41,10 @@ https://github.com/aclater/pysacd
 - Output didn't change: byte-identical to 0.2.2, and the beets plugin's disc fingerprints are the same for every disc in my library.
 - Speed: plain DSD discs now extract 3,6 to 4,0× faster than sacd_extract, and DST discs 2,5× faster.
 - The FUSE filesystem happened too: [sacdfs](https://github.com/aclater/sacdfs) 0.1.0 shows ISOs as DSF and WAV files.
+
+## See also
+
+- [Why pysacd](why-pysacd.md)
+- [Clean room and licences](clean-room.md)
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

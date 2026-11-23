@@ -316,3 +316,11 @@ every test run, under ASan and UBSan and under TSan in CI. Up to 0.2, pysacd's o
 first long run (2026-10-28) found nothing. The
 end-to-end hostile-image corpus (see [Hostile images](#hostile-images)) runs every
 extraction path on broken images, also under ASan and UBSan.
+
+## See also
+
+- [SECURITY.md](../SECURITY.md): reporting a vulnerability
+- [pysacd-extract](sacd_extract.md#compatibility-policy): where hostile input changes output
+- [Development](development.md#ci): CI, sanitizers and fuzzing
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

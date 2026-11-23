@@ -1,3 +1,5 @@
+<img src="https://raw.githubusercontent.com/aclater/pysacd/master/docs/assets/icon-256.png" alt="" width="96">
+
 # pysacd
 
 [![CI](https://github.com/aclater/pysacd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/ci.yml)
@@ -17,10 +19,10 @@ same file names, the same bytes.
 
 | System | How | Guide |
 |---|---|---|
-| Linux | Wheels on PyPI for x86-64 and aarch64 with glibc 2.28 or later (manylinux), and x86-64 with musl 1.2 or later (musllinux). Engine, libFLAC and the scarletbook library included. Run-tested on the release's CI runners | [install](docs/quickstart.md#install) |
-| macOS | Wheels for Apple Silicon (macOS 11 or later) and Intel (macOS 10.13 or later). Not code-signed or notarised. Run-tested on macOS 15 only, on CI | [install](docs/quickstart.md#install) |
-| Windows | Wheel for x86-64. Not code-signed. Run-tested on the release's CI runner | [install](docs/quickstart.md#install) |
-| Anything else | Builds from source with a C compiler and make (libFLAC for FLAC output) | [from source](docs/quickstart.md#install) · [development](docs/development.md) |
+| Linux | Wheels on PyPI for x86-64 and aarch64 with glibc 2.28 or later (manylinux), and x86-64 with musl 1.2 or later (musllinux). Engine, libFLAC and the scarletbook library included. Run-tested on the release's CI runners | [install](docs/install/README.md) |
+| macOS | Wheels for Apple Silicon (macOS 11 or later) and Intel (macOS 10.13 or later). Not code-signed or notarised. Run-tested on macOS 15 only, on CI | [install](docs/install/README.md) |
+| Windows | Wheel for x86-64. Not code-signed. Run-tested on the release's CI runner | [install](docs/install/README.md) |
+| Anything else | Builds from source with a C compiler and make (libFLAC for FLAC output) | [from source](docs/install/README.md#from-source) · [development](docs/development.md) |
 
 Every wheel is for Python 3.10 or later and carries a build provenance attestation on its
 [GitHub release](https://github.com/aclater/pysacd/releases), checkable with
@@ -55,11 +57,12 @@ You need Python 3.10 or later on Linux or macOS, and an SACD disc image. The com
    ```
 
    *You should see* `Exporting DSF output in folder:` and the album's title, then a folder of that
-   name with one `.dsf` file per track.
+   name with one `.dsf` file per track. On a disc that also has a multichannel area, the tracks are
+   in a `Stereo` folder inside it, as `sacd_extract` writes them.
 
 Next: FLAC and WAV with your own naming and MusicBrainz tags in [converting](docs/converting.md),
-Windows and building from source in the [quick start guide](docs/quickstart.md), and the Python
-API in [the Python library](docs/library.md).
+Windows and building from source in [install](docs/install/README.md), a tour of the commands in
+the [user guide](docs/user-guide.md), and the [Python API](docs/api.md).
 
 ## Documentation
 
@@ -67,10 +70,11 @@ The [documentation index](docs/README.md) lists every document and its sections.
 
 - [Why pysacd](docs/why-pysacd.md): what it brings, a first Python example, and the
   [author's note](docs/author.md)
-- [Quick start guide](docs/quickstart.md): install options and a tour of the commands
+- [Install](docs/install/README.md): wheels, checking a download, building from source
+- [User guide](docs/user-guide.md): a tour of the commands, and troubleshooting
 - [pysacd-extract](docs/sacd_extract.md): migrating from `sacd_extract`, compatibility policy
 - [Converting](docs/converting.md): naming templates, tags, MusicBrainz, gapless PCM
-- [The Python library](docs/library.md) · [reading from a PS3](docs/ps3-protocol.md) ·
+- [Python API](docs/api.md) · [reading from a PS3](docs/ps3-protocol.md) ·
   [logging](docs/logging.md)
 - [Performance](docs/performance.md) · [security](docs/security.md) ·
   [clean room and licences](docs/clean-room.md)

@@ -29,7 +29,7 @@ Front ends that run `sacd_extract`, such as
 [sacd-extract-gui](https://github.com/amstelchen/sacd-extract-gui) and
 SACDExtractGUI (its original repository is gone), work unchanged:
 point their executable setting at `pysacd-extract`. Programs written in Python
-don't need a separate process at all; see [the Python library](library.md).
+don't need a separate process at all; see [the Python API](api.md).
 
 ## Compatibility policy
 
@@ -119,3 +119,12 @@ On a library of real discs:
   sample-exactly.
 
 Speed comparisons are in [performance](performance.md).
+
+## See also
+
+- [User guide](user-guide.md)
+- [Converting](converting.md): your own naming and tags
+- [Security](security.md#hostile-text): why hostile disc text is changed
+- [Performance](performance.md)
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

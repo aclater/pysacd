@@ -6,7 +6,7 @@
 
 `pysacd convert` turns an SACD image (or a PS3 disc) into tagged DSF, FLAC or WAV files with your own naming. For `sacd_extract`-compatible output use `pysacd-extract` instead.
 
-```
+```sh
 make                                      # builds src/pysacd/_sacdconv.so
 pysacd convert disc.iso                   # stereo area -> DSF, tagged
 pysacd convert -f flac disc.iso           # 24-bit/88.2 kHz FLAC
@@ -14,12 +14,12 @@ pysacd convert -f flac -r 176400 -a both -o ~/Music disc.iso
 pysacd convert -n disc.iso                # dry run: show the MB match and paths
 ```
 
-Requirements:
+A wheel from PyPI has everything `convert` needs: the engine, libFLAC and mutagen (for tags).
+The `make` line above is for a source checkout, which needs:
 
-- gcc and make
+- gcc and make;
 - `flac-devel`, for FLAC output only. `make` builds without it, and DSF and
   WAV still work.
-- `mutagen`, for tagging.
 
 The defaults are set in `~/.config/pysacd/config.toml` (`$XDG_CONFIG_HOME/pysacd/config.toml`
 when `XDG_CONFIG_HOME` is an absolute path; an empty or relative one is ignored), using the same
@@ -92,7 +92,7 @@ How it works:
     threads decodes DST ahead of it, and groups them into batches of 32 frames. Where a DSDIFF
     output keeps the DST frames as stored (edit master, `-p` without `-c`), scarletbook hands
     out each position's stored frame next to its decoded audio, from the same read.
-  - **Worker pool** (`-j` or `--threads`, defaulting to the CPU count; one worker when plain
+  - **Worker pool** (`-j` for `pysacd convert`, `--threads` for `pysacd-extract`; the CPU count by default; one worker when plain
     DSD goes to DSF or DSDIFF, where there is nothing to decode or filter, #137): converts DSD
     to PCM and lays out DSF blocks. scarletbook's decoding pool has one thread fewer, so the reader,
     which works on every frame, has a CPU of its own (#94).
@@ -109,7 +109,7 @@ How it works:
   filter delay. Track joins are therefore sample-exact (gapless), and the
   output doesn't depend on the thread count.
 - **Tags:** the MusicBrainz release is found by barcode (the SACD's album
-  catalog number) or by catalog number. The match is checked against track
+  catalogue number) or by catalogue number. The match is checked against track
   count, durations and ISRCs, and picks the medium for the right layer:
   MusicBrainz lists "Hybrid SACD (SACD layer, 2 channels)" and "…multichannel"
   as separate media. If there's no confident match, the disc's own text is used.
@@ -132,7 +132,7 @@ pysacd submit-isrcs album.iso               # show the same table, ask, then sub
 pysacd convert --submit-isrcs album.iso     # offer it after the MusicBrainz match while converting
 ```
 
-- **Which release:** only one matched by barcode or catalog number, or named
+- **Which release:** only one matched by barcode or catalogue number, or named
   with `--mb-release`, never one found by title search. Track N of the area
   maps to track N of the matched medium (stereo and multichannel separately).
 - **What's skipped:** malformed or all-zero ISRCs, the same ISRC on two
@@ -150,3 +150,10 @@ pysacd convert --submit-isrcs album.iso     # offer it after the MusicBrainz mat
 - **Scripts:** `--yes` submits without asking. Without a terminal and
   without `--yes`, nothing is submitted.
 
+## See also
+
+- [User guide](user-guide.md)
+- [pysacd-extract](sacd_extract.md): `sacd_extract`-compatible output
+- [Security](security.md#musicbrainz-credentials): MusicBrainz credentials
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

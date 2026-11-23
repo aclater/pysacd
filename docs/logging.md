@@ -8,10 +8,10 @@ Both tools write a detailed diagnostic log on request. That log is what to
 attach when something fails, for example against a PS3, a drive or a damaged
 disc.
 
-```
+```sh
 pysacd-extract -2 -s -i 192.0.2.10:2002 --log-file pysacd.log
 pysacd --log-file pysacd.log convert disc.iso
-PYSACD_LOG=debug:/tmp/pysacd.log pysacd-extract ...    # for GUIs and scripts
+PYSACD_LOG=debug:/tmp/pysacd.log pysacd-extract -2 -s -i album.iso   # for GUIs and scripts
 ```
 
 A log file records everything at `debug` level unless `--log-level` says
@@ -46,3 +46,11 @@ Logs are safe to share and safe to keep:
 
 On the terminal, warnings are shown and a failure prints one line, with a hint
 to rerun with `--log-file` if no log was being written.
+
+## See also
+
+- [User guide](user-guide.md#troubleshooting): troubleshooting
+- [Reading from a PS3](ps3-protocol.md#reading-from-a-ps3)
+- [Contributing](../CONTRIBUTING.md#reporting-a-bug): reporting a bug
+
+Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

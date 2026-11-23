@@ -10,6 +10,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Changed
+- docs/security.md: the container example builds a local image named `pysacd` and reads
+  `album.iso` from the current folder, with no placeholders, as tested (#216).
+
 ## [0.5.5] - 2026-11-23
 
 `pysacd-extract -z` now splits a gapless chain where `sacd_extract` does, so those files are

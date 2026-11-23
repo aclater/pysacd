@@ -1,0 +1,74 @@
+# The README's Quick start, run as written against a wheel built from this checkout
+# (tools/readme_quickstart.py): the commands come from the README itself, so a README change
+# that no longer works fails here. The wheel is built the way the release workflow's sdist
+# job builds and checks one: an sdist, then a wheel from it, with the hash-locked build tools.
+# Weekly too: the Quick start installs the wheel's dependencies from PyPI, as a user would.
+
+name: quickstart
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "29 6 * * 2"  # weekly
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}  # a new push supersedes the old PR run; main runs finish
+
+permissions:
+  contents: read
+
+jobs:
+  quickstart:
+    name: README quick start
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      # Fedora 44, pinned by digest: the wheel is built and the Quick start runs in Red Hat-derived
+      # userland; the runner (Ubuntu, GitHub's only hosted Linux) only hosts the container.
+      image: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # python3 is the interpreter the README's `python3 -m venv` gets; 3.13 builds, as in the release.
+      - name: Python and the build packages (Fedora)
+        run: |
+          dnf -y -q --setopt=install_weak_deps=False install shadow-utils util-linux git-core gcc make flac-devel pkgconf-pkg-config \
+            findutils binutils diffutils file which python3 python3.13 python3.13-devel
+          dnf clean all
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # As the release workflow's sdist job: build, the backend and pysacd's dependencies from the
+      # hash-locked requirements-dev.txt (#14), an sdist, then a wheel from that sdist alone.
+      - name: Build the wheel
+        run: |
+          python3.13 -m venv "$RUNNER_TEMP/build"
+          "$RUNNER_TEMP/build/bin/pip" install -q --require-hashes -r requirements-dev.txt
+          "$RUNNER_TEMP/build/bin/python" -m build --sdist --no-isolation
+          "$RUNNER_TEMP/build/bin/python" -m pip wheel -q --no-deps --no-build-isolation -w dist/wheel dist/*.tar.gz
+          ls -l dist/wheel
+
+      # The README's album.iso: a DST stereo disc from the test generators (tests/sacdgen.py and the
+      # test DST encoder, built by make test-tools).
+      - name: Generate album.iso
+        run: |
+          make test-tools
+          mkdir "$RUNNER_TEMP/quickstart"
+          "$RUNNER_TEMP/build/bin/python" -I tools/readme_quickstart.py make-disc "$RUNNER_TEMP/quickstart/album.iso"
+
+      # In a folder of its own, with the README's own fresh venv, as a normal user (as the README's
+      # reader is: pysacd-extract warns when run as root); `pip install pysacd` is swapped for the
+      # built wheel, and nothing else changes.
+      - name: Run the Quick start
+        run: |
+          useradd -M -d "$RUNNER_TEMP/home" -s /bin/bash quickstart
+          mkdir "$RUNNER_TEMP/home"
+          chown quickstart "$RUNNER_TEMP/home" "$RUNNER_TEMP/quickstart"
+          runuser -u quickstart -- env HOME="$RUNNER_TEMP/home" \
+            python3 -I tools/readme_quickstart.py run --wheel dist/wheel/*.whl --workdir "$RUNNER_TEMP/quickstart" --tracks 3

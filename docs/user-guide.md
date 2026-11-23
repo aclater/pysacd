@@ -80,5 +80,6 @@ stops cleanly. See [the Python API](api.md).
 - [Converting](converting.md): templates, tags and MusicBrainz
 - [pysacd-extract](sacd_extract.md): migrating from `sacd_extract`
 - [Reading from a PS3](ps3-protocol.md#reading-from-a-ps3)
+- [beets-pysacd](https://github.com/aclater/beets-pysacd): import SACD images into a beets library
 
 Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).

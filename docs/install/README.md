@@ -36,7 +36,7 @@ library loads.
 ## Checking a download
 
 The same files are on each [GitHub release](https://github.com/aclater/pysacd/releases), each
-with its build provenance attestation beside it as `<file>.intoto.jsonl`. Check a wheel with
+with its build provenance attestation beside it as the wheel's file name plus `.intoto.jsonl`. Check a wheel with
 the GitHub CLI:
 
 ```sh

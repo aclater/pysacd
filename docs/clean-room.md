@@ -17,7 +17,7 @@ it (see [CLAUDE.md](../CLAUDE.md)).
 
 ## The SACD engine: scarletbook-rs
 
-Since 0.3.0 pysacd reads disc images with [scarletbook-rs](https://github.com/aclater/scarletbook-rs)
+Since 0.3.0 pysacd reads SACD images with [scarletbook-rs](https://github.com/aclater/scarletbook-rs)
 (#85): the sector layout, the master and area TOCs, the audio sectors and DST decoding. It is
 a Rust library written in a clean room of its own, only from the specifications and
 conformance corpus of [sacd-spec](https://github.com/aclater/sacd-spec); its clean-room record is

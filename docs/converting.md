@@ -126,11 +126,14 @@ pysacd or anyone else) match the right release. Nothing is ever submitted
 without asking.
 
 ```sh
-pysacd mb-login --client-id ID              # once: OAuth sign-in, token saved owner-only
+pysacd mb-login --client-id CLIENT_ID      # once: OAuth sign-in, token saved owner-only
 pysacd submit-isrcs -n album.iso            # dry run: show what would be added
 pysacd submit-isrcs album.iso               # show the same table, ask, then submit
 pysacd convert --submit-isrcs album.iso     # offer it after the MusicBrainz match while converting
 ```
+
+Replace `CLIENT_ID` with the client ID of your own MusicBrainz application: register one of type
+"installed" at <https://musicbrainz.org/account/applications> (see "Signing in" below).
 
 - **Which release:** only one matched by barcode or catalogue number, or named
   with `--mb-release`, never one found by title search. Track N of the area

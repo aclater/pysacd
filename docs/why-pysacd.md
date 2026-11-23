@@ -4,7 +4,7 @@
 
 # Why pysacd
 
-pysacd reads SACD (Scarletbook) disc images, and PS3 SACD Ripper servers,
+pysacd reads SACD (Scarletbook) images, and PS3 SACD Ripper servers,
 straight from Python. Its multithreaded C engine runs inside your process, so
 a script, a tagger or a library catalogue drives it with function calls and
 gets back structured results. It never spawns `sacd_extract` and parses its

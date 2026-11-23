@@ -252,5 +252,32 @@ class LinkedLicences(unittest.TestCase):
         self.assertLessEqual(crates, ALLOWED_CRATES, f"unexpected crates: {sorted(crates - ALLOWED_CRATES)}")
 
 
+class MinimumVersion(unittest.TestCase):
+    """pysacd requires dsd2pcm 0.1.2 or later: the build refuses an older source."""
+
+    @staticmethod
+    def tool():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_dsd2pcm_tool", ROOT / "tools" / "dsd2pcm.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_lock_and_source_versions(self):
+        t = self.tool()
+        lock = t.load_lock()
+        self.assertGreaterEqual(t.version_tuple(lock["min_version"]), (0, 1, 2))
+        t.check_version(lock, lock["version"])
+        for old in ("0.1.0", "0.1.1", "0.0.9"):
+            with self.assertRaises(t.FetchError):
+                t.check_version(lock, old)
+        for new in ("0.1.2", "0.1.10", "0.2.0", "1.0.0"):
+            t.check_version(lock, new)
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "Cargo.toml").write_text('[workspace]\nmembers = []\n\n[workspace.package]\n'
+                                               'version = "0.1.1"\nedition = "2021"\n')
+            self.assertEqual(t.workspace_version(Path(tmp)), "0.1.1")
+
+
 if __name__ == "__main__":
     unittest.main()

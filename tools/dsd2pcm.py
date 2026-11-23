@@ -37,6 +37,7 @@ import importlib.util
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -63,7 +64,7 @@ FetchError = sb.FetchError
 def load_lock(path: Path | None = None) -> dict:
     path = path or LOCK
     lock = json.loads(path.read_text(encoding="utf-8"))
-    for key in ("repository", "version", "abi", "commit", "assets", "source", "rust"):
+    for key in ("repository", "version", "min_version", "abi", "commit", "assets", "source", "rust"):
         if key not in lock:
             raise FetchError(f"{path}: no {key!r}")
     return lock
@@ -74,7 +75,40 @@ def archive_name(lock: dict, target: str) -> str:
 
 
 def source_name(lock: dict) -> str:
-    return f"dsd2pcm-rs-{lock['version']}.tar.gz"
+    return f"dsd2pcm-rs-{source_ref(lock).removeprefix('v')}.tar.gz"
+
+
+def source_ref(lock: dict) -> str:
+    """The tag (vX.Y.Z) or commit the source archive is made from."""
+    return lock["source"].get("ref") or f"v{lock['version']}"
+
+
+def version_tuple(v: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(x) for x in v.split("-")[0].split("+")[0].split("."))
+    except ValueError as e:
+        raise FetchError(f"not a version: {v!r}") from e
+
+
+def check_version(lock: dict, found: str) -> None:
+    if version_tuple(found) < version_tuple(lock["min_version"]):
+        raise FetchError(f"pysacd requires dsd2pcm {lock['min_version']} or later; this source is {found}")
+
+
+def workspace_version(src: Path) -> str:
+    """The version in the source's Cargo.toml ([workspace.package] version)."""
+    section = None
+    try:
+        lines = (src / "Cargo.toml").read_text(encoding="utf-8").splitlines()
+    except OSError as e:
+        raise FetchError(f"{src}: no Cargo.toml") from e
+    for line in lines:      # tomllib is Python 3.11+; this needs only the one key
+        line = line.split("#", 1)[0].strip()
+        if line.startswith("["):
+            section = line
+        elif section == "[workspace.package]" and re.fullmatch(r'version\s*=\s*"[^"]+"', line):
+            return line.split('"')[1]
+    raise FetchError(f"{src}: no [workspace.package] version in Cargo.toml")
 
 
 def download(url: str, dest: Path) -> None:
@@ -118,7 +152,9 @@ def release_url(lock: dict, name: str) -> str:
 
 
 def source_url(lock: dict) -> str:
-    return f"https://github.com/{lock['repository']}/archive/refs/tags/v{lock['version']}.tar.gz"
+    ref = source_ref(lock)
+    kind = "refs/tags/" if ref.startswith("v") else ""
+    return f"https://github.com/{lock['repository']}/archive/{kind}{ref}.tar.gz"
 
 
 # Licences pysacd may link (each crate's licence must offer one of these as an alternative)
@@ -176,7 +212,8 @@ def build_from_source(lock: dict, target: str, dest: Path, source: Path | None, 
                          "toolchain --dest DIR` and put DIR/bin on PATH; see docs/development.md")
     tarball = obtain(source_name(lock), source_url(lock), lock["source"]["sha256"], source, work)
     src = work / "src"
-    unpack_source(tarball, f"dsd2pcm-rs-{lock['version']}", src)
+    unpack_source(tarball, f"dsd2pcm-rs-{source_ref(lock).removeprefix('v')}", src)
+    check_version(lock, workspace_version(src))
     env = dict(os.environ, CARGO_TARGET_DIR=str(work / "target"), RUSTFLAGS=rustflags(target, src))
     check_licences(cargo, src, target, env)
     # --locked: the dependency versions and checksums of the release's Cargo.lock. Without its
@@ -198,6 +235,7 @@ def build_from_source(lock: dict, target: str, dest: Path, source: Path | None, 
 
 def fetch(dest: Path, target: str, archive: Path | None, source: Path | None) -> Path:
     lock = load_lock()
+    check_version(lock, lock["version"])
     from_source = not lock.get("use_archives") or os.environ.get("DSD2PCM_FROM_SOURCE") == "1" \
         or target not in lock["assets"]
     digest = lock["source"]["sha256"] if from_source else lock["assets"][target]["sha256"]
@@ -287,7 +325,7 @@ def attest(work: Path) -> int:
     if not shutil.which("gh"):
         raise FetchError("attest needs the GitHub CLI (gh)")
     work.mkdir(parents=True, exist_ok=True)
-    repo, tag = lock["repository"], f"v{lock['version']}"
+    repo, tag, ref = lock["repository"], f"v{lock['version']}", source_ref(lock)
     workflow = f"{repo}/{lock['signer_workflow']}"
     for target in sorted(lock["assets"]) if lock.get("use_archives") else []:
         name = archive_name(lock, target)
@@ -305,13 +343,15 @@ def attest(work: Path) -> int:
         if commits != {lock["commit"]}:
             raise FetchError(f"{name}: built from {sorted(commits)}, dsd2pcm.lock pins {lock['commit']}")
         print(f"{name}: attested, built by {workflow} from {tag} ({lock['commit'][:12]})", flush=True)
-    # the source archive: the tag still names the pinned commit, and the archive is the pinned one
-    out = subprocess.run(["gh", "api", f"repos/{repo}/commits/{tag}", "--jq", ".sha"],
+    # the source archive: its ref (a tag, or a commit before the release is tagged) names the
+    # pinned commit, and the archive is the pinned one
+    out = subprocess.run(["gh", "api", f"repos/{repo}/commits/{ref}", "--jq", ".sha"],
                          check=False, capture_output=True, text=True)
     if out.returncode or out.stdout.strip() != lock["commit"]:
-        raise FetchError(f"{tag} names {out.stdout.strip() or '(unknown)'}, dsd2pcm.lock pins {lock['commit']}")
+        raise FetchError(f"{ref} names {out.stdout.strip() or '(unknown)'}, dsd2pcm.lock pins {lock['commit']}")
     obtain(source_name(lock), source_url(lock), lock["source"]["sha256"], None, work)
-    print(f"{source_name(lock)}: SHA-256 matches the pin; {tag} is {lock['commit'][:12]}", flush=True)
+    print(f"{source_name(lock)}: SHA-256 matches the pin; {ref} is {lock['commit'][:12]}", flush=True)
+    check_version(lock, lock["version"])
     return 0
 
 

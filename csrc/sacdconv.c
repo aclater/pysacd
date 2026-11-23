@@ -795,6 +795,16 @@ static void process_batch(engine_t *e, batch_t *b, dsd2pcm_frames *conv)
                   dsd2pcm_last_error());
 }
 
+/* pysacd requires dsd2pcm 0.1.2 or later (dsd2pcm.lock, min_version): 1 if the linked library is */
+static int dsd2pcm_version_ok(void)
+{
+    unsigned major = 0, minor = 0, patch = 0;
+    const char *v = dsd2pcm_version();
+    if (!v || sscanf(v, "%u.%u.%u", &major, &minor, &patch) != 3)
+        return 0;
+    return major > 0 || minor > 1 || (minor == 1 && patch >= 2);
+}
+
 /* A dsd2pcm converter for this run's PCM settings (one per worker: a converter is used by one
    thread at a time); NULL with the message in err */
 static dsd2pcm_frames *pcm_converter(sc_area_t *a, int channels, char *err, size_t errlen)
@@ -805,6 +815,10 @@ static dsd2pcm_frames *pcm_converter(sc_area_t *a, int channels, char *err, size
     cfg.filter = DSD2PCM_FILTER_PYSACD;
     cfg.cutoff = DSD2PCM_CUTOFF_STANDARD;
     cfg.gain_db = a->gain_db;
+    if (!dsd2pcm_version_ok()) {
+        snprintf(err, errlen, "pysacd requires dsd2pcm 0.1.2 or later; this engine has %s", dsd2pcm_version());
+        return NULL;
+    }
     dsd2pcm_frames *conv = NULL;
     int rc = dsd2pcm_frames_new(&cfg, &conv);
     if (rc != DSD2PCM_OK) {

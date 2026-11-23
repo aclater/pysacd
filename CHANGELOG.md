@@ -19,8 +19,9 @@ behaviour, and a patch version only adds or fixes. Each release on
   CPU (0.5.5's builds differed by up to 7 LSB from one CPU to another) and does not depend on the
   thread count or on where a track or range starts: the dither is seeded per frame from its
   position in the area. DSF, DSDIFF and ISO output is unchanged.
-- Building from source needs Rust (cargo 1.83 or later): the build compiles dsd2pcm from the
-  release source pinned in `dsd2pcm.lock`, checked by its SHA-256 ([development](docs/development.md#the-dsd2pcm-library)).
+- Requires dsd2pcm 0.1.2 or later. Building from source needs Rust (cargo 1.83 or later): the
+  build compiles dsd2pcm from the source pinned in `dsd2pcm.lock`, checked by its SHA-256
+  ([development](docs/development.md#the-dsd2pcm-library)).
 - A PCM gain outside -120 to +24 dB is refused.
 
 ## [0.5.5] - 2026-11-23

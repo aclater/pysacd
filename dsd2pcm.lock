@@ -1,28 +1,17 @@
 {
-  "comment": "dsd2pcm's C library, which pysacd links statically for PCM conversion (its pysacd filter). tools/dsd2pcm.py builds it from the release's source (SHA-256 below) without the FLAC reader, so that nothing outside Rust's standard library is linked, with the pinned Rust toolchain. 'use_archives': true would take the release's C library archives instead where it has one for the target (digests in 'assets'); off while they lack CET marks (0.1.1 also carries the Apache-2.0-only FLAC reader). See docs/development.md, 'The dsd2pcm library'.",
+  "comment": "dsd2pcm's C library, which pysacd links statically for PCM conversion (its pysacd filter). pysacd requires dsd2pcm 0.1.2 or later ('min_version'; tools/dsd2pcm.py and the engine refuse older). tools/dsd2pcm.py builds it from the source at 'source.ref' (a tag, or a commit before the release is tagged), checked against its SHA-256, without the FLAC reader, so that nothing outside Rust's standard library is linked, with the pinned Rust toolchain. 'use_archives': true would take the release's C library archives instead where it has one for the target (digests in 'assets'); off until they ship without the FLAC reader and with CET marks. See docs/development.md, 'The dsd2pcm library'.",
   "repository": "aclater/dsd2pcm-rs",
-  "version": "0.1.1",
+  "version": "0.1.2",
+  "min_version": "0.1.2",
   "abi": 1,
-  "commit": "fe83aefec955305fa3496f36dd2939a8f16db2f5",
+  "commit": "76307f66f37566a028439a203dca64d96e10e9d5",
   "signer_workflow": ".github/workflows/release.yml",
   "source": {
-    "sha256": "8373caba58bfc51d4523d4d7885e78b49e76a2fc4b20d226d3c9aec201a9a7a3"
+    "ref": "76307f66f37566a028439a203dca64d96e10e9d5",
+    "sha256": "2bd93d0ce6b4bcdec61f1aa79b678a9978f2f156102fbf62d91b8c6a3fc57b3f"
   },
   "use_archives": false,
-  "assets": {
-    "aarch64-apple-darwin": {
-      "name": "aarch64-macos",
-      "sha256": "99e88d14bebaaf1054fb0eadf09c5cb5f637e114193a676323ff6d8ca3b64fd6"
-    },
-    "aarch64-unknown-linux-gnu": {
-      "name": "aarch64-linux",
-      "sha256": "11178cf56a5d551e7dbd074e0b636ffb6158d2e8ff6ac89febf023fba7426fca"
-    },
-    "x86_64-unknown-linux-gnu": {
-      "name": "x86_64-linux",
-      "sha256": "7278fbabdb0a6411d3f92e436f628dd76bd0bf2da69daf0ad91d6a435016747e"
-    }
-  },
+  "assets": {},
   "rust": {
     "version": "1.99.0",
     "date": "2026-10-01",

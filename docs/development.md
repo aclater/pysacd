@@ -335,11 +335,12 @@ once per batch, with the frames before and after the batch as context and the ba
 frame index in the area (`first_frame`), which seeds the dither per frame. A sample's bytes
 therefore depend only on the disc and its position. The engine no longer compiles its own filter.
 
-**What is linked.** `dsd2pcm.lock` pins one dsd2pcm release: version, C ABI, commit, the SHA-256
-of its source archive (GitHub's tag archive), and the Rust release to build it with (the SHA-256
-of rustc, cargo and the standard library for each host CI builds on).
-`tools/dsd2pcm.py fetch` downloads the source, refuses it unless its digest is the pinned one,
-checks with `cargo tree` that every crate it would link has an MIT-compatible licence
+**What is linked.** pysacd requires dsd2pcm 0.1.2 or later. `dsd2pcm.lock` pins one dsd2pcm
+source: version, minimum version (`min_version`), C ABI, commit, the ref and SHA-256 of its source
+archive (GitHub's archive of a tag, or of a commit before the release is tagged), and the Rust
+release to build it with (the SHA-256 of rustc, cargo and the standard library for each host CI
+builds on). `tools/dsd2pcm.py fetch` downloads the source, refuses it unless its digest is the
+pinned one and its `Cargo.toml` version is at least `min_version`, checks with `cargo tree` that every crate it would link has an MIT-compatible licence
 alternative, and builds the static library for the C compiler's target with
 `cargo rustc --locked --release --no-default-features --crate-type staticlib`. Without default
 features the library holds dsd2pcm and Rust's standard library only: its FLAC reader (claxon,
@@ -357,7 +358,8 @@ the SIMD level is chosen at run time and gives the same bytes at every level.
   `tools/mark_shstk.py` (the docstring says why that is sound); `tools/check_cet.py` checks the
   engine as before.
 - **Checked twice.** `csrc/sacdconv.c` refuses a header whose `DSD2PCM_ABI_VERSION` isn't 1, and
-  the engine logs `dsd2pcm_version()` at debug level when a run converts to PCM.
+  a run that converts to PCM fails if the linked `dsd2pcm_version()` is older than 0.1.2. The
+  engine logs that version at debug level.
 - **Release archives, later.** dsd2pcm's releases also ship C library archives, with build
   provenance. `"use_archives": true` in `dsd2pcm.lock` makes `fetch` take the archive, checked
   against the digest in `assets`, for the targets listed there. It is off: the 0.1.1 archives
@@ -376,8 +378,8 @@ in DIR: `include/dsd2pcm.h` and `lib/libdsd2pcm.a`. `tools/dsd2pcm.py fetch --so
 from a source archive you already have, after the digest check, and `PYSACD_DSD2PCM_CACHE=DIR`
 keeps downloads there. Set `DSD2PCM_TARGET` when a compiler wrapper misreports its target.
 
-**Moving to another release.** Put the new version, commit and source digest in `dsd2pcm.lock`
-(the digest of `https://github.com/aclater/dsd2pcm-rs/archive/refs/tags/vX.Y.Z.tar.gz`), run
+**Moving to another release.** Put the new version, commit, source ref (`v` and the version) and
+source digest in `dsd2pcm.lock` (the digest of the GitHub archive of that tag), run
 `tools/dsd2pcm.py attest`, and run `tests/test_pcm_dsd2pcm.py`: its golden test fails if the
 release changed the `pysacd` filter's bytes.
 

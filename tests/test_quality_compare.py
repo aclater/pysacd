@@ -78,6 +78,16 @@ class Reuse(unittest.TestCase):
 
 
 class Arguments(unittest.TestCase):
+    def test_python_older_than_3_11_is_refused_with_a_reason(self):
+        # dsd-measure and tomllib need 3.11; on 3.10 the module still imports, for these tests
+        saved, qc.tomllib = qc.tomllib, None
+        try:
+            with self.assertRaises(SystemExit) as e:
+                qc.main(["--previous", "0.5.5", "--candidate", ".", "--work", "unused"])
+        finally:
+            qc.tomllib = saved
+        self.assertIn("Python 3.11 or later", str(e.exception.code))
+
     def test_previous_is_a_version_unless_it_looks_like_a_path(self):
         self.assertFalse(qc.is_path("0.5.5"))
         self.assertTrue(qc.is_path("dist/pysacd-0.5.5-py3-none-any.whl"))

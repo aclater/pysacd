@@ -32,7 +32,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:     # Python 3.10: the module imports (its tests run); main() says what it needs
+    tomllib = None  # type: ignore[assignment]
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = ROOT / "suites" / "pysacd.toml"
@@ -269,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--draft", action="store_true", help="mark the page as a draft (also implied by final = false in the suite)")
     ap.add_argument("--note", action="append", default=[], help="a line for the page's notes (repeatable)")
     a = ap.parse_args(argv)
+    if tomllib is None:
+        sys.exit("tools/quality_compare.py needs Python 3.11 or later (tomllib), as dsd-measure does")
 
     suite_text = SUITE.read_text()
     suite = tomllib.loads(suite_text)

@@ -639,8 +639,9 @@ pysacd look like any DSD-to-PCM converter to dsd-measure: it wraps each syntheti
 a one-track SACD image with `tests/sacdgen.py` and runs `pysacd convert` on it.
 
 `tools/quality_compare.py` installs the previous release from PyPI and the candidate side by side,
-runs the suite and the null test on both on one machine, and writes the page. It needs Rust, a C
-compiler, `flac-devel`, `ffmpeg` and git, as for a source build, and takes about an hour on 6 cores.
+runs the suite and the null test on both on one machine, and writes the page. It needs Python 3.11
+or later (as dsd-measure does), Rust, a C compiler, `flac-devel`, `ffmpeg` and git, as for a source
+build, and takes about an hour on 6 cores.
 From the release commit, in the Fedora container of the [release test plan](release-test-plan.md):
 
 ```sh

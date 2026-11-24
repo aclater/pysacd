@@ -84,9 +84,21 @@ The [documentation index](docs/README.md) lists every document and its sections.
 
 ## Licence and credits
 
-pysacd is free software under the [GNU General Public License](COPYING), version 2 or (at your
-option) any later version. Its DSD-to-PCM filter, `csrc/dsp.c` and `csrc/dsp.h`, is
-MIT OR Apache-2.0 ([licences](licenses/README.md)).
+pysacd's code is free software under the [GNU General Public License](COPYING), version 2 or (at
+your option) any later version (`GPL-2.0-or-later`). Its DSD-to-PCM filter, `csrc/dsp.c` and
+`csrc/dsp.h`, is MIT OR Apache-2.0 ([licences](licenses/README.md)).
+
+The documentation in `docs/`, including the PCM quality pages in `docs/quality/`, and the
+measurement data published in it are licensed under
+[CC BY 4.0](licenses/CC-BY-4.0.txt) (`CC-BY-4.0`). Two parts keep their own terms:
+
+- the protobuf message definitions under "Messages" in the
+  [PS3 protocol page](docs/ps3-protocol.md#messages) are adapted from sacd-ripper's
+  `libs/libsacd/sacd_ripper.proto`, and stay under sacd-ripper's licence, GPL-2.0-or-later;
+- the icon files in `docs/assets/` are GPL-2.0-or-later, as [their page](docs/assets/README.md)
+  says.
+
+To cite pysacd, use [CITATION.cff](CITATION.cff).
 
 - [scarletbook-rs](https://github.com/aclater/scarletbook-rs) (MIT OR Apache-2.0, used under MIT)
   reads the images, decodes DST and lays out DSF and DSDIFF files; it is linked into the engine

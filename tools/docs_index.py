@@ -114,7 +114,10 @@ def index() -> str:
     out = ["[pysacd](../README.md) › Documentation", "",
            '<img src="assets/icon-256.png" alt="" width="96">', "", "# Documentation", "",
            ("Every document about pysacd, grouped by what it is for. Start with the "
-           "[README](../README.md) for what pysacd is."), ""]
+           "[README](../README.md) for what pysacd is."), "",
+           ("The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for the "
+            "parts listed under [Licence and credits](../README.md#licence-and-credits), which also "
+            "gives the code's licences."), ""]
     for group, docs in GROUPS:
         out += [f"## {group}", ""]
         for name, blurb in docs:

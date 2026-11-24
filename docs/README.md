@@ -6,6 +6,8 @@
 
 Every document about pysacd, grouped by what it is for. Start with the [README](../README.md) for what pysacd is.
 
+The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for the parts listed under [Licence and credits](../README.md#licence-and-credits), which also gives the code's licences.
+
 ## Install
 
 - **[Install](install/README.md)**: wheels, checking a download, building from source.

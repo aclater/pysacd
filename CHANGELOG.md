@@ -10,6 +10,11 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Fixed
+- A cancelled run (Ctrl-C during `pysacd convert` or `pysacd-extract`, or `sacdconv_cancel()`) no
+  longer hangs now and then: the cancel now wakes the engine's threads that wait for a batch, so
+  the run ends within a batch, as documented.
+
 ## [0.5.5] - 2026-11-23
 
 `pysacd-extract -z` now splits a gapless chain where `sacd_extract` does, so those files are

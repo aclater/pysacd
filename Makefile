@@ -182,6 +182,15 @@ build/replay_engine: fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(wildcard csr
 	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread $(REPLAY_DISPATCH) $(FUZZ_FLAC_CFLAGS) -I$(SCARLETBOOK_DIR)/include -o $@ \
 	    fuzz/fuzz_engine.c fuzz/replay.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) $(FLAC_LIBS) -lm
 
+# A cancel from another thread wakes the engine's waiting threads (tests/test_cancel_wakeup.py): the
+# engine with its test hooks (SC_TEST_HOOKS), which the library pysacd loads never has
+cancel-wakeup: build/cancel_wakeup
+
+build/cancel_wakeup: tests/native/cancel_wakeup.c $(FUZZ_SRC) $(wildcard csrc/*.h) $(SB_READY)
+	@mkdir -p $(dir $@)
+	$(CC) $(REPLAY_FLAGS) -std=gnu17 -pthread $(REPLAY_DISPATCH) -DSC_TEST_HOOKS -I$(SCARLETBOOK_DIR)/include -o $@ \
+	    tests/native/cancel_wakeup.c $(FUZZ_SRC) $(SB_LIB) $(SB_LIBS) -lm
+
 # The engine's leak check (#122): the same harness with FLAC output added, and no interpreter
 # whose own allocations would hide the engine's. LEAK_FLAGS: -fsanitize=leak, or -g for valgrind.
 LEAK_FLAGS ?= -O1 -g -fno-omit-frame-pointer
@@ -202,4 +211,4 @@ clean:
 distclean: clean
 	rm -rf build
 
-.PHONY: all clean distclean test-tools fuzz fuzz-replay leak-driver
+.PHONY: all clean distclean test-tools fuzz fuzz-replay cancel-wakeup leak-driver

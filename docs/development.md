@@ -382,6 +382,9 @@ encoder, and configured runs (`cfg-*.iso`) that each reach one of the paths abov
 input goes, minimised, into `fuzz/regressions/fuzz_engine/` along with its fix.
 `tests/test_fuzz_engine.py` builds the same harness without libFuzzer (`make fuzz-replay`, any C
 compiler) and replays those inputs and the seeds, under ASan and UBSan, and under TSan, in CI.
+`tests/test_cancel_wakeup.py` builds the engine with its test hooks (`make cancel-wakeup`,
+`SC_TEST_HOOKS`; never in the library pysacd loads), holds the worker of a run, cancels it from
+another thread while the writer and the reader wait, and fails if the run doesn't return.
 
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 

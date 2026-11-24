@@ -107,7 +107,7 @@ typedef struct batch {
     struct batch *next;
 } batch_t;
 
-typedef struct {
+typedef struct engine {
     sc_area_t      *a;
     sc_output_t    *outs;
     int             nouts;
@@ -125,10 +125,22 @@ typedef struct {
     uint64_t        total_batches;
     _Atomic int     failed;
     uint64_t        silence_written, audio_written;    /* frames, over all outputs (writer) */
+    struct engine  *next_running;               /* the running engines' list (cancel_mu) */
 } engine_t;
 
 static void sc_log(sc_area_t *a, int level, const char *fmt, ...)
     __attribute__((format(SC_PRINTF, 3, 4)));
+
+/* Test builds only (-DSC_TEST_HOOKS, tests/native/cancel_wakeup.c): a function the engine's
+   threads call at fixed points, so that a test can hold a thread there and order the others
+   around it. Never in the library pysacd loads. */
+#ifdef SC_TEST_HOOKS
+enum { SC_HOOK_WORKER_LOOP, SC_HOOK_WRITER_WAIT };
+void (*sc_test_hook)(int point);
+#define TEST_HOOK(point) do { if (sc_test_hook) sc_test_hook(point); } while (0)
+#else
+#define TEST_HOOK(point) ((void)0)
+#endif
 
 static void set_error(engine_t *e, const char *fmt, ...)
 {
@@ -379,8 +391,15 @@ static int fill_until(reader_t *r, uint32_t tc)
 
 /* ------------------------------------------------------------ reader: scarletbook (#85) */
 
-/* Serialises sacdconv_cancel() against the reader handing out and freeing its token */
+/* Serialises sacdconv_cancel() against the reader handing out and freeing its token, and
+   against engines joining and leaving the running list */
 static pthread_mutex_t cancel_mu = PTHREAD_MUTEX_INITIALIZER;
+
+/* The engines between thread start-up and join, so that sacdconv_cancel() can wake their
+   threads: a cancel is part of every wait's condition (stopping()), and a thread that waits on
+   a condition variable only sees it when the variable is signalled. Lock order: cancel_mu,
+   then an engine's mu. */
+static engine_t *running;
 
 /* A sector source (read_fn, 2048-byte sectors by LSN) as scarletbook's positional reader */
 typedef struct {
@@ -823,6 +842,7 @@ static void *worker_main(void *arg)
     }
 
     for (;;) {
+        TEST_HOOK(SC_HOOK_WORKER_LOOP);
         pthread_mutex_lock(&e->mu);
         while (!e->work_head && !e->reader_done && !stopping(e))
             pthread_cond_wait(&e->cv_work, &e->mu);
@@ -1261,6 +1281,7 @@ static int writer_run(engine_t *e)
         while (!(b = e->done[seq % e->npool]) || b->seq != seq) {
             if (stopping(e) || (e->reader_done && seq >= e->total_batches))
                 break;
+            TEST_HOOK(SC_HOOK_WRITER_WAIT);     /* under mu */
             pthread_cond_wait(&e->cv_done, &e->mu);
         }
         if (!b || b->seq != seq) {
@@ -1412,6 +1433,20 @@ void sacdconv_cancel(sc_area_t *a)
     SbCancel *token = atomic_load(&a->sb_cancel);
     if (token)
         sb_cancel_request(token);
+    /* Wake every thread of the run that waits (the writer for a batch, the reader for a free
+       one, the workers for work): each re-checks stopping() under mu. Without this, the
+       workers could stop with batches still queued while the writer and the reader waited for
+       a signal that never came, and the run hung. Taking mu orders the flag before any waiter's
+       next check. */
+    for (engine_t *e = running; e; e = e->next_running) {
+        if (e->a != a)
+            continue;
+        pthread_mutex_lock(&e->mu);
+        pthread_cond_broadcast(&e->cv_free);
+        pthread_cond_broadcast(&e->cv_work);
+        pthread_cond_broadcast(&e->cv_done);
+        pthread_mutex_unlock(&e->mu);
+    }
     pthread_mutex_unlock(&cancel_mu);
 }
 
@@ -1621,6 +1656,10 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
            a->read_fn ? " via sector source" : "", nworkers, want_pcm ? ", PCM " : "",
            want_pcm ? (a->pcm_rate == 88200 ? "88.2 kHz" : "176.4 kHz") : "");
     double t_start = now_ms();
+    pthread_mutex_lock(&cancel_mu);
+    e.next_running = running;
+    running = &e;
+    pthread_mutex_unlock(&cancel_mu);
     int started = 0;
     for (; started < nworkers; started++)
         if (pthread_create(&workers[started], NULL, worker_main, &e) != 0)
@@ -1637,6 +1676,13 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
     pthread_mutex_unlock(&e.mu);
     for (int i = 0; i < started; i++)
         pthread_join(workers[i], NULL);
+    pthread_mutex_lock(&cancel_mu);
+    for (engine_t **p = &running; *p; p = &(*p)->next_running)
+        if (*p == &e) {
+            *p = e.next_running;
+            break;
+        }
+    pthread_mutex_unlock(&cancel_mu);
 
     rc = e.failed ? -1 : cancelled(a) ? (snprintf(a->error, sizeof(a->error), "cancelled"), -1) : 0;
     sc_log(a, rc ? SC_ERROR : SC_INFO, "engine: %s after %.2f s: %llu frames, %llu sectors read%s%s",

@@ -1285,7 +1285,13 @@ static int writer_run(engine_t *e)
                 rc = -1;
             }
         }
-        e->a->frames_done += b->n;
+        /* Count only the frames the outputs need (#205): the first batch also carries the PCM
+           warm-up frames before need_lo, and the last one the post context at need_hi, which
+           frames_total leaves out. */
+        uint32_t c_lo = b->tc0 > e->need_lo ? b->tc0 : e->need_lo;
+        uint32_t c_hi = b->tc0 + (uint32_t)b->n < e->need_hi ? b->tc0 + (uint32_t)b->n : e->need_hi;
+        if (c_hi > c_lo)
+            e->a->frames_done += c_hi - c_lo;
 
         pthread_mutex_lock(&e->mu);
         b->next = e->free_list;

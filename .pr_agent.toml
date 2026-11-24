@@ -2,12 +2,20 @@
 # The model is set in the workflow's env, so it applies even before this file
 # reaches the default branch.
 
+[config]
+# Don't pull issues named in the branch name into the prompt: issue text can
+# come from outside contributors and is untrusted.
+extract_issue_from_branch = false
+
 [github_action_config]
 # Re-review after each push, not only when the PR opens.
 handle_push_trigger = true
 push_commands = ["/review"]
 
 [pr_reviewer]
+# Ticket analysis copies linked issues' text into the reviewer's prompt.
+# Issue text can come from outside contributors, so keep it out.
+require_ticket_analysis_review = false
 require_tests_review = true
 require_security_review = true
 require_estimate_effort_to_review = false

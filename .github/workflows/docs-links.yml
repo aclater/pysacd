@@ -1,12 +1,14 @@
 # Check the links in README.md and docs/ with lychee: relative links to files,
 # and external ones, with their #fragments (headings in the linked file). Weekly (links rot without a code change) and on pull
-# requests that touch the docs.
+# requests that touch the docs. The shared DSD Toolbox link check (docs-links job) also covers every
+# other Markdown file (CHANGELOG, CONTRIBUTING, SECURITY), offline on pull requests and with external
+# URLs weekly.
 
 name: docs-links
 
 on:
   pull_request:
-    paths: ["README.md", "docs/**", ".github/workflows/docs-links.yml"]
+    paths: ["**.md", ".docs.toml", ".github/workflows/docs-links.yml"]
   schedule:
     - cron: "11 7 * * 1"  # weekly
   workflow_dispatch:
@@ -41,3 +43,11 @@ jobs:
             --exclude '^https://raw\.githubusercontent\.com/dsd-toolbox/pysacd/master/docs/assets/'
             README.md 'docs/**/*.md'
           fail: true
+
+  docs-links:
+    permissions:
+      contents: read
+    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-links.yml@b50a7cca297022561959ba9a2532c0673d532ada
+    with:
+      tools_ref: b50a7cca297022561959ba9a2532c0673d532ada
+      external: ${{ github.event_name != 'pull_request' }}

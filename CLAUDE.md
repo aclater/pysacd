@@ -78,6 +78,7 @@ A toolkit for SACD (Scarletbook) disc images. It has four parts:
 
 ## Checks before every PR
 
+<!-- docs-run: skip="the checks before a pull request, on a source checkout; CI runs each of them" -->
 ```bash
 ruff check .
 mypy src

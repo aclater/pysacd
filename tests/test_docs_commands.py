@@ -1,13 +1,15 @@
-"""tools/docs_commands.py (#215): it finds every command block in README.md and docs/, its skip list
-follows the docs, and its swaps still apply."""
+"""tools/docs_commands.py (#215): it finds every command block in the Markdown, reads the shared
+docs-run markers (the one list of what runs), and its swaps still apply; tools/docs_fixtures.py
+provides every disc a command that runs names."""
 
 from __future__ import annotations
 
+import re
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -26,8 +28,8 @@ def tree(readme: str, **docs: str) -> tempfile.TemporaryDirectory:
 
 
 class TheDocs(unittest.TestCase):
-    def test_every_skip_entry_matches_a_docs_command(self):
-        self.assertEqual(dc.check_skips(dc.blocks()), [])
+    def test_every_command_block_is_marked(self):
+        self.assertEqual(dc.check_marks(dc.blocks()), [])
 
     def test_every_swap_still_applies(self):
         self.assertEqual(dc.check_swaps(dc.blocks()), [])
@@ -37,18 +39,34 @@ class TheDocs(unittest.TestCase):
         self.assertIn(("README.md", "sh"), found)
         self.assertIn(("docs/api.md", "python"), found)
         self.assertIn(("docs/user-guide.md", "console"), found)
-        runs = [c.text for b in dc.blocks() for c in b.commands if not dc.skip_of(b, c)]
+        runs = [c.text for b in dc.blocks() if b.status == "run" for c in b.commands]
         self.assertIn("pysacd-extract -2 -s -i album.iso", runs)
 
     def test_no_command_names_an_undocumented_disc(self):
-        # every *.iso a command that runs names is one the run provides
-        import re
+        # every *.iso named by a command that runs (or runs here for a need) is one the fixture writes
         for b in dc.blocks():
+            if b.status == "skip" and not dc.need_of(b):
+                continue
             for c in b.commands:
-                if dc.skip_of(b, c):
-                    continue
                 for name in re.findall(r"[\w./-]+\.iso\b", c.text):
                     self.assertIn(Path(name).name, dc.DISCS, f"{b.file}:{b.line}: {c.text}")
+
+    def test_the_discs_group_fetches_a_commit_with_this_fixture(self):
+        # the shared docs-run fetches tools/docs_fixtures.py at the commit named in the marker;
+        # where that commit is in this clone's history, its fixture files must be today's
+        shas = set()
+        for path in dc.doc_files():
+            shas |= set(re.findall(r"pysacd/archive/([0-9a-f]{40})\.tar\.gz", path.read_text(encoding="utf-8")))
+        self.assertEqual(len(shas), 1, shas)
+        sha = shas.pop()
+        have = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{sha}^{{commit}}"],
+                              capture_output=True, check=False)
+        if have.returncode:
+            self.skipTest(f"{sha} is not in this clone's history")
+        for f in ("tools/docs_fixtures.py", "tests/sacdgen.py", "tests/dstenc.py", "tests/native/dstenc.c"):
+            old = subprocess.run(["git", "-C", str(ROOT), "show", f"{sha}:{f}"], capture_output=True, check=True)
+            self.assertEqual(old.stdout.replace(b"\r\n", b"\n"), (ROOT / f).read_bytes().replace(b"\r\n", b"\n"),
+                             f"{f} changed since {sha}: move the commit in the discs group's setup=")
 
 
 class Parsing(unittest.TestCase):
@@ -85,21 +103,29 @@ class Parsing(unittest.TestCase):
         self.assertEqual(got[0].commands[0].text, "pysacd toc album.iso")
         self.assertEqual(got[1].code, "print(1)\n")
 
-    def test_a_stale_skip_entry_is_reported(self):
-        # the docs changed a skipped command: the list must follow
-        with tree("```sh\nmake\n```\n") as tmp, \
-                mock.patch.dict(dc.SKIP, {("README.md", "make"): ("x", None), ("README.md", "gone"): ("y", None)},
-                                clear=True), \
-                mock.patch.dict(dc.SKIP_FILES, {}, clear=True):
-            self.assertEqual(dc.check_skips(dc.blocks(Path(tmp))), ["README.md: 'gone'"])
-
-    def test_a_skipped_file_skips_every_command_and_must_exist(self):
-        with tree("```sh\nmake\npysacd toc album.iso\n```\n") as tmp, \
-                mock.patch.dict(dc.SKIP, {}, clear=True), \
-                mock.patch.dict(dc.SKIP_FILES, {"README.md": "x", "docs/gone.md": "y"}, clear=True):
+    def test_markers_decide_what_runs(self):
+        text = ("<!-- docs-run: skip=\"needs a PS3 or a player\" -->\n```sh\npysacd toc 192.0.2.10:2002\n```\n\n"
+                "<!-- docs-run: group=discs expect=\"^Disc:\" -->\n```sh\npysacd toc album.iso\n```\n\n"
+                "```sh\nmake\n```\n")
+        with tree(text) as tmp:
             got = dc.blocks(Path(tmp))
-            self.assertEqual([dc.skip_of(b, c) for b in got for c in b.commands], [("x", None), ("x", None)])
-            self.assertEqual(dc.check_skips(got), ["docs/gone.md: (the whole file)"])
+        self.assertEqual([(b.status, b.reason, b.expects) for b in got],
+                         [("skip", "needs a PS3 or a player", []), ("run", "", ["^Disc:"]), ("unmarked", "", [])])
+        self.assertEqual(dc.need_of(got[0]), dc.PS3)
+        self.assertIsNone(dc.need_of(got[1]))
+        self.assertEqual(dc.check_marks(got),
+                         ['README.md:11: command block without a docs-run marker (run, or skip="reason")'])
+
+    def test_a_marker_reaches_only_a_fence_close_below_it(self):
+        with tree("<!-- docs-run: skip=\"x\" -->\n\none\n\ntwo\n```sh\nmake\n```\n") as tmp:
+            [b] = dc.blocks(Path(tmp))
+        self.assertEqual(b.status, "unmarked")
+
+    def test_a_bad_marker_is_an_error(self):
+        for marker in ('skip=""', "colour=red", "plain"):
+            with self.subTest(marker), tree(f"<!-- docs-run: {marker} -->\n```sh\nmake\n```\n") as tmp, \
+                    self.assertRaises(dc.MarkerError):
+                dc.blocks(Path(tmp))
 
     def test_swaps(self):
         s = dc.swap("pip install pysacd   # note\npysacd-extract -I -i 192.0.2.10:2002\nsacd_extract -i 127.0.0.1:2002",

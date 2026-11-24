@@ -1,0 +1,19 @@
+# Settings for the shared DSD Toolbox docs tools (dsd-toolbox docs/docs-tooling.md).
+name = "pysacd"
+kind = "app"
+default_branch = "master"
+
+[lint]
+# The release steps live in the release test plan (docs-style clarification 6).
+release_files = ["docs/release-test-plan.md"]
+
+[touched]
+# What users see: the Python package, the C engine and the build/packaging metadata.
+code = ["src/**", "csrc/**", "setup.py", "pyproject.toml", "MANIFEST.in"]
+docs = ["README.md", "docs/**", "CHANGELOG.md"]
+# Tests, CI, fuzzing and maintainer tools are documented in docs/development.md when they
+# change how a maintainer works; a change to them alone is not a user-visible change.
+ignore = ["tests/**", ".github/**", "fuzz/**", "tools/**", "scripts/**", "suites/**"]
+
+[audit]
+history = ["CHANGELOG.md", "docs/performance.md", "docs/quality/**"]

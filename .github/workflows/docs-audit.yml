@@ -1,0 +1,20 @@
+# The post-release docs audit (docs/release-test-plan.md, "After the release: run the docs audit"):
+# docs lint, links with external URLs and the facts check, then the checklist of pages that name a
+# version, an option or a platform. Run by hand after each release; the DSD Toolbox runs it monthly.
+
+name: docs-audit
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  docs-audit:
+    permissions:
+      contents: read
+    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-audit.yml@b50a7cca297022561959ba9a2532c0673d532ada
+    with:
+      tools_ref: b50a7cca297022561959ba9a2532c0673d532ada

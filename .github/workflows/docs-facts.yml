@@ -1,0 +1,27 @@
+# The facts regions in the Markdown (minimum Python, install lines, the release assets of the
+# attestation example) must equal their sources: pyproject.toml, PyPI and the GitHub releases.
+# Check only, read-only. Weekly too, because a release elsewhere can make a region stale.
+
+name: docs-facts
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  schedule:
+    - cron: "23 7 * * 1"  # weekly
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}  # a new push supersedes the old PR run; master runs finish
+
+permissions: {}
+
+jobs:
+  docs-facts:
+    permissions:
+      contents: read
+    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-facts.yml@b50a7cca297022561959ba9a2532c0673d532ada
+    with:
+      tools-ref: b50a7cca297022561959ba9a2532c0673d532ada

@@ -11,7 +11,7 @@ Windows.
 
 ## From PyPI
 
-Python 3.10 or later. There are wheels for:
+Python <!-- facts:python-min -->3.10<!-- /facts --> or later. There are wheels for:
 
 | System | Wheel |
 |---|---|
@@ -25,10 +25,15 @@ Anywhere else, pip builds from source ([below](#from-source)). The macOS wheels 
 those versions and run-tested on macOS 15 only (arm64 and x86-64). On macOS 11 to 14 they are
 untested, so please report how they do there.
 
+<!-- docs-run: packages=python3-pip expect="^pysacd {version}" -->
 ```sh
-pip install pysacd                    # engine, libFLAC and mutagen included
+# facts:install kind=pip name=pysacd
+pip install pysacd
+# /facts
 pysacd --version                      # shows how the engine was built
 ```
+
+The wheel includes the engine, libFLAC and mutagen.
 
 Wheels are portable builds: the PCM filters pick AVX-512, AVX2 or the baseline code when the
 library loads.
@@ -36,17 +41,28 @@ library loads.
 ## Checking a download
 
 The same files are on each [GitHub release](https://github.com/dsd-toolbox/pysacd/releases), each
-with its build provenance attestation beside it as the wheel's file name plus `.intoto.jsonl`. Check a wheel with
-the GitHub CLI:
+with its build provenance attestation beside it as the wheel's file name plus `.intoto.jsonl`.
+Check a wheel with the GitHub CLI against that bundle; no GitHub sign-in is needed. For 0.5.5's
+Linux x86-64 wheel:
 
+<!-- docs-run: group=attestation packages=gh -->
+<!-- docs-lint: ignore old-owner -- 0.5.5 was signed before the repository moved, so its attestation names aclater/pysacd -->
 ```sh
-gh attestation verify pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl --repo aclater/pysacd
+# facts:assets repo=dsd-toolbox/pysacd tag=v0.5.5 match="manylinux_2_28_x86_64\.whl" fmt="curl -fsSLO https://github.com/dsd-toolbox/pysacd/releases/download/{tag}/{name}"
+curl -fsSLO https://github.com/dsd-toolbox/pysacd/releases/download/v0.5.5/pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl
+curl -fsSLO https://github.com/dsd-toolbox/pysacd/releases/download/v0.5.5/pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl.intoto.jsonl
+# /facts
+gh attestation verify pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl --repo aclater/pysacd \
+    --bundle pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl.intoto.jsonl
 ```
 
-To check offline against the attached bundle, add
-`--bundle pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl.intoto.jsonl`. Releases up to 0.5.5 were
-signed before the repository moved to dsd-toolbox, so they verify with `--repo aclater/pysacd`;
-later releases verify with `--repo dsd-toolbox/pysacd`.
+The command prints nothing and exits 0 when the wheel matches.
+
+<!-- docs-lint: ignore old-owner -- names the account that signed 0.5.5 and earlier -->
+Releases up to 0.5.5 were signed before the repository moved, so they verify with `--repo aclater/pysacd`,
+and only against their bundle: without `--bundle`, `gh` looks the attestation up on GitHub, and for these
+releases that lookup fails since the move (HTTP 404, checked 2026-11-24). Later releases are
+signed by the release workflow of dsd-toolbox/pysacd, so they verify with `--repo dsd-toolbox/pysacd`.
 
 ## From source
 
@@ -60,6 +76,7 @@ that the engine links, from its GitHub release, and checks it against the SHA-25
 `scarletbook.lock`. To build offline, see
 [development](../development.md#the-scarletbook-library).
 
+<!-- docs-run: skip="builds from a source checkout; CI's tests and portability jobs build the same way" -->
 ```sh
 # Fedora/RHEL: sudo dnf install gcc make flac-devel
 # Debian/Ubuntu: sudo apt install gcc make libflac-dev pkg-config
@@ -76,6 +93,7 @@ make                                         # optional: rebuild it for this CPU
 Build the engine with MSYS2's UCRT64 toolchain. It links statically, so the DLL needs nothing
 beside it, and works with the normal python.org Python:
 
+<!-- docs-run: skip="Windows with MSYS2; CI's portability workflow builds it" -->
 ```sh
 # with your Python, from any shell: the scarletbook library the engine links (pinned, checked)
 python tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook

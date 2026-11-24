@@ -11,6 +11,8 @@ with the same names and the same bytes.
 
 ## Migrating
 
+<!-- docs-run: group=discs -->
+<!-- docs-lint: ignore placeholder -- where pip put pysacd-extract depends on how it was installed (a virtual environment, pipx or pip --user) -->
 ```sh
 mkdir -p ~/bin
 ln -s "$(command -v pysacd-extract)" ~/bin/sacd_extract    # that's the whole migration
@@ -22,11 +24,18 @@ exists.
 Scripts, `sacd_extract.cfg` (including `logging=1`) and muscle memory keep
 working:
 
+<!-- docs-run: group=discs -->
 ```console
 $ pysacd-extract -2 -m -s -i album.iso       # DSF, stereo + multichannel
 $ pysacd-extract -e -C -i album.iso          # DSDIFF edit master + cue + xml
 $ pysacd-extract -P -i album.iso             # disc information, as sacd_extract prints it
-$ pysacd-extract -I -s -i 192.0.2.10:2002    # copy a PS3 disc and extract it, one pass over the network
+```
+
+From a PS3, copy the disc and extract it in one pass over the network:
+
+<!-- docs-run: skip="needs a PS3 or a player running SACD Ripper; tools/docs_commands.py runs it against its own pysacd ps3sim" -->
+```console
+$ pysacd-extract -I -s -i 192.0.2.10:2002
 ```
 
 Front ends that run `sacd_extract`, such as
@@ -93,6 +102,7 @@ Run `pysacd-extract --help` for the full list.
 
 ## Don't take our word for it
 
+<!-- docs-run: skip="needs sacd_extract; tools/docs_commands.py runs it with --sacd-extract" -->
 ```sh
 mkdir a b
 (cd a && sacd_extract   -2 -m -s -i ../album.iso)

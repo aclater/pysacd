@@ -1,0 +1,21 @@
+# A pull request that changes code, packaging or behaviour also changes the README, docs/ or the
+# CHANGELOG, or says "Docs: none needed — <reason>" in its body. Paths are in .docs.toml [touched].
+
+name: docs-touched
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}  # a new push supersedes the old PR run; master runs finish
+
+permissions: {}
+
+jobs:
+  docs-touched:
+    permissions:
+      contents: read
+    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-touched.yml@b50a7cca297022561959ba9a2532c0673d532ada
+    with:
+      tools_ref: b50a7cca297022561959ba9a2532c0673d532ada

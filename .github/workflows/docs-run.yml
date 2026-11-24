@@ -1,0 +1,28 @@
+# The command blocks of the Markdown, as their docs-run markers say: each marked block runs in a
+# fresh Fedora container against the release on PyPI (the blocks that name a disc get the discs of
+# tools/docs_fixtures.py), and every other block says why it can't run. tools/docs_commands.py runs
+# the same blocks against a build of the checkout (docs/development.md, "Docs commands").
+
+name: docs-run
+
+on:
+  pull_request:
+    paths: ["**.md", "tools/docs_fixtures.py", "tests/sacdgen.py", "tests/dstenc.py", "tests/native/dstenc.c", ".github/workflows/docs-run.yml"]
+  schedule:
+    - cron: "41 7 * * 1"  # weekly: the published release and the images move without a change here
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}  # a new push supersedes the old PR run; master runs finish
+
+permissions: {}
+
+jobs:
+  docs-run:
+    permissions:
+      contents: read
+    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-run.yml@b50a7cca297022561959ba9a2532c0673d532ada
+    with:
+      tools-ref: b50a7cca297022561959ba9a2532c0673d532ada
+      version-of: dsd-toolbox/pysacd

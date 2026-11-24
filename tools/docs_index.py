@@ -44,6 +44,7 @@ GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("why-pysacd.md", "what pysacd brings, and a first Python example"),
         ("author.md", "why pysacd exists, in the author's words"),
         ("clean-room.md", "where the code came from, licences, acknowledgements"),
+        ("assets/README.md", "the icon files and where each is used"),
     ]),
 ]
 
@@ -104,7 +105,9 @@ def with_nav(text: str, name: str = "") -> str:
     body = strip_nav(text)
     title, sections = headings(body)
     up = "../" * name.count("/")
-    lines = [NAV_START, f"[pysacd]({up}../README.md) › [Documentation]({up}README.md) › {title}"]
+    # the title as plain text, as the shared docs lint (dsd-toolbox tools/docs) expects it
+    plain = title.replace("`", "")
+    lines = [NAV_START, f"[pysacd]({up}../README.md) › [Documentation]({up}README.md) › {plain}"]
     if len(sections) >= MIN_SECTIONS:
         lines += ["", "**Contents:** " + " · ".join(f"[{s}](#{a})" for s, a in sections)]
     return "\n".join(lines + [NAV_END, "", body])
@@ -143,9 +146,7 @@ def index() -> str:
 def main() -> int:
     check = "--check" in sys.argv[1:]
     listed = {name for _, docs in GROUPS for name, _ in docs}
-    # docs/assets/ holds the icon files and their README, not documentation pages
-    present = {p.relative_to(DOCS).as_posix() for p in DOCS.rglob("*.md")
-               if p.relative_to(DOCS).parts[0] != "assets"} - {"README.md"}
+    present = {p.relative_to(DOCS).as_posix() for p in DOCS.rglob("*.md")} - {"README.md"}
     collected = {n for n in present - listed if n.split("/")[0] in COLLECTIONS}
     problems = [f"docs/{n} is not in tools/docs_index.py GROUPS" for n in sorted(present - listed - collected)]
     for n in sorted(collected):

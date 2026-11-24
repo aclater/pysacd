@@ -1,0 +1,25 @@
+# The DSD Toolbox docs standard (dsd-toolbox docs/docs-tooling.md): page shape, README badges,
+# CHANGELOG format, British spelling, terminology, placeholders, old-owner links, the release step.
+# Settings and the reasoned waivers are in .docs.toml and in docs-lint comments in the pages.
+
+name: docs-lint
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}  # a new push supersedes the old PR run; master runs finish
+
+permissions: {}
+
+jobs:
+  docs-lint:
+    permissions:
+      contents: read
+    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-lint.yml@b50a7cca297022561959ba9a2532c0673d532ada
+    with:
+      tools_ref: b50a7cca297022561959ba9a2532c0673d532ada

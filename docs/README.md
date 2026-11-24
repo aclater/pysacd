@@ -105,6 +105,7 @@ The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for
   - [10. Fresh-eyes review for first releases](release-test-plan.md#10-fresh-eyes-review-for-first-releases)
   - [11. PCM quality comparison](release-test-plan.md#11-pcm-quality-comparison)
   - [Sign-off](release-test-plan.md#sign-off)
+  - [After the release: run the docs audit](release-test-plan.md#after-the-release-run-the-docs-audit)
 
 ## Project
 
@@ -118,6 +119,7 @@ The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for
   - [sacd_extract only as a black box](clean-room.md#sacd_extract-only-as-a-black-box)
   - [Licences](clean-room.md#licences)
   - [Acknowledgements](clean-room.md#acknowledgements)
+- **[Icon](assets/README.md)**: the icon files and where each is used.
 
 ## Release
 

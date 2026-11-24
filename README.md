@@ -3,12 +3,12 @@
 # pysacd
 
 [![CI](https://github.com/dsd-toolbox/pysacd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/dsd-toolbox/pysacd/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/aclater/pysacd/branch/master/graph/badge.svg)](https://codecov.io/gh/aclater/pysacd)
+[![Coverage](https://codecov.io/gh/dsd-toolbox/pysacd/branch/master/graph/badge.svg)](https://codecov.io/gh/dsd-toolbox/pysacd)
 [![CodeQL](https://github.com/dsd-toolbox/pysacd/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/dsd-toolbox/pysacd/actions/workflows/codeql.yml)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue)](COPYING)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/dsd-toolbox/pysacd/badge)](https://scorecard.dev/viewer/?uri=github.com/dsd-toolbox/pysacd)
 [![PyPI](https://img.shields.io/pypi/v/pysacd)](https://pypi.org/project/pysacd/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
+[![Licence: GPL-2.0-or-later](https://img.shields.io/badge/licence-GPL--2.0--or--later-blue)](COPYING)
 
 pysacd reads SACD (Scarletbook) images, and PS3 SACD Ripper servers, straight from Python,
 and writes DSF, DFF (DSDIFF), WAV and FLAC in one pass with its multithreaded C engine. It also ships
@@ -24,26 +24,30 @@ same file names, the same bytes.
 | Windows | Wheel for x86-64. Not code-signed. Run-tested on the release's CI runner | [install](docs/install/README.md) |
 | Anything else | Builds from source with a C compiler and make (libFLAC for FLAC output) | [from source](docs/install/README.md#from-source) · [development](docs/development.md) |
 
-Every wheel is for Python 3.10 or later and carries a build provenance attestation on its
+Every wheel is for Python <!-- facts:python-min -->3.10<!-- /facts --> or later and carries a build provenance attestation on its
 [GitHub release](https://github.com/dsd-toolbox/pysacd/releases), checkable with
 `gh attestation verify`. On any system, pysacd also reads discs over the network from a PS3 or
 Blu-ray player running SACD Ripper ([reading from a PS3](docs/ps3-protocol.md#reading-from-a-ps3)).
 
 ## Quick start
 
-You need Python 3.10 or later on Linux or macOS, and an SACD image. The commands use
+You need Python <!-- facts:python-min -->3.10<!-- /facts --> or later on Linux or macOS, and an SACD image. The commands use
 `album.iso` in the current folder; type your image's name instead.
 
 1. Install pysacd in a virtual environment of its own:
 
+   <!-- docs-run: packages=python3 -->
    ```sh
    python3 -m venv pysacd-env
    . pysacd-env/bin/activate
+   # facts:install kind=pip name=pysacd
    pip install pysacd
+   # /facts
    ```
 
 2. Read the disc's table of contents: album, areas and tracks.
 
+   <!-- docs-run: group=discs setup="dnf -y -q --setopt=install_weak_deps=False install python3-pip python3-numpy gcc tar gzip && pip install -q pysacd && curl -fsSL https://github.com/dsd-toolbox/pysacd/archive/62811ee3279399c9c938de7ea3a52b54ceb54f18.tar.gz | tar -xz -C /tmp && python3 -I /tmp/pysacd-62811ee3279399c9c938de7ea3a52b54ceb54f18/tools/docs_fixtures.py --offline-config ." expect="^Disc:" -->
    ```sh
    pysacd toc album.iso
    ```
@@ -52,6 +56,7 @@ You need Python 3.10 or later on Linux or macOS, and an SACD image. The commands
 
 3. Extract the stereo area to DSF files, as `sacd_extract` would:
 
+   <!-- docs-run: group=discs expect="Exporting DSF output in folder:" -->
    ```sh
    pysacd-extract -2 -s -i album.iso
    ```

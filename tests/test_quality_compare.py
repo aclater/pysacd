@@ -13,8 +13,8 @@ import quality_compare as qc
 
 try:
     import tomllib
-except ModuleNotFoundError:     # Python 3.10
-    tomllib = None
+except ModuleNotFoundError:     # Python 3.10: tomli, a pysacd dependency there, reads the suite the same way
+    import tomli as tomllib  # type: ignore[no-redef]
 
 WANT = {"pysacd": {"kind": "wheel", "file": "pysacd-0.5.5.whl", "sha256": "a" * 64, "version": "0.5.5"},
         "dsd_measure": {"version": "0.1.2", "commit": "d" * 40}, "suite_sha256": "s" * 64}
@@ -124,7 +124,6 @@ class LikeForLike(unittest.TestCase):
         self.assertIn("not like for like", got[0])
 
 
-@unittest.skipIf(tomllib is None, "needs Python 3.11 (tomllib)")
 class Suite(unittest.TestCase):
     def setUp(self):
         self.text = qc.SUITE.read_text()

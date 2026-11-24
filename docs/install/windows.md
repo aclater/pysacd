@@ -106,7 +106,7 @@ pysacd writes files whose full path is longer than Windows' usual 260-character 
 long album title in a deep output folder, with no system setting. It opens every output (DSF,
 DFF, FLAC, WAV, cue, XML, ISO copies and their temporary files) by its extended-length path
 (`\\?\C:\...`), which has no such limit. Messages and logs never show that prefix. Releases
-before the one that fixed [#217](https://github.com/dsd-toolbox/pysacd/issues/217) fail with
+before 0.6.0, which fixed [#217](https://github.com/dsd-toolbox/pysacd/issues/217), fail with
 `[WinError 3] The system cannot find the path specified` on such a path; there, write to a short
 folder, such as `C:\Music`.
 

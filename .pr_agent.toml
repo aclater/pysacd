@@ -6,6 +6,9 @@
 # Don't pull issues named in the branch name into the prompt: issue text can
 # come from outside contributors and is untrusted.
 extract_issue_from_branch = false
+# Don't read AGENTS.md (the default) or other repo files from the PR head:
+# when the owner runs /review on an outside PR, that file is the outsider's.
+repo_context_files = []
 
 [github_action_config]
 # Re-review after each push, not only when the PR opens.

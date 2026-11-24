@@ -36,6 +36,9 @@ behaviour, and a patch version only adds or fixes. Each release on
   ([converting](docs/converting.md)) (#218).
 - A one-track area no longer matches any one-track medium whatever its length: an ISRC match now
   needs at least one ISRC (#218).
+- A cancelled run (Ctrl-C during `pysacd convert` or `pysacd-extract`, or `sacdconv_cancel()`) no
+  longer hangs now and then: the cancel now wakes the engine's threads that wait for a batch, so
+  the run ends within a batch, as documented.
 
 ### Security
 - The private-names check (`scripts/check-private-names.sh`) now fails when it cannot run,

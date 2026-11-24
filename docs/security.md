@@ -323,4 +323,4 @@ extraction path on broken images, also under ASan and UBSan.
 - [pysacd-extract](sacd_extract.md#compatibility-policy): where hostile input changes output
 - [Development](development.md#ci): CI, sanitizers and fuzzing
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

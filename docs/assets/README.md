@@ -18,4 +18,4 @@ keep the file names, so links to them keep working.
 - [Documentation](../README.md)
 - [README](../../README.md)
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

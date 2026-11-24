@@ -35,7 +35,7 @@ library loads.
 
 ## Checking a download
 
-The same files are on each [GitHub release](https://github.com/aclater/pysacd/releases), each
+The same files are on each [GitHub release](https://github.com/dsd-toolbox/pysacd/releases), each
 with its build provenance attestation beside it as the wheel's file name plus `.intoto.jsonl`. Check a wheel with
 the GitHub CLI:
 
@@ -62,7 +62,7 @@ that the engine links, from its GitHub release, and checks it against the SHA-25
 # Fedora/RHEL: sudo dnf install gcc make flac-devel
 # Debian/Ubuntu: sudo apt install gcc make libflac-dev pkg-config
 # macOS (Homebrew): brew install flac pkg-config   (clang comes with the Xcode tools)
-git clone https://github.com/aclater/pysacd && cd pysacd
+git clone https://github.com/dsd-toolbox/pysacd && cd pysacd
 pip install -e '.[convert]'                  # builds a portable engine
 make                                         # optional: rebuild it for this CPU
 ```
@@ -92,4 +92,4 @@ On Windows, `pysacd convert` always uses Windows-safe file names.
 - [Development](../development.md): building, tests and CI
 - [Security](../security.md): what pysacd treats as untrusted
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

@@ -53,4 +53,4 @@ to rerun with `--log-file` if no log was being written.
 - [Reading from a PS3](ps3-protocol.md#reading-from-a-ps3)
 - [Contributing](../CONTRIBUTING.md#reporting-a-bug): reporting a bug
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

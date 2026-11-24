@@ -551,4 +551,4 @@ with `make`. Runs were pinned with `taskset`: `-c 0` for one thread, `-c 0,2,4,6
 - [Why pysacd](why-pysacd.md)
 - [Changelog](../CHANGELOG.md)
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

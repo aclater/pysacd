@@ -637,7 +637,7 @@ run for 0.5.1, except where marked.
    published while they are open), set the patched version, request a CVE and publish. GitHub
    deletes the private fork. Then set the GitHub release's notes from the changelog section.
 7. File the hardening that didn't belong in the fix as ordinary issues, and update RELEASES.md and
-   DECISIONS.md in aclater/dsd-toolbox.
+   DECISIONS.md in dsd-toolbox/dsd-toolbox.
 
 ## CI speed
 
@@ -650,4 +650,4 @@ A pull request's checks finish in about 3 min, and a new push cancels the supers
 - [Clean room and licences](clean-room.md)
 - [Performance](performance.md)
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

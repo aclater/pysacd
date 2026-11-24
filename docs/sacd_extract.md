@@ -127,4 +127,4 @@ Speed comparisons are in [performance](performance.md).
 - [Security](security.md#hostile-text): why hostile disc text is changed
 - [Performance](performance.md)
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

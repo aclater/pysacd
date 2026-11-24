@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from pysacd import musicbrainz
 
 RELEASE_ID = "1a2a37a4-2ee5-3aa8-b1bf-4976dbb8007c"
-CONTACT = "https://github.com/aclater/pysacd"
+CONTACT = "https://github.com/dsd-toolbox/pysacd"
 # The SACD stereo layer's track lengths in seconds, as MusicBrainz listed them in 2026
 STEREO_SECONDS = [70, 169, 210, 429, 285, 382, 469, 205, 228, 132]
 

@@ -65,7 +65,7 @@ stops cleanly. See [the Python API](api.md).
 ## Troubleshooting
 
 - **Something failed:** run again with `--log-file pysacd.log` and attach the log to an
-  [issue](https://github.com/aclater/pysacd/issues); [logging](logging.md) says what it records.
+  [issue](https://github.com/dsd-toolbox/pysacd/issues); [logging](logging.md) says what it records.
 - **A run stops because most of the audio is missing:** the image is damaged or cut short. See
   `--allow-silence` in [pysacd-extract](sacd_extract.md#extensions) and
   [why](security.md#hostile-images).
@@ -80,6 +80,6 @@ stops cleanly. See [the Python API](api.md).
 - [Converting](converting.md): templates, tags and MusicBrainz
 - [pysacd-extract](sacd_extract.md): migrating from `sacd_extract`
 - [Reading from a PS3](ps3-protocol.md#reading-from-a-ps3)
-- [beets-pysacd](https://github.com/aclater/beets-pysacd): import SACD images into a beets library
+- [beets-pysacd](https://github.com/dsd-toolbox/beets-pysacd): import SACD images into a beets library
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

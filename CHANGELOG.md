@@ -10,6 +10,15 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Fixed
+- A multichannel area whose track lengths miss MusicBrainz's by more than 3 s on average (often,
+  because MusicBrainz lists the stereo lengths for the multichannel medium) now matches the release
+  its disc's stereo area matches, if that release has a multichannel SACD medium on the same disc
+  with the same track count. The match carries a warning, and ISRCs are not submitted for it
+  ([converting](docs/converting.md)) (#218).
+- A one-track area no longer matches any one-track medium whatever its length: an ISRC match now
+  needs at least one ISRC (#218).
+
 ## [0.5.5] - 2026-11-23
 
 `pysacd-extract -z` now splits a gapless chain where `sacd_extract` does, so those files are

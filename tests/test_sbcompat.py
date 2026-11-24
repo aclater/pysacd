@@ -20,6 +20,7 @@ import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
@@ -92,12 +93,16 @@ class Helpers(unittest.TestCase):
         self.assertEqual(sb.sanitize_filepath('a/b:c?'), "a/b:c_")
 
     def test_make_and_unique_filename(self):
-        self.assertEqual(sb.make_filename("out", "a/b", "dsf"), "out/a_b.dsf")
+        # "/", as sacd_extract; on Windows a backslash, which extended-length paths need (#217)
+        sep = "\\" if sb._WINDOWS else "/"
+        self.assertEqual(sb.make_filename("out", "a/b", "dsf"), f"out{sep}a_b.dsf")
         self.assertEqual(sb.make_filename(None, "x", "dff"), "x.dff")
+        with mock.patch.object(sb, "_WINDOWS", True):
+            self.assertEqual(sb.make_filename("out", "a/b", "dsf"), "out\\a_b.dsf")
         with tempfile.TemporaryDirectory() as d:
             open(os.path.join(d, "n.iso"), "w").close()
             open(os.path.join(d, "n (1).iso"), "w").close()
-            self.assertEqual(sb.unique_filename(d, "n", "iso"), f"{d}/n (2).iso")    # "/", as sacd_extract
+            self.assertEqual(sb.unique_filename(d, "n", "iso"), f"{d}{sep}n (2).iso")
 
     def test_byte_truncation(self):
         # The C truncates on bytes: a 2-byte character split at the limit survives

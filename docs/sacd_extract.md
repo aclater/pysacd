@@ -31,12 +31,14 @@ you installed pysacd into (for a virtual environment named `pysacd-env` in your 
 "Edit environment variables for your account", `Path`, New). With `pipx install pysacd` it is
 already on your `PATH`. A script that calls `sacd_extract.exe` can be pointed at
 `pysacd-extract.exe`, or you can copy `pysacd-extract.exe` to a folder on your `PATH` under the
-name `sacd_extract.exe`:
+name `sacd_extract.exe`. The `copy` below finds the real file wherever pip or pipx put it, as
+long as `pysacd-extract` runs in that PowerShell window; for a virtual environment, activate it
+first:
 
 <!-- docs-run: skip="Windows: PowerShell and Windows paths" -->
 ```powershell
 mkdir ~\bin
-copy ~\pysacd-env\Scripts\pysacd-extract.exe ~\bin\sacd_extract.exe
+copy (Get-Command pysacd-extract).Source ~\bin\sacd_extract.exe
 ```
 
 Then add `%USERPROFILE%\bin` to `Path` as above.

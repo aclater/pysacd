@@ -3,10 +3,10 @@
 import os
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
+import fsutil
 import sacdgen
 import test_dst_full as dst
 
@@ -20,7 +20,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 @unittest.skipUnless(dst.HAVE_ENCODER, "test DST encoder unavailable (make test-tools)")
 class DiscCollisions(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.dir = Path(self.tmp.name)
         self.out = self.dir / "out"
         self.frames = [f for _, _, f in dst.encoded(2)][:6]
@@ -219,7 +219,7 @@ class NoSilentReplacement(unittest.TestCase):
     album and track names are the same (docs/security.md, "Hostile images")."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
         self.out = self.dir / "out"
@@ -252,7 +252,7 @@ class NoSilentReplacement(unittest.TestCase):
         for title in ("A" * 250, "\u00e9" * 120):
             with self.subTest(title=title[:3]):
                 for p in self.out.iterdir():
-                    __import__("shutil").rmtree(p)
+                    fsutil.rmtree(p)
                 a = self.iso("a", 0, title=title, album_catalog="CAT-A", disc_catalog="DISC-A")
                 b = self.iso("b", 50, title=title, album_catalog="CAT-B", disc_catalog="DISC-B")
                 r = self.convert(a)
@@ -397,7 +397,7 @@ class PortableExtractNames(unittest.TestCase):
             "sys.exit(extract.main())")
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.dir = Path(self.tmp.name)
 
     def tearDown(self):
@@ -569,7 +569,7 @@ class OwnFilesAcrossModes(unittest.TestCase):
     disc's (#165); another disc's files in the same mode combinations still keep it out (#4)."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
         self.a = _plain_disc(self.dir / "a.iso", ["One", "Two"], "CAT-A")
@@ -719,7 +719,7 @@ class IsrcEditions(unittest.TestCase):
     tree = staticmethod(OwnFilesAcrossModes.tree)
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
         self.env = dict(os.environ, PYTHONPATH=str(SRC))

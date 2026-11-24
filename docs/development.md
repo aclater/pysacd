@@ -333,6 +333,12 @@ make && PYTHONPATH=src python3 -m unittest discover -s tests
 PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
+The tests load the engine from `src/pysacd` (`PYTHONPATH=src`), not from an installed wheel, so
+`make` must have built it there first: `src/pysacd/_sacdconv.dll` on Windows (in the MSYS2 UCRT64
+shell, [Windows](install/windows.md#build-from-source-developers)), `_sacdconv.so` on Linux, `_sacdconv.dylib` on macOS.
+Without it most tests fail at once. A standard Windows user can't create symlinks, so the two
+symlink checks of `tests/test_hardening.py` skip that part there.
+
 With `SACD_EXTRACT=/path/to/sacd_extract` and `PYSACD_TEST_ISO` set, the tests also
 copy the ISO through `ps3sim` with the real `sacd_extract -I` and check that the copy
 is byte-identical.

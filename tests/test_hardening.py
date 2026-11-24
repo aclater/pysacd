@@ -18,6 +18,8 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
+import fsutil
+
 from pysacd import _native, musicbrainz, safeio
 
 
@@ -75,11 +77,13 @@ class SafeIO(unittest.TestCase):
         target = self.dir / "target"
         target.write_bytes(b"keep")
         link = self.dir / "link"
-        link.symlink_to(target)
-        for p in (target, link):
+        linked = fsutil.try_symlink(link, target)
+        for p in (target, link) if linked else (target,):
             with self.subTest(p=p.name), self.assertRaises(FileExistsError):
                 safeio.create(p)
         self.assertEqual(target.read_bytes(), b"keep")
+        if not linked:
+            self.skipTest(fsutil.NO_SYMLINK)
 
     def test_open_new_closes_fd_if_wrapping_fails(self):
         target = self.dir / "x"
@@ -96,7 +100,7 @@ class SafeIO(unittest.TestCase):
         outside = self.dir / "outside"
         outside.write_bytes(b"canary")
         final = self.dir / "out.cue"
-        final.symlink_to(outside)
+        linked = fsutil.try_symlink(final, outside)
         old = os.umask(0)
         try:
             safeio.write_file(final, b"data")
@@ -108,6 +112,8 @@ class SafeIO(unittest.TestCase):
         if os.name != "nt":             # Windows has no POSIX mode bits
             self.assertEqual(stat.S_IMODE(final.stat().st_mode), 0o666)     # umask 0: nothing executable
         self.assertEqual([p.name for p in self.dir.iterdir() if p.name.endswith(".partial")], [])
+        if not linked:      # the plain-file half above ran; only the symlink replacement did not
+            self.skipTest(fsutil.NO_SYMLINK)
 
 
 class ConfigDir(unittest.TestCase):

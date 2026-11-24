@@ -613,7 +613,8 @@ Its steps include:
    - creates build provenance attestations for every wheel and the sdist;
    - attaches the files to a GitHub release, each with its attestation bundle beside it
      (the file's name plus `.intoto.jsonl`, verified in the job first). Check a download with
-     `gh attestation verify` on the file, with `--repo aclater/pysacd`, adding
+     `gh attestation verify` on the file, with `--repo dsd-toolbox/pysacd` (`aclater/pysacd` for
+     0.5.5 and earlier, signed before the repository moved), adding
      `--bundle` and the bundle's name to check against the attached bundle. OpenSSF
      Scorecard counts only these assets as provenance;
    - publishes to TestPyPI, if the repository variable `TESTPYPI_PUBLISH` is

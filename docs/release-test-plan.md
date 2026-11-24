@@ -332,8 +332,8 @@ gh release download vVERSION -R dsd-toolbox/pysacd -D github
 curl -s https://pypi.org/pypi/pysacd/VERSION/json | python3 -I -c 'import json,sys; [print(u["digests"]["sha256"] + "  " + u["filename"]) for u in json.load(sys.stdin)["urls"]]' > pypi.sha256
 (cd github && sha256sum -c ../pypi.sha256)
 ls github | grep -vc intoto.jsonl && wc -l < pypi.sha256
-find github -name '*.whl' -o -name '*.tar.gz' | xargs -I FILE gh attestation verify FILE --repo aclater/pysacd
-find github -name '*.whl' -o -name '*.tar.gz' | xargs -I FILE gh attestation verify FILE --repo aclater/pysacd --bundle FILE.intoto.jsonl
+find github -name '*.whl' -o -name '*.tar.gz' | xargs -I FILE gh attestation verify FILE --repo dsd-toolbox/pysacd
+find github -name '*.whl' -o -name '*.tar.gz' | xargs -I FILE gh attestation verify FILE --repo dsd-toolbox/pysacd --bundle FILE.intoto.jsonl
 ```
 
 *Expected:* every file `OK`, the two counts equal (7 for 0.5.5), every verification passes.

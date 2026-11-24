@@ -7,7 +7,8 @@ are skipped), shows it, and posts it only when the user confirms.
 
 Safety rules:
 - Only a confident match: barcode, catalog number or an explicit release id.
-  A title search is never used.
+  A title search is never used, nor a multichannel area matched only through
+  the disc's stereo area (#218).
 - Track N of the area maps to track N of the matched medium. The counts must
   agree (find_release() already insists).
 - ISRCs are validated (CCXXXYYNNNNN); malformed, all-zero and duplicate ones
@@ -80,6 +81,10 @@ def plan(match: musicbrainz.Match, area: Area, contact: str | None, check_global
     already carry each ISRC (one request per ISRC), so one already used elsewhere isn't added."""
     if match.method not in ("barcode", "catno", "release-id"):
         raise musicbrainz.MBError(f"refusing to submit ISRCs for a {match.method!r} match; pass --mb-release")
+    if match.via_stereo:
+        # The area's own track lengths don't confirm this medium (#218)
+        raise musicbrainz.MBError("refusing to submit ISRCs for a multichannel area matched through the "
+                                  "stereo area; pass --mb-release")
     mtracks = match.medium.get("tracks") or []
     if len(mtracks) != len(area.tracks):
         raise musicbrainz.MBError(f"medium has {len(mtracks)} tracks, the disc area {len(area.tracks)}")

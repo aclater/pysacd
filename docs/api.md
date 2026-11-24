@@ -84,4 +84,4 @@ The sector layout is detected by looking for `SACDMTOC` at LSN 510:
 - [Why pysacd](why-pysacd.md): a first Python example
 - [Reading from a PS3](ps3-protocol.md#client): the network client
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

@@ -1,0 +1,106 @@
+# The pinned release quality suite for pysacd's PCM output (docs/development.md, "Release quality
+# comparison"). tools/quality_compare.py runs it on the previous release and on the candidate, on the
+# same machine, and writes docs/quality/<version>.md.
+#
+# The [suite] and [[device]] tables are a plain dsd-measure suite: it runs unchanged on each version,
+# with that version's `pysacd` first on PATH and the repository root as the working directory.
+# [pysacd_quality] is read only by tools/quality_compare.py (dsd-measure ignores it).
+
+[suite]
+name = "pysacd PCM output"
+profile = "quick"
+in_rate = 88200
+out = "report"
+
+# Inputs: the tool's own synthetic DSD64 test signals (its reference modulator), wrapped by
+# tools/quality_device.py into a one-track plain-DSD SACD image with tests/sacdgen.py. No music.
+# Each device runs `pysacd convert` on that image with one worker thread, no MusicBrainz, no cover.
+
+[[device]]
+name = "stereo FLAC 88.2 kHz"
+adapter = "cli"
+class = "A"
+output_ext = "wav"
+command = "python3 -I tools/quality_device.py --format flac --rate 88200 --area stereo {input} {output}"
+
+[[device]]
+name = "stereo FLAC 176.4 kHz"
+adapter = "cli"
+class = "A"
+output_ext = "wav"
+command = "python3 -I tools/quality_device.py --format flac --rate 176400 --area stereo {input} {output}"
+
+# Multichannel: a 5.1 area whose channels carry the input pair in turn (L R L R L R); the surround
+# pair (channels 5 and 6) is measured, the last channels in each frame.
+[[device]]
+name = "5.1 WAV 88.2 kHz"
+adapter = "cli"
+class = "A"
+output_ext = "wav"
+command = "python3 -I tools/quality_device.py --format wav --rate 88200 --area multichannel --channels 5,6 {input} {output}"
+
+[[device]]
+name = "5.1 WAV 176.4 kHz"
+adapter = "cli"
+class = "A"
+output_ext = "wav"
+command = "python3 -I tools/quality_device.py --format wav --rate 176400 --area multichannel --channels 5,6 {input} {output}"
+
+[pysacd_quality]
+# dsd-measure version pin. TO BE RE-PINNED AT 0.1.2: 0.1.2 (output word-length detection) is not
+# tagged yet, so this pins 0.1.1 (tag v0.1.1, the head of its main branch on 2026-11-24). A
+# comparison made with this pin is a draft, never a published verdict (owner rule).
+dsd_measure_version = "0.1.1"
+dsd_measure_commit = "d234b7a8233ccfe391776e7c6425cbf8643c47e3"
+dsd_measure_repository = "https://github.com/dsd-toolbox/dsd-measure"
+final = false
+
+# The figures compared, each from every device's results.json. "better" says which way is an
+# improvement. "bound" is the repeatability in dB: the spread of the figure over three dither draws
+# of one build (the same signal shifted by 0, 1 and 2 idle frames, see [pysacd_quality.repeatability]),
+# doubled and rounded up. A change within the bound is noise; a change beyond it is flagged, and a
+# worse one is a regression. Derived on 2026-11-24 from 0.6.0's draft run (largest spreads: SINAD and
+# THD+N 0.10 dB, noise 0.02 dB, alias 0.11 dB); re-derive when dsd-measure is re-pinned.
+[[pysacd_quality.metric]]
+key = "sinad"
+label = "SINAD, 1 kHz at 0 dB SACD (dB)"
+path = "metrics.tone_0dbsacd.sinad_db"
+better = "higher"
+bound = 0.2
+
+[[pysacd_quality.metric]]
+key = "thdn"
+label = "THD+N, 1 kHz at 0 dB SACD (dB)"
+path = "metrics.tone_0dbsacd.thdn_db"
+better = "lower"
+bound = 0.2
+
+[[pysacd_quality.metric]]
+key = "noise"
+label = "Noise floor, 20 Hz to 20 kHz (dBFS)"
+path = "metrics.noise.unweighted_dbfs"
+better = "lower"
+bound = 0.1
+
+[[pysacd_quality.metric]]
+key = "alias"
+label = "Alias rejection, worst image (dB)"
+path = "metrics.alias_tones.worst_image_db"
+better = "lower"
+bound = 0.3
+
+# Null test: each device's output from the previous release against the candidate's, on one
+# synthetic music-like source (band-limited pink noise and tones, made by tools/quality_compare.py
+# with the tool's reference modulator, its SHA-256 checked). Null depth = the source's level minus
+# the difference's level, 20 Hz to 20 kHz. The bound is the depth of two dither draws of the
+# candidate against each other: a release that differs from its predecessor by no more than the
+# dither does reaches it (0.6.0's draft: within 0.3 dB on every output; bound set at 1 dB).
+[pysacd_quality.null]
+seconds = 20
+seed = 20261124
+# made with dsd-measure 0.1.1 (d234b7a); re-pin with dsd-measure
+source_sha256 = "128f6ecb97a4060a38637bf9be746912d3f613f681a76093e04a0a54cbd4d24b"
+bound = 1.0
+
+[pysacd_quality.repeatability]
+lead_frames = [1, 2]

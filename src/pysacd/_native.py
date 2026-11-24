@@ -261,6 +261,9 @@ class RunInfo:
     # #93 workaround: the area's next-to-last frame is DSD silence (True; csrc dsd_silent), isn't (False), or
     # wasn't read or can't be tested (None: DST kept as stored)
     before_last_silent: bool | None = None
+    # the run's progress count at the end: frames processed of the frames the outputs need (#205)
+    frames_done: int = 0
+    frames_total: int = 0
 
 
 @dataclass
@@ -443,5 +446,6 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     info = RunInfo(provisional=a.provisional > 0, confirmed=a.provisional == 2,
                    refuted_from=none(a.refuted_from), missing=a.missing_count,
                    missing_first=none(a.missing_first), missing_last=none(a.missing_last),
-                   before_last_silent=None if a.check_silent < 0 else bool(a.check_silent))
+                   before_last_silent=None if a.check_silent < 0 else bool(a.check_silent),
+                   frames_done=a.frames_done, frames_total=a.frames_total)
     return info

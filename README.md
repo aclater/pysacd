@@ -1,13 +1,13 @@
-<img src="https://raw.githubusercontent.com/aclater/pysacd/master/docs/assets/icon-256.png" alt="" width="96">
+<img src="https://raw.githubusercontent.com/dsd-toolbox/pysacd/master/docs/assets/icon-256.png" alt="" width="96">
 
 # pysacd
 
-[![CI](https://github.com/aclater/pysacd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/ci.yml)
+[![CI](https://github.com/dsd-toolbox/pysacd/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/dsd-toolbox/pysacd/actions/workflows/ci.yml)
 [![Coverage](https://codecov.io/gh/aclater/pysacd/branch/master/graph/badge.svg)](https://codecov.io/gh/aclater/pysacd)
-[![CodeQL](https://github.com/aclater/pysacd/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/aclater/pysacd/actions/workflows/codeql.yml)
+[![CodeQL](https://github.com/dsd-toolbox/pysacd/actions/workflows/codeql.yml/badge.svg?branch=master)](https://github.com/dsd-toolbox/pysacd/actions/workflows/codeql.yml)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-blue)](COPYING)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/aclater/pysacd/badge)](https://scorecard.dev/viewer/?uri=github.com/aclater/pysacd)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/dsd-toolbox/pysacd/badge)](https://scorecard.dev/viewer/?uri=github.com/dsd-toolbox/pysacd)
 [![PyPI](https://img.shields.io/pypi/v/pysacd)](https://pypi.org/project/pysacd/)
 
 pysacd reads SACD (Scarletbook) images, and PS3 SACD Ripper servers, straight from Python,
@@ -25,7 +25,7 @@ same file names, the same bytes.
 | Anything else | Builds from source with a C compiler and make (libFLAC for FLAC output) | [from source](docs/install/README.md#from-source) · [development](docs/development.md) |
 
 Every wheel is for Python 3.10 or later and carries a build provenance attestation on its
-[GitHub release](https://github.com/aclater/pysacd/releases), checkable with
+[GitHub release](https://github.com/dsd-toolbox/pysacd/releases), checkable with
 `gh attestation verify`. On any system, pysacd also reads discs over the network from a PS3 or
 Blu-ray player running SACD Ripper ([reading from a PS3](docs/ps3-protocol.md#reading-from-a-ps3)).
 
@@ -79,8 +79,8 @@ The [documentation index](docs/README.md) lists every document and its sections.
 - [Performance](docs/performance.md) · [security](docs/security.md) ·
   [clean room and licences](docs/clean-room.md)
 - [Development](docs/development.md) · [contributing](CONTRIBUTING.md) ·
-  [changelog](CHANGELOG.md) · [releases](https://github.com/aclater/pysacd/releases) ·
-  [releases by major version](https://github.com/aclater/dsd-toolbox/blob/main/RELEASES.md)
+  [changelog](CHANGELOG.md) · [releases](https://github.com/dsd-toolbox/pysacd/releases) ·
+  [releases by major version](https://github.com/dsd-toolbox/dsd-toolbox/blob/main/RELEASES.md)
 
 ## Licence and credits
 
@@ -107,4 +107,4 @@ MIT OR Apache-2.0 ([licences](licenses/README.md)).
 
 Details in [clean room and licences](docs/clean-room.md) and [licenses/](licenses/README.md).
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

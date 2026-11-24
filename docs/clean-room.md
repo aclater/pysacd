@@ -45,7 +45,7 @@ a second agent, which never saw the reference, implemented from that document al
 
 All of that left the repository with #85; it is in its history.
 - The specification:
-  [`docs/dst-bitstream.md` at v0.2.2](https://github.com/aclater/pysacd/blob/v0.2.2/docs/dst-bitstream.md).
+  [`docs/dst-bitstream.md` at v0.2.2](https://github.com/dsd-toolbox/pysacd/blob/v0.2.2/docs/dst-bitstream.md).
 - The decoder: `csrc/dstdec.c` at the same tag.
 
 The test-only DST encoder that builds pysacd's synthetic DST discs (`tests/native/dstenc.c`,
@@ -103,4 +103,4 @@ compatible with GPL-2.0; their notices are in `licenses/` and in every wheel.
 - [Contributing](../CONTRIBUTING.md#rules-that-keep-the-project-clean)
 - [Development](development.md#the-scarletbook-library): the scarletbook library
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

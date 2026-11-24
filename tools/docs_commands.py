@@ -134,7 +134,7 @@ class Command:
 
 @dataclass
 class Block:
-    file: str
+    file: str           # relative to the root, POSIX-style on every platform (the SKIP keys)
     line: int
     lang: str
     commands: list[Command] = field(default_factory=list)
@@ -190,12 +190,12 @@ def blocks(root: Path = ROOT) -> list[Block]:
                 i += 1
             i += 1
             if lang == "powershell":
-                sys.exit(f"{path.relative_to(root)}:{start}: a powershell block; add Windows handling to "
+                sys.exit(f"{path.relative_to(root).as_posix()}:{start}: a powershell block; add Windows handling to "
                          f"{Path(__file__).name} first")
             kind = LANGS.get(lang)
             if not kind:
                 continue
-            b = Block(str(path.relative_to(root)), start, kind)
+            b = Block(path.relative_to(root).as_posix(), start, kind)
             if kind == "python":
                 b.code = "\n".join(body) + "\n"
             elif kind == "console":

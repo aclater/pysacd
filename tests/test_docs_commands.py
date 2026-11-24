@@ -52,14 +52,17 @@ class TheDocs(unittest.TestCase):
                         continue
                     self.assertIn(Path(name).name, dc.DISCS, f"{b.file}:{b.line}: {c.text}")
 
-    def test_the_discs_group_fetches_one_pinned_commit(self):
-        # docs-run fetches tools/docs_fixtures.py at the commit named in the discs group's setup=;
-        # one full commit, so a moved fixture is moved in one place (docs/development.md says when)
-        shas = set()
+    def test_the_discs_group_makes_its_discs_from_the_checkout(self):
+        # docs-run starts the discs group in a copy of the checkout (checkout=1) and runs
+        # tools/docs_fixtures.py from it; no marker fetches this repository from the network
+        # (docs/development.md, "Docs commands against a release")
+        setups = []
         for path in dc.doc_files():
-            shas |= set(re.findall(r"pysacd/archive/([0-9a-f]+)\.tar\.gz", path.read_text(encoding="utf-8")))
-        self.assertEqual(len(shas), 1, shas)
-        self.assertRegex(shas.pop(), r"^[0-9a-f]{40}$")
+            text = path.read_text(encoding="utf-8")
+            self.assertNotRegex(text, r"pysacd/archive/[0-9a-f]+\.tar\.gz", path)
+            setups += re.findall(r"<!-- docs-run: group=discs checkout=1 setup=\"([^\"]*)\"", text)
+        self.assertEqual(len(setups), 1, setups)
+        self.assertIn("python3 -I tools/docs_fixtures.py --offline-config ~", setups[0])
 
 
 class Parsing(unittest.TestCase):

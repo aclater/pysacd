@@ -496,8 +496,8 @@ Every pull request runs:
   [Codecov](https://codecov.io/gh/dsd-toolbox/pysacd) for the README badge, authenticated
   with the job's GitHub OIDC token (no stored secret); pull requests from forks skip
   the upload, and a failed upload fails CI only on `master`.
-- **A link check** (lychee) of README.md and `docs/` when they change, `#fragment` links to
-  headings included; weekly too.
+- **A link check** (the shared `docs-links`) of every Markdown file when one changes: relative
+  links and `#anchor` links to headings offline, and every external URL weekly.
 - **The README's Quick start, as written** (`tools/readme_quickstart.py`, the `quickstart`
   workflow; weekly too): an sdist and a wheel from it, built as the release's sdist job does, then
   the README's own `sh` blocks under "Quick start" run in order in one shell, as a normal user, on
@@ -673,11 +673,11 @@ says why it can't run. The markers are the only list of what runs. Two tools rea
 
 - The `docs-run` workflow (the shared `docs_run.py`) runs the marked blocks in a fresh Fedora
   container against the release on PyPI. The blocks that name a disc share the group `discs`,
-  whose `setup=` installs pysacd and runs `tools/docs_fixtures.py` from this repository at a
-  pinned commit: it writes `album.iso`, `disc.iso` and `other.iso` (generated with
-  `tests/sacdgen.py` and `tests/dstenc.py`) and turns MusicBrainz lookups off. When
-  `tools/docs_fixtures.py` or the files it uses change, move that commit in the marker of the
-  README's `pysacd toc album.iso` block, once the change is on GitHub.
+  which starts in a copy of the checkout (`checkout=1`, the committed files only). Its `setup=`
+  installs pysacd from PyPI and runs `tools/docs_fixtures.py` from that copy: it writes
+  `album.iso`, `disc.iso` and `other.iso` (generated with `tests/sacdgen.py` and
+  `tests/dstenc.py`) and turns MusicBrainz lookups off. The blocks still run the release from
+  PyPI; only the test discs come from the checkout.
 - `tools/docs_commands.py` runs the same blocks, and the Python blocks, against any wheel or
   pip requirement, each block in a fresh folder that is also its HOME, with the same generated
   discs. A PS3 address is served by the release's own `pysacd ps3sim`, and `pip install pysacd`

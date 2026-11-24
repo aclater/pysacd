@@ -47,7 +47,7 @@ You need Python <!-- facts:python-min -->3.10<!-- /facts --> or later on Linux o
 
 2. Read the disc's table of contents: album, areas and tracks.
 
-   <!-- docs-run: group=discs setup="dnf -y -q --setopt=install_weak_deps=False install python3-pip python3-numpy gcc tar gzip && pip install -q pysacd && curl -fsSL https://github.com/dsd-toolbox/pysacd/archive/62811ee3279399c9c938de7ea3a52b54ceb54f18.tar.gz | tar -xz -C /tmp && python3 -I /tmp/pysacd-62811ee3279399c9c938de7ea3a52b54ceb54f18/tools/docs_fixtures.py --offline-config ." expect="^Disc:" -->
+   <!-- docs-run: group=discs checkout=1 setup="dnf -y -q --setopt=install_weak_deps=False install python3-pip python3-numpy gcc && pip install -q pysacd && python3 -I tools/docs_fixtures.py --offline-config ~ && mv ~/album.iso ~/disc.iso ~/other.iso ." expect="^Disc:" -->
    ```sh
    pysacd toc album.iso
    ```

@@ -15,6 +15,6 @@ jobs:
   docs-audit:
     permissions:
       contents: read
-    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-audit.yml@b50a7cca297022561959ba9a2532c0673d532ada
+    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-audit.yml@33e1b0308e4bb9890701d5e3bb857c9ce9fe110f
     with:
-      tools_ref: b50a7cca297022561959ba9a2532c0673d532ada
+      tools_ref: 33e1b0308e4bb9890701d5e3bb857c9ce9fe110f

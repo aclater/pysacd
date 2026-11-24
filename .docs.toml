@@ -17,3 +17,9 @@ ignore = ["tests/**", ".github/**", "fuzz/**", "tools/**", "scripts/**", "suites
 
 [audit]
 history = ["CHANGELOG.md", "docs/performance.md", "docs/quality/**"]
+
+[run]
+# docs-run: the package names a block may install with packages= (every other name is refused;
+# on a pull request the list is read from the base commit). The discs group's setup= installs its
+# own build tools and starts in a copy of the checkout (checkout=1 on its first block).
+packages = ["python3", "python3-pip", "gh"]

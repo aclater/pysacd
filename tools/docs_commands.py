@@ -67,9 +67,9 @@ NEEDS = {"needs a PS3": PS3, "needs an ordinary user": USER, "needs sacd_extract
 
 # The marker syntax of the shared docs-run (dsd-toolbox tools/docs/docs_run.py): a marker applies
 # to a fence at most two lines below it. Keys this tool reads: skip, expect; the others (image,
-# packages, setup, group, drop, timeout) set up docs-run's container and mean nothing here.
+# packages, setup, group, drop, timeout, checkout) set up docs-run's container and mean nothing here.
 DIRECTIVE_RE = re.compile(r"^\s*<!--\s*docs-run:(.*?)-->\s*$")
-MARKER_KEYS = {"skip", "expect", "image", "packages", "setup", "group", "drop", "timeout"}
+MARKER_KEYS = {"skip", "expect", "image", "packages", "setup", "group", "drop", "timeout", "checkout"}
 SKIP_DIRS = {".git", ".docs-tools", "node_modules", "target", ".venv", "venv"}   # as docs_run.py
 
 

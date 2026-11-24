@@ -14,8 +14,9 @@ numpy and a C compiler (dstenc.py compiles its native part when build/dstenc.so 
 it also runs from a source archive of the repository in a fresh container. Two runners use it:
 
 - the shared docs-run (dsd-toolbox tools/docs/docs_run.py), through the `setup=` of the
-  `discs` group in the Markdown, which fetches this repository at a pinned commit and runs this
-  file with --offline-config in the container's home folder;
+  `discs` group in the Markdown: the group starts in a copy of the checkout (checkout=1), runs
+  this file from it with --offline-config in the container's home folder, and moves the images
+  into the copy, where the blocks run;
 - tools/docs_commands.py, for each block it runs against a wheel or a pip requirement.
 
 --offline-config writes `musicbrainz = false` to the pysacd config in DIR (the home folder), so

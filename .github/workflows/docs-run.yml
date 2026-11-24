@@ -1,7 +1,8 @@
 # The command blocks of the Markdown, as their docs-run markers say: each marked block runs in a
-# fresh Fedora container against the release on PyPI (the blocks that name a disc get the discs of
-# tools/docs_fixtures.py), and every other block says why it can't run. tools/docs_commands.py runs
-# the same blocks against a build of the checkout (docs/development.md, "Docs commands").
+# fresh Fedora container against the release on PyPI (the blocks that name a disc start in a copy of
+# the checkout and get the discs of tools/docs_fixtures.py), and every other block says why it can't
+# run; an unmarked block fails. tools/docs_commands.py runs the same blocks against a build of the
+# checkout (docs/development.md, "Docs commands").
 
 name: docs-run
 
@@ -22,7 +23,8 @@ jobs:
   docs-run:
     permissions:
       contents: read
-    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-run.yml@b50a7cca297022561959ba9a2532c0673d532ada
+    uses: dsd-toolbox/dsd-toolbox/.github/workflows/docs-run.yml@33e1b0308e4bb9890701d5e3bb857c9ce9fe110f
     with:
-      tools-ref: b50a7cca297022561959ba9a2532c0673d532ada
+      tools-ref: 33e1b0308e4bb9890701d5e3bb857c9ce9fe110f
       version-of: dsd-toolbox/pysacd
+      fail_unmarked: true  # a new command block needs a run or skip marker

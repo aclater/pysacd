@@ -640,9 +640,10 @@ Its steps include:
 Every release from 0.6.0 measures its PCM output against the previous release and publishes the
 result as `docs/quality/VERSION.md` ([PCM quality by release](quality/README.md)), linked from the
 release notes. The suite, [suites/pysacd.toml](../suites/pysacd.toml), pins the
-[dsd-measure](https://github.com/dsd-toolbox/dsd-measure) commit, the outputs (`pysacd convert` to
-stereo FLAC and 5.1 WAV at 88.2 and 176.4 kHz), the figures (SINAD, THD+N, noise floor, alias
-rejection, null depth) and each figure's repeatability bound. `tools/quality_device.py` makes
+[dsd-measure](https://github.com/dsd-toolbox/dsd-measure) release and commit (0.1.2), the outputs
+(`pysacd convert` to stereo FLAC and 5.1 WAV at 88.2 and 176.4 kHz, 24-bit), the figures (SINAD,
+which is THD+N with the sign turned; THD, the harmonics alone; noise floor; alias rejection; null
+depth) and each figure's repeatability bound. `tools/quality_device.py` makes
 pysacd look like any DSD-to-PCM converter to dsd-measure: it wraps each synthetic DSD test signal in
 a one-track SACD image with `tests/sacdgen.py` and runs `pysacd convert` on it.
 
@@ -657,12 +658,26 @@ From the release commit, in the Fedora container of the [release test plan](rele
 python3 tools/quality_compare.py --previous 0.5.5 --candidate . --work /var/tmp/pysacd-quality --out docs/quality/0.6.0.md
 ```
 
+The previous release is its PyPI wheel; give the candidate as a wheel too (`--candidate
+dist/pysacd-VERSION-....whl`) to compare like builds. A local source build is compiled differently
+from the release wheels, and on 2026-11-24 that alone changed the last bit of some samples: 0.5.5
+built from its tag gave master's bytes, not the 0.5.5 wheel's (null depth about 135 dB at 88.2 kHz,
+deeper than two dither draws of one build at about 124 dB, and no figure beyond its bound).
+
 A second run with the same `--work` reuses only reports made from the same builds (wheel
 SHA-256, or tree commit and content hash), dsd-measure commit, suite file and inputs; each report
-folder records them in `quality-meta.json`. It exits 1 if a figure is worse than the previous release's by more than its bound, or if the two
-versions were not fed identical inputs. Such a regression blocks the release unless DECISIONS.md in
-dsd-toolbox/dsd-toolbox explains and accepts it. A suite whose `final` is `false` (a dsd-measure pin
-before its release) writes a page marked draft.
+folder records them in `quality-meta.json`, beside dsd-measure's own provenance, which must name the
+same dsd-measure version and the same `pysacd --version`. dsd-measure reads the word length and rate
+of every file pysacd writes; both versions must have written the suite's format (24-bit integer) at
+the same rate, so the comparison is like for like. The page marks a figure within 6 dB of
+dsd-measure's reference floor (`floor`) and a SINAD that the 24-bit word length may limit
+(`word length`). It exits 1 if a figure is worse than the previous release's by more than its
+bound, if the two versions were not fed identical inputs, or if their outputs were not like for
+like. Such a regression blocks the release unless DECISIONS.md in
+dsd-toolbox/dsd-toolbox explains and accepts it. A suite whose `final` is `false` writes a page
+marked draft; it stays `false` until the first published comparison (0.6.0, whose PCM path is
+dsd2pcm). A CI job that runs dsd-measure's fast gate profile against the previous release on every
+pull request is not here yet: it waits for the dsd-measure release that ships that profile.
 
 ### Docs commands against a release
 

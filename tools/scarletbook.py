@@ -34,7 +34,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / "scarletbook.lock"
@@ -197,7 +197,7 @@ def make_path(path: str | os.PathLike, windows: bool | None = None) -> str:
     scarletbook's functions. Elsewhere a backslash is an ordinary character and is kept."""
     if windows is None:
         windows = sys.platform == "win32"
-    return (PureWindowsPath(path) if windows else Path(path)).as_posix()
+    return (PureWindowsPath(path) if windows else PurePosixPath(os.fspath(path))).as_posix()
 
 
 def attest(work: Path) -> int:

@@ -52,7 +52,8 @@ def load() -> ctypes.CDLL:
         cc = os.environ.get("CC") or shutil.which("cc") or shutil.which("gcc")
         if not cc:
             raise EncoderUnavailable("build/dstenc.so not built (make test-tools) and no C compiler")
-        _tmpdir = tempfile.TemporaryDirectory(prefix="dstenc")
+        # Windows keeps a loaded DLL locked until exit: leave it for the OS rather than fail the cleanup
+        _tmpdir = tempfile.TemporaryDirectory(prefix="dstenc", ignore_cleanup_errors=True)
         path = Path(_tmpdir.name) / "dstenc.so"
         r = subprocess.run([cc, "-O2", "-fPIC", "-shared", "-std=gnu17", "-o", str(path), str(_SRC), "-lm"],
                            capture_output=True, text=True, check=False)

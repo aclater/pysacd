@@ -263,8 +263,18 @@ class MakePath(unittest.TestCase):
         self.assertEqual(sbtool.make_path("/tmp/a\\b", windows=False), "/tmp/a\\b")
 
     def test_setup_py_gives_make_forward_slashes(self):
+        import importlib.util
         import runpy
-        with mock.patch("setuptools.setup"):
+        import types
+        # setup.py imports bdist_wheel from setuptools 70.1+ or from wheel; a test venv may have
+        # neither (Python 3.11's venv ships setuptools 65). Stub it there: this test doesn't build.
+        stub = {}
+        if importlib.util.find_spec("wheel") is None:
+            try:
+                import setuptools.command.bdist_wheel  # noqa: F401
+            except ImportError:
+                stub["setuptools.command.bdist_wheel"] = types.SimpleNamespace(bdist_wheel=type("bdist_wheel", (), {}))
+        with mock.patch.dict(sys.modules, stub), mock.patch("setuptools.setup"):
             setup_py = runpy.run_path(str(ROOT / "setup.py"))
         engine = setup_py["BuildEngine"]
         cmd = object.__new__(engine)

@@ -212,14 +212,22 @@ requested; upper case and surrounding spaces are accepted.
 pysacd's defence against hostile images is validating its input: bounded lengths and
 allocations, the checks above, sanitizer CI and fuzzing. It doesn't sandbox itself. To process
 images you trust even less, run it in a container with no network, the image mounted
-read-only and only the output directory writable. For example, with any image that has
-pysacd installed (shown as `IMAGE`):
+read-only and only the output directory writable. For example, build a local container image
+named `pysacd` from the PyPI release, then extract `album.iso` in the current folder into `out`:
 
 ```sh
+podman build -t pysacd - <<'END'
+FROM registry.access.redhat.com/ubi10/python-312-minimal
+RUN pip install --no-cache-dir pysacd
+END
+mkdir out
 podman run --rm --network none --userns=keep-id \
-  -v /path/to/album.iso:/in.iso:ro,Z -v "$PWD/out":/out:Z -w /out \
-  IMAGE pysacd-extract -2 -s -i /in.iso
+  -v ./album.iso:/in.iso:ro,Z -v ./out:/out:Z -w /out \
+  pysacd pysacd-extract -2 -s -i /in.iso
 ```
+
+Type your image's name in place of `album.iso`. Any container image with pysacd installed works in
+place of `pysacd`.
 
 ## MusicBrainz credentials
 

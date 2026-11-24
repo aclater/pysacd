@@ -10,6 +10,10 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Changed
+- docs/security.md: the container example builds a local image named `pysacd` and reads
+  `album.iso` from the current folder, with no placeholders, as tested (#216).
+
 ### Fixed
 - The progress count no longer ends above the total ("frames processed: 13 / total frames: 12"):
   the engine counted the PCM warm-up frames before a range and the frame after it. `run_area`'s

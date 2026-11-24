@@ -370,8 +370,8 @@ page from the release's changelog section, which becomes the release notes. *Exp
 0 and no figure flagged worse. A figure worse than PREVIOUS's by more than the suite's bound blocks
 the tag unless DECISIONS.md in aclater/dsd-toolbox explains and accepts it; the page says why.
 Unlike the other steps, the version bump doesn't matter here: no figure depends on pysacd's
-version string. *Validated:* 2026-11-24 as a draft run, 0.5.5 against the 0.6.0 release branch with
-dsd-measure 0.1.1 and dsd2pcm 0.1.2 before its release ([0.6.0](quality/0.6.0.md)); new from 0.6.0.
+version string. *Validated:* 2026-11-24 as a trial run, not published, 0.5.5 against the 0.6.0 release
+branch with dsd-measure 0.1.1 and an unreleased dsd2pcm; new from 0.6.0.
 
 ## Sign-off
 

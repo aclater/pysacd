@@ -44,7 +44,9 @@ gh attestation verify pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl --repo acl
 ```
 
 To check offline against the attached bundle, add
-`--bundle pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl.intoto.jsonl`.
+`--bundle pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl.intoto.jsonl`. Releases up to 0.5.5 were
+signed before the repository moved to dsd-toolbox, so they verify with `--repo aclater/pysacd`;
+later releases verify with `--repo dsd-toolbox/pysacd`.
 
 ## From source
 

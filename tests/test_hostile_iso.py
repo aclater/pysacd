@@ -399,7 +399,11 @@ class RunBound(unittest.TestCase):
         capacity is about its play time: the tightest a real image gets. From frame zero_from
         on, the audio sectors read as zeros, as in a rip whose tail could not be read."""
         import dstenc
-        frame = dstenc.encode_frame(bytes([0x69]) * (2 * 4704), 2)
+        try:
+            frame = dstenc.encode_frame(bytes([0x69]) * (2 * 4704), 2)
+        except dstenc.EncoderUnavailable:
+            # a wheel on a machine without a C compiler (#217): skip as the other DST tests do
+            raise unittest.SkipTest("test DST encoder unavailable (make test-tools)") from None
         frames = [frame] * 1600
         area = sacdgen.AreaSpec(2, frames, [800, 800], titles=["One", "Two"])
         img, (lay,) = sacdgen.build_image([area], sacdgen.DiscInfo(title="tail"))

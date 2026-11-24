@@ -22,6 +22,7 @@ DOCS = ROOT / "docs"
 GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     ("Install", [
         ("install/README.md", "wheels, checking a download, building from source"),
+        ("install/windows.md", "Python and pysacd from PyPI in PowerShell, first commands, long paths, MSYS2"),
     ]),
     ("Use", [
         ("user-guide.md", "a tour of the commands, and troubleshooting"),
@@ -44,6 +45,7 @@ GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("why-pysacd.md", "what pysacd brings, and a first Python example"),
         ("author.md", "why pysacd exists, in the author's words"),
         ("clean-room.md", "where the code came from, licences, acknowledgements"),
+        ("assets/README.md", "the icon files and where each is used"),
     ]),
 ]
 
@@ -104,7 +106,9 @@ def with_nav(text: str, name: str = "") -> str:
     body = strip_nav(text)
     title, sections = headings(body)
     up = "../" * name.count("/")
-    lines = [NAV_START, f"[pysacd]({up}../README.md) › [Documentation]({up}README.md) › {title}"]
+    # the title as plain text, as the shared docs lint (dsd-toolbox tools/docs) expects it
+    plain = title.replace("`", "")
+    lines = [NAV_START, f"[pysacd]({up}../README.md) › [Documentation]({up}README.md) › {plain}"]
     if len(sections) >= MIN_SECTIONS:
         lines += ["", "**Contents:** " + " · ".join(f"[{s}](#{a})" for s, a in sections)]
     return "\n".join(lines + [NAV_END, "", body])
@@ -114,7 +118,10 @@ def index() -> str:
     out = ["[pysacd](../README.md) › Documentation", "",
            '<img src="assets/icon-256.png" alt="" width="96">', "", "# Documentation", "",
            ("Every document about pysacd, grouped by what it is for. Start with the "
-           "[README](../README.md) for what pysacd is."), ""]
+           "[README](../README.md) for what pysacd is."), "",
+           ("The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for the "
+            "parts listed under [Licence and credits](../README.md#licence-and-credits), which also "
+            "gives the code's licences."), ""]
     for group, docs in GROUPS:
         out += [f"## {group}", ""]
         for name, blurb in docs:
@@ -140,9 +147,7 @@ def index() -> str:
 def main() -> int:
     check = "--check" in sys.argv[1:]
     listed = {name for _, docs in GROUPS for name, _ in docs}
-    # docs/assets/ holds the icon files and their README, not documentation pages
-    present = {p.relative_to(DOCS).as_posix() for p in DOCS.rglob("*.md")
-               if p.relative_to(DOCS).parts[0] != "assets"} - {"README.md"}
+    present = {p.relative_to(DOCS).as_posix() for p in DOCS.rglob("*.md")} - {"README.md"}
     collected = {n for n in present - listed if n.split("/")[0] in COLLECTIONS}
     problems = [f"docs/{n} is not in tools/docs_index.py GROUPS" for n in sorted(present - listed - collected)]
     for n in sorted(collected):

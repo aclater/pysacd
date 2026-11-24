@@ -4,15 +4,22 @@ Notable changes in each release of pysacd. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html); before 1.0, a minor version may change
 behaviour, and a patch version only adds or fixes. Each release on
-[GitHub](https://github.com/aclater/pysacd/releases) and
+[GitHub](https://github.com/dsd-toolbox/pysacd/releases) and
 [PyPI](https://pypi.org/project/pysacd/) carries signed build provenance (see
 [development: packaging and releases](docs/development.md#packaging-and-releases)).
 
 ## [Unreleased]
 
 ### Added
-- `tools/docs_commands.py` runs every command block of README.md and `docs/` against a release on
-  generated discs, with an explicit list of what can't run there and why
+- docs/install/windows.md: installing on Windows 11 from PyPI with python.org Python and
+  `py -m pip install pysacd` or pipx, the first commands with Windows paths, Windows file names,
+  long paths, and the MSYS2 build for developers. The README and docs/install/README.md point
+  to it, where they used to give only the MSYS2 build. `tools/docs_commands.py` accepts
+  PowerShell blocks skipped with a reason that starts with "Windows".
+- `tools/docs_commands.py` runs every command block of the Markdown against a release on
+  generated discs (`tools/docs_fixtures.py`). Each block carries a marker of the DSD Toolbox docs
+  tools that runs it or says why it can't; the shared `docs-run` workflow reads the same markers
+  and runs the blocks against the release on PyPI
   ([development](docs/development.md#docs-commands-against-a-release)) (#215).
 
 ### Changed
@@ -24,8 +31,15 @@ behaviour, and a patch version only adds or fixes. Each release on
   another user's file can block (found by `tools/docs_commands.py`, #215).
 - The engine links scarletbook 1.0.2 (was 0.7.0): the same C ABI and the same output; scarletbook's
   interface is now stable (1.0).
+- Documentation (the README's text and the icons included) and published measurement data are
+  now licensed CC BY 4.0; the code licence is unchanged (GPL-2.0-or-later, with the DSD-to-PCM filter MIT OR Apache-2.0). The exceptions are
+  listed in the README's "Licence and credits". A `CITATION.cff` describes how to cite pysacd.
 
 ### Fixed
+- docs/install: checking a download of 0.5.5 or earlier with `gh attestation verify --repo` fails
+  since the repository moved (HTTP 404 from GitHub's attestation lookup). The page now downloads
+  the wheel with its attestation bundle and verifies against the bundle, with the account that
+  signed those releases; that works without a GitHub sign-in.
 - The progress count no longer ends above the total ("frames processed: 13 / total frames: 12"):
   the engine counted the PCM warm-up frames before a range and the frame after it. `run_area`'s
   result now carries the final count (`frames_done`, `frames_total`) (#205).
@@ -113,28 +127,17 @@ release's files are now identical to `sacd_extract`'s. `-P` matches `sacd_extrac
 `sacd_extract`'s 698 files, 434 are identical, 262 differ only where docs/sacd_extract.md says so,
 and 2 differ by the known `-z` block carry below; none differs otherwise.
 
+Known incompatibility: with `-z`, where a file's audio ends exactly on a DSF block (4,096 bytes
+per channel, for example a first track of 128 frames), `sacd_extract` ends the file one block early and moves
+that block to the next file, or drops it when no file follows. pysacd keeps the block: its DSF
+layouts come from scarletbook, which can't place a file's end there yet. Tracked in #182 and in
+docs/sacd_extract.md, with a `-z -k` concatenation that holds the area's last track, which
+`sacd_extract` doesn't pad.
+
 ### Changed
 - The engine links scarletbook 0.6.1 (was 0.5.9): the same C ABI and the same output. The build
   accepts the link that the library's archives now hold beside the shared library, and leaves it
   out (#188).
-
-### Fixed
-- `pysacd-extract -z` with a track selection that leaves a track out (`-t 1,3`): the bytes left
-  over at the end of the file before the gap are no longer carried into the next file;
-  `sacd_extract` drops them there, and the next file now starts at its own track, byte-identical
-  to `sacd_extract`'s (#182).
-- `pysacd-extract -z -k`: the concatenation is written without padding, as `sacd_extract` writes
-  it, when it ends before the area's last track. It was padded as without `-z` (#182).
-
-### Known incompatibility
-- With `-z`, where a file's audio ends exactly on a DSF block (4,096 bytes per channel, for
-  example a first track of 128 frames), `sacd_extract` ends the file one block early and moves
-  that block to the next file, or drops it when no file follows. pysacd keeps the block: its DSF
-  layouts come from scarletbook, which can't place a file's end there yet. Tracked in #182 and in
-  docs/sacd_extract.md, with a `-z -k` concatenation that holds the area's last track, which
-  `sacd_extract` doesn't pad.
-
-### Tests
 - The release comparison (`tools/extract_compare.py`) knows one more documented difference from
   `sacd_extract`, found on a real disc with a 5.1 DST area: in a DSDIFF edited master, `sacd_extract`
   writes the TOC's track mute flags on `TrackStop` markers, where DSDIFF 1.5 wants zero, and
@@ -149,6 +152,14 @@ and 2 differ by the known `-z` block carry below; none differs otherwise.
   `-z -k` (#182).
 - `TrackStop` markers of a DSDIFF edited master are passed to scarletbook with zero track flags,
   which it wrote anyway; the files are unchanged.
+
+### Fixed
+- `pysacd-extract -z` with a track selection that leaves a track out (`-t 1,3`): the bytes left
+  over at the end of the file before the gap are no longer carried into the next file;
+  `sacd_extract` drops them there, and the next file now starts at its own track, byte-identical
+  to `sacd_extract`'s (#182).
+- `pysacd-extract -z -k`: the concatenation is written without padding, as `sacd_extract` writes
+  it, when it ends before the area's last track. It was padded as without `-z` (#182).
 
 ## [0.5.2] - 2026-11-15
 
@@ -205,7 +216,7 @@ its three points are fixed in this release.
   the field are shown as escapes, and a disc with such a field is still recognised as itself on a
   second run.
 
-### Security hardening
+### Security
 - Cover downloads follow redirects only to `coverartarchive.org` and `archive.org` hosts. A
   redirect anywhere else is refused and reported as a cover-art warning; the run continues
   without a cover (#155). The redirect must name its host plainly (no user part, escapes or other
@@ -214,14 +225,12 @@ its three points are fixed in this release.
 - Reading a MusicBrainz or cover response stops with an error on anything that isn't bytes.
   The test suite can run under a memory limit (`PYSACD_TEST_MEMORY_MB`), and CI's `tests` job does.
 
-### Tests
+### Changed
 - The engine's fuzz harness also covers ranges that don't start at frame 0 in every format, DSF
   chains with a head frame, the ISO copy, cancellation, 176.4 kHz PCM, FLAC output, other thread
   counts and `allow_filler`: an input can carry a run configuration before the image, and the seed
   corpus has a configured run for each. CI replays the seeds under TSan as well as ASan and UBSan
   (#157).
-
-### Build and release
 - The macOS wheels' support is stated as it was tested: built for macOS 11 (arm64) and 10.13
   (x86-64), run on macOS 15 on both; older versions are untested (#142).
 - The release-tag check runs in a Fedora container like the other release jobs, and on pull
@@ -328,7 +337,7 @@ private checks could not: on Windows, a title that sanitises to a name ending in
 made the run fail (Windows drops them from folder names); such names lose them on Windows now. It
 also found three tests that assumed POSIX or Python 3.11.
 
-### Other changes
+### Changed
 
 - **CI builds and tests in Red Hat-derived containers.** The test suite on Python 3.10 to 3.15, the
   ASan/UBSan, leak, fuzz, `sacd_extract` comparison and benchmark jobs, the live MusicBrainz lookup
@@ -636,19 +645,19 @@ First release on PyPI.
   MusicBrainz text before it reaches file names, tags or the terminal (see
   [security](docs/security.md)).
 
-[Unreleased]: https://github.com/aclater/pysacd/compare/v0.5.5...HEAD
-[0.5.5]: https://github.com/aclater/pysacd/compare/v0.5.4...v0.5.5
-[0.5.4]: https://github.com/aclater/pysacd/compare/v0.5.3...v0.5.4
-[0.5.3]: https://github.com/aclater/pysacd/compare/v0.5.2...v0.5.3
-[0.5.2]: https://github.com/aclater/pysacd/compare/v0.5.1...v0.5.2
-[0.5.1]: https://github.com/aclater/pysacd/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/aclater/pysacd/compare/v0.4.3...v0.5.0
-[0.4.3]: https://github.com/aclater/pysacd/compare/v0.4.2...v0.4.3
-[0.4.2]: https://github.com/aclater/pysacd/compare/v0.4.1...v0.4.2
-[0.4.1]: https://github.com/aclater/pysacd/compare/v0.4.0...v0.4.1
-[0.4.0]: https://github.com/aclater/pysacd/compare/v0.3.1...v0.4.0
-[0.3.1]: https://github.com/aclater/pysacd/compare/v0.3.0...v0.3.1
-[0.3.0]: https://github.com/aclater/pysacd/compare/v0.2.2...v0.3.0
-[0.2.2]: https://github.com/aclater/pysacd/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/aclater/pysacd/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/aclater/pysacd/releases/tag/v0.2.0
+[Unreleased]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.4...v0.5.5
+[0.5.4]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.3...v0.5.4
+[0.5.3]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.2...v0.5.3
+[0.5.2]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.1...v0.5.2
+[0.5.1]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.0...v0.5.1
+[0.5.0]: https://github.com/dsd-toolbox/pysacd/compare/v0.4.3...v0.5.0
+[0.4.3]: https://github.com/dsd-toolbox/pysacd/compare/v0.4.2...v0.4.3
+[0.4.2]: https://github.com/dsd-toolbox/pysacd/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/dsd-toolbox/pysacd/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/dsd-toolbox/pysacd/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/dsd-toolbox/pysacd/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/dsd-toolbox/pysacd/compare/v0.2.2...v0.3.0
+[0.2.2]: https://github.com/dsd-toolbox/pysacd/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/dsd-toolbox/pysacd/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/dsd-toolbox/pysacd/releases/tag/v0.2.0

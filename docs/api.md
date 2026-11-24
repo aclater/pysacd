@@ -41,6 +41,7 @@ LSN, for example `area-toc-copies-differ (2ch area)`, filed under the area they 
 
 Command line:
 
+<!-- docs-run: group=discs -->
 ```sh
 pysacd toc album.iso other.iso             # human readable, one or more images
 pysacd toc --json album.iso                # full TOC as JSON

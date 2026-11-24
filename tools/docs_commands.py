@@ -1,29 +1,37 @@
 #!/usr/bin/env python3
-"""Run every command block in README.md and docs/ against an installed pysacd release.
+"""Run the command blocks of the Markdown against a pysacd wheel or pip requirement, on generated discs.
 
     python3 -I tools/docs_commands.py list
-    python3 -I tools/docs_commands.py make-discs DIR       # needs numpy and make test-tools
+    python3 -I tools/docs_commands.py make-discs DIR       # needs numpy and a C compiler
     python3 -I tools/docs_commands.py run --spec pysacd==X.Y.Z --workdir DIR
     python3 -I tools/docs_commands.py run --wheel dist/pysacd-X.whl --workdir DIR
 
-The commands come from the ```sh, ```bash, ```console (`$ ` lines) and ```python blocks of
-README.md and docs/, so a docs change is what runs. Each block runs on its own, as written, in
-one bash session (`set -eo pipefail`) or one Python process, in a fresh folder of WORKDIR that
-is also its HOME (so `~/Music` and `~/bin` stay inside it), with the release under test first
-on PATH. The folder holds generated discs under the names the docs use: `album.iso` (plain
-DSD stereo + DST 5 channels), `disc.iso` (DST stereo + DST 6 channels) and `other.iso` (plain
-DSD stereo), from tests/sacdgen.py as tests/test_extract_tree.py builds them.
+Which blocks run is decided in the Markdown, by the shared docs-run markers of the DSD Toolbox
+docs tools (dsd-toolbox tools/docs/docs_run.py; docs/development.md, "Docs commands"): a
+`<!-- docs-run: ... -->` line just before the fence runs the block, `<!-- docs-run: skip="reason" -->`
+skips it with the reason. There is no list here: the markers are the one list, and the shared
+docs-run workflow reads the same ones. A ```sh, ```bash, ```shell or ```console block (`$ `
+lines) without a marker is an error. ```python blocks carry no marker and always run here.
 
-Changes to what the docs say, and only these (SWAPS; each must still match a docs line):
+This tool is the checkout's side of the same check. docs-run runs the marked blocks in a fresh
+container against the release on PyPI; this runs them against any wheel or requirement (a build
+of the checkout, a release candidate), each block in a fresh folder of WORKDIR that is also its
+HOME (so `~/Music` and `~/bin` stay inside it), with the release under test first on PATH, and
+it runs Python blocks too. Each folder holds the discs of tools/docs_fixtures.py under the names
+the docs use (`album.iso`, `disc.iso`, `other.iso`).
+
+Changes to what the docs say, and only these (each must still match a docs line):
 - `pip install pysacd` installs the release under test (--spec or --wheel);
 - a PS3 address (`192.0.2.10:2002`, `127.0.0.1:2002`) is a `pysacd ps3sim` of the release
   serving `album.iso` on a free local port;
 - without --musicbrainz, each folder gets `~/.config/pysacd/config.toml` with
   `musicbrainz = false`, so `pysacd convert` makes no network lookups.
 
-Commands that can't run here are in SKIP with the reason, and whole files of them in SKIP_FILES
-(the release test plan); some run when their need is given (--musicbrainz, --sacd-extract). A
-SKIP entry that matches no docs command is an error, so the list follows the docs. Every block that runs must exit 0.
+A block skipped for a need this tool can supply runs here (NEEDS): a skip reason that starts
+with "needs a PS3" runs against the ps3sim above, "needs an ordinary user" when this does not run
+as root (docs-run's containers run blocks as root, and `pysacd convert` refuses root), "needs
+sacd_extract" with --sacd-extract, and
+"needs podman" with --podman. Every block that runs must exit 0, and match its `expect=` patterns.
 """
 
 from __future__ import annotations
@@ -43,91 +51,27 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+
+import docs_fixtures
+
+PS_LANGS = {"powershell", "ps1", "pwsh", "cmd", "bat"}
 LANGS = {"sh": "sh", "bash": "sh", "shell": "sh", "console": "console", "python": "python"}
-DISCS = {"album.iso": "mixed", "disc.iso": "dst", "other.iso": "plain"}
+DISCS = docs_fixtures.DISCS
 PS3_ADDRESSES = ("192.0.2.10:2002", "127.0.0.1:2002")
 
-# Needs that a run can supply; a SKIP entry with one of them runs when it is given.
-MUSICBRAINZ, SACD_EXTRACT, PODMAN = "musicbrainz", "sacd_extract", "podman"
+# Needs a run can supply: a block skipped with a reason that starts with the key runs when the
+# need is given (PS3 always is: the run's own ps3sim; so is an ordinary user, unless this runs as root).
+PS3, USER, SACD_EXTRACT, PODMAN = "ps3", "user", "sacd_extract", "podman"
+NEEDS = {"needs a PS3": PS3, "needs an ordinary user": USER, "needs sacd_extract": SACD_EXTRACT,
+         "needs podman": PODMAN}
 
-DEV = "a development command, run from a source checkout by CI and release test plan steps 1 to 4"
-SOURCE = ("builds from a source checkout, not the release under test; CI's tests and portability jobs build "
-          "the same way")
-WINDOWS = "Windows with MSYS2; CI's portability workflow builds it"
-SERVER = "a server that runs until Ctrl-C; the run's own ps3sim stands in for it for the PS3 commands"
-BENCH = "a release step on real discs, timed on a quiet machine (release test plan step 8)"
-
-# Whole files whose commands are not run here, with the reason.
-SKIP_FILES: dict[str, str] = {
-    "docs/release-test-plan.md": ("the release test plan: release steps on a source checkout, in containers and VMs "
-                                  "and on real discs, each run as the plan says"),
-}
-
-# (file, command as written, continuation lines joined) -> (reason, need or None)
-SKIP: dict[tuple[str, str], tuple[str, str | None]] = {
-    ("docs/converting.md", "make"): (SOURCE, None),
-    ("docs/converting.md", "pysacd mb-login --client-id CLIENT_ID"):
-        ("signs in to the user's own MusicBrainz account in a browser", None),
-    ("docs/converting.md", "pysacd submit-isrcs -n album.iso"):
-        ("looks the disc up on MusicBrainz (network)", MUSICBRAINZ),
-    ("docs/converting.md", "pysacd submit-isrcs album.iso"):
-        ("submits to MusicBrainz after asking: needs an account, and would edit MusicBrainz", None),
-    ("docs/converting.md", "pysacd convert --submit-isrcs album.iso"):
-        ("offers a MusicBrainz submission after the match: needs an account, and would edit MusicBrainz", None),
-    ("docs/development.md", "make"): (DEV, None),
-    ("docs/development.md", "python3 -I scripts/bench_workload.py generate build/bench-discs"): (DEV, None),
-    ("docs/development.md", "make PORTABLE=1"): (DEV, None),
-    ("docs/development.md", "make test-tools"): (DEV, None),
-    ("docs/development.md", "make HARDEN=0"): (DEV, None),
-    ("docs/development.md", "make && PYTHONPATH=src python3 -m unittest discover -s tests"): (DEV, None),
-    ("docs/development.md", "PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s tests"):
-        (DEV, None),
-    ("docs/development.md", "make fuzz test-tools"): (DEV, None),
-    ("docs/development.md", "PYTHONPATH=src:tests python3 fuzz/make_seeds.py build/fuzz-seeds"): (DEV, None),
-    ("docs/development.md", "mkdir -p build/fuzz-corpus/engine build/fuzz-tmp"): (DEV, None),
-    ("docs/development.md", ("TMPDIR=build/fuzz-tmp build/fuzz_engine -max_len=4194304 -jobs=2 -workers=2 "
-     "-rss_limit_mb=1500 -max_total_time=600 build/fuzz-corpus/engine build/fuzz-seeds/engine")): (DEV, None),
-    ("docs/development.md", ("BENCH_DISCS=$PWD/build/bench-discs python3 -I scripts/bench_compare.py --base OLD_TREE "
-     "--head NEW_TREE --measure \"python3 -I scripts/bench_workload.py\" dst-stereo dst-multichannel plain-dsd")):
-        (DEV, None),
-    ("docs/development.md", "pysacd ps3sim album.iso --port 2002 --rate 6 --drop-after 500"): (SERVER, None),
-    ("docs/development.md", "python3 -I tools/docs_commands.py list"): ("this tool itself", None),
-    ("docs/development.md", "python3 -I tools/docs_commands.py run --spec pysacd==VERSION --workdir build/docs-commands"):
-        ("this tool itself", None),
-    ("docs/development.md", ("python3 tools/extract_compare.py --old PREVIOUS_RELEASE/src --new src --sacd-extract BIN "
-     "--no-values --require-sacd-extract IMAGE...")):
-        ("a release step on real discs (release test plan step 2)", None),
-    ("docs/development.md", ("python3 tools/quality_compare.py --previous 0.5.5 --candidate . "
-     "--work /var/tmp/pysacd-quality --out docs/quality/0.6.0.md")):
-        ("a release step: builds and measures two releases for about an hour (release test plan step 11)", None),
-    ("docs/development.md", "python3 tools/bench_release.py setup --work ../bench v0.5.4 v0.5.5 new=master"):
-        (BENCH, None),
-    ("docs/development.md", ("python3 tools/bench_release.py run --tree 0.5.4=../bench/trees/0.5.4 "
-     "--tree 0.5.5=../bench/trees/0.5.5 --tree new=../bench/trees/new --disc dst2=DST_STEREO.iso "
-     "--disc dst6=DST_MULTICHANNEL.iso --disc plain=PLAIN_DSD.iso --out ../bench/results --memory-max 12G")):
-        (BENCH, None),
-    ("docs/development.md", "python3 tools/bench_release.py clean --work ../bench"): (BENCH, None),
-    ("docs/install/README.md", "gh attestation verify pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl --repo aclater/pysacd"):
-        ("needs the GitHub CLI signed in and that wheel file; the release steps verify every attestation", None),
-    ("docs/install/README.md", "git clone https://github.com/dsd-toolbox/pysacd && cd pysacd"): (SOURCE, None),
-    ("docs/install/README.md", "pip install -e '.[convert]'"): (SOURCE, None),
-    ("docs/install/README.md", "make"): (SOURCE, None),
-    ("docs/install/README.md", "python tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook"):
-        (WINDOWS, None),
-    ("docs/install/README.md", ("pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf "
-     "mingw-w64-ucrt-x86_64-flac")): (WINDOWS, None),
-    ("docs/install/README.md", "pip install -e '.[convert]' --no-build-isolation"): (WINDOWS, None),
-    ("docs/ps3-protocol.md", "pysacd ps3sim disc.iso"): (SERVER, None),
-    ("docs/ps3-protocol.md", "sacd_extract -I -i 127.0.0.1:2002"):
-        ("needs sacd_extract; with it, it reads from the run's own ps3sim", SACD_EXTRACT),
-    ("docs/security.md", "podman build -t pysacd - <<'END'"):
-        ("needs podman and the network; installs pysacd from PyPI into the container", PODMAN),
-    ("docs/security.md", "mkdir out"): ("goes with the podman commands", PODMAN),
-    ("docs/security.md", ("podman run --rm --network none --userns=keep-id -v ./album.iso:/in.iso:ro,Z -v ./out:/out:Z "
-     "-w /out pysacd pysacd-extract -2 -s -i /in.iso")): ("needs podman and the image built above", PODMAN),
-    ("docs/sacd_extract.md", "(cd a && sacd_extract   -2 -m -s -i ../album.iso)"): ("needs sacd_extract", SACD_EXTRACT),
-    ("docs/sacd_extract.md", "diff -r a b && echo identical"): ("needs sacd_extract", SACD_EXTRACT),
-}
+# The marker syntax of the shared docs-run (dsd-toolbox tools/docs/docs_run.py): a marker applies
+# to a fence at most two lines below it. Keys this tool reads: skip, expect; the others (image,
+# packages, setup, group, drop, timeout, checkout) set up docs-run's container and mean nothing here.
+DIRECTIVE_RE = re.compile(r"^\s*<!--\s*docs-run:(.*?)-->\s*$")
+MARKER_KEYS = {"skip", "expect", "image", "packages", "setup", "group", "drop", "timeout", "checkout"}
+SKIP_DIRS = {".git", ".docs-tools", "node_modules", "target", ".venv", "venv"}   # as docs_run.py
 
 
 def _strip_comment(line: str) -> str:
@@ -149,17 +93,50 @@ class Command:
     script: str         # as run: the original lines, continuations and here-documents kept
 
 
+class MarkerError(Exception):
+    pass
+
+
 @dataclass
 class Block:
-    file: str           # relative to the root, POSIX-style on every platform (the SKIP keys)
-    line: int
+    file: str           # relative to the root, POSIX-style on every platform
+    line: int           # the opening fence, 1-based
     lang: str
     commands: list[Command] = field(default_factory=list)
     code: str = ""      # python blocks: the code
+    status: str = "run"     # run | skip | unmarked (python blocks: always run)
+    reason: str = ""        # skip reason
+    expects: list[str] = field(default_factory=list)
 
 
 def doc_files(root: Path = ROOT) -> list[Path]:
-    return [root / "README.md", *sorted((root / "docs").rglob("*.md"))]
+    """Every Markdown file docs-run reads: README.md first, then the rest in path order."""
+    files = []
+    for dp, dn, fn in os.walk(root):
+        dn[:] = sorted(d for d in dn if d not in SKIP_DIRS)
+        files += [Path(dp) / f for f in sorted(fn) if f.endswith(".md")]
+    files.sort(key=lambda p: (p.relative_to(root).parts != ("README.md",), p.relative_to(root).as_posix()))
+    return files
+
+
+def parse_marker(text: str, where: str) -> tuple[dict[str, str], list[str]]:
+    try:
+        parts = shlex.split(text.strip())
+    except ValueError as e:
+        raise MarkerError(f"{where}: cannot parse the docs-run marker: {e}") from e
+    opts: dict[str, str] = {}
+    expects: list[str] = []
+    for part in parts:
+        k, eq, v = part.partition("=")
+        if not eq or k not in MARKER_KEYS:
+            raise MarkerError(f"{where}: {part!r} is not a docs-run key=value")
+        if k == "expect":
+            expects.append(v)
+        else:
+            opts[k] = v
+    if "skip" in opts and not opts["skip"].strip():
+        raise MarkerError(f"{where}: skip= needs a reason")
+    return opts, expects
 
 
 def _commands(lines: list[str]) -> list[Command]:
@@ -192,49 +169,64 @@ def _commands(lines: list[str]) -> list[Command]:
 def blocks(root: Path = ROOT) -> list[Block]:
     out: list[Block] = []
     for path in doc_files(root):
+        rel = path.relative_to(root).as_posix()
         lines = path.read_text(encoding="utf-8").splitlines()
+        marker: tuple[dict[str, str], list[str], int] | None = None
         i = 0
         while i < len(lines):
+            d = DIRECTIVE_RE.match(lines[i])
+            if d:
+                marker = (*parse_marker(d.group(1), f"{rel}:{i + 1}"), i)
+                i += 1
+                continue
             m = re.match(r"(\s*)```(\w*)\s*$", lines[i])
             if not m:
                 i += 1
                 continue
             indent, lang, start = len(m.group(1)), m.group(2), i + 1
+            near = marker if marker and i - marker[2] <= 2 else None
+            marker = None
             body = []
             i += 1
             while i < len(lines) and not re.match(r"\s*```\s*$", lines[i]):
                 body.append(lines[i][indent:] if lines[i][:indent].strip() == "" else lines[i])
                 i += 1
             i += 1
-            if lang == "powershell":
-                sys.exit(f"{path.relative_to(root).as_posix()}:{start}: a powershell block; add Windows handling to "
-                         f"{Path(__file__).name} first")
+            if lang in PS_LANGS:
+                # Windows commands: this tool runs on Linux, so they never run here. Each must be
+                # skipped with a reason that starts with "Windows", for the Windows pass to find.
+                if near is None or not near[0].get("skip", "").startswith("Windows"):
+                    raise MarkerError(f"{rel}:{start}: a {lang} block needs "
+                                      f'<!-- docs-run: skip="Windows: reason" -->')
+                continue
             kind = LANGS.get(lang)
             if not kind:
                 continue
-            b = Block(path.relative_to(root).as_posix(), start, kind)
+            b = Block(rel, start, kind)
             if kind == "python":
                 b.code = "\n".join(body) + "\n"
-            elif kind == "console":
-                b.commands = _commands([ln[2:] for ln in body if ln.startswith("$ ")])
             else:
-                b.commands = _commands(body)
+                b.commands = _commands([ln[2:] for ln in body if ln.startswith("$ ")] if kind == "console"
+                                       else body)
+                if near is None:
+                    b.status = "unmarked"
+                elif "skip" in near[0]:
+                    b.status, b.reason = "skip", near[0]["skip"]
+                else:
+                    b.expects = near[1]
             out.append(b)
     return out
 
 
-def skip_of(b: Block, c: Command) -> tuple[str, str | None] | None:
-    if b.file in SKIP_FILES:
-        return SKIP_FILES[b.file], None
-    return SKIP.get((b.file, c.text))
+def need_of(b: Block) -> str | None:
+    """The need that lets a skipped block run here, from the start of its skip reason."""
+    return next((n for prefix, n in NEEDS.items() if b.reason.startswith(prefix)), None)
 
 
-def check_skips(all_blocks: list[Block]) -> list[str]:
-    """SKIP entries that match no command: the docs changed, so the list must follow."""
-    have = {(b.file, c.text) for b in all_blocks for c in b.commands}
-    files = {b.file for b in all_blocks}
-    return ([f"{f}: {t!r}" for f, t in SKIP if (f, t) not in have]
-            + [f"{f}: (the whole file)" for f in SKIP_FILES if f not in files])
+def check_marks(all_blocks: list[Block]) -> list[str]:
+    """Every command block carries a docs-run marker."""
+    return [f"{b.file}:{b.line}: command block without a docs-run marker (run, or skip=\"reason\")"
+            for b in all_blocks if b.status == "unmarked"]
 
 
 def swap(script: str, spec: str, port: int) -> str:
@@ -257,36 +249,31 @@ def check_swaps(all_blocks: list[Block]) -> list[str]:
 
 
 def cmd_list(_: argparse.Namespace) -> int:
-    all_blocks = blocks()
+    try:
+        all_blocks = blocks()
+    except MarkerError as e:
+        print(f"error: {e}")
+        return 1
     runs = skips = 0
     for b in all_blocks:
-        print(f"## {b.file}:{b.line} ({b.lang})")
-        if b.lang == "python":
-            print("  run: the Python block")
+        if b.status == "skip":
+            skips += 1
+            n = need_of(b)
+            print(f"skip  {b.file}:{b.line} ({b.lang}): {b.reason}"
+                  + (f" [runs here {'always' if n in (PS3, USER) else 'with --' + n.replace('_', '-')}]" if n else ""))
+        elif b.status == "run":
             runs += 1
-        for c in b.commands:
-            s = skip_of(b, c)
-            if s:
-                skips += 1
-                print(f"  skip: {c.text}\n        {s[0]}" + (f" (runs with --{s[1].replace('_', '-')})" if s[1] else ""))
-            else:
-                runs += 1
-                print(f"  run: {c.text}")
-    print(f"{len(all_blocks)} blocks: {runs} commands or Python blocks run, {skips} skipped")
-    bad = check_skips(all_blocks) + check_swaps(all_blocks)
+            print(f"run   {b.file}:{b.line} ({b.lang})")
+    print(f"{len(all_blocks)} blocks: {runs} run, {skips} skipped with a reason")
+    bad = check_marks(all_blocks) + check_swaps(all_blocks)
     for m in bad:
-        print(f"error: SKIP entry matches no docs command: {m}" if ":" in m else f"error: {m}")
+        print(f"error: {m}")
     return 1 if bad else 0
 
 
 def cmd_make_discs(a: argparse.Namespace) -> int:
-    sys.path[:0] = [str(ROOT / "tests"), str(ROOT / "tools")]
-    import test_extract_tree
-    a.dir.mkdir(parents=True, exist_ok=True)
-    made = test_extract_tree.discs(a.dir)
-    for name, kind in DISCS.items():
-        os.replace(made[kind], a.dir / name)
-        print(f"{a.dir / name}: the {kind!r} disc of tests/test_extract_tree.py")
+    for name, path in docs_fixtures.make(a.dir).items():
+        print(f"{path}: {DISCS[name]}")
     return 0
 
 
@@ -327,7 +314,7 @@ def cmd_run(a: argparse.Namespace) -> int:
     bin_dir = env_dir / "bin"
     tools = work / "tools-bin"
     tools.mkdir(exist_ok=True)
-    have = {MUSICBRAINZ} if a.musicbrainz else set()
+    have = {PS3} | ({USER} if not hasattr(os, "geteuid") or os.geteuid() != 0 else set())
     if a.podman:
         have.add(PODMAN)
     if a.sacd_extract:
@@ -339,9 +326,14 @@ def cmd_run(a: argparse.Namespace) -> int:
     version = subprocess.run([str(bin_dir / "pysacd"), "--version"], check=False, capture_output=True,
                              text=True).stdout.strip()
     print(f"release under test: {version}")
+    release = version.split()[1] if version.startswith("pysacd ") and len(version.split()) > 1 else version
 
-    all_blocks = blocks()
-    bad = check_skips(all_blocks) + check_swaps(all_blocks)
+    try:
+        all_blocks = blocks()
+    except MarkerError as e:
+        print(f"::error::{e}")
+        return 1
+    bad = check_marks(all_blocks) + check_swaps(all_blocks)
     if bad:
         for m in bad:
             print(f"::error::{m}")
@@ -355,6 +347,10 @@ def cmd_run(a: argparse.Namespace) -> int:
     try:
         _wait_port(port, sim)
         for n, b in enumerate(all_blocks, 1):
+            need = need_of(b) if b.status == "skip" else None
+            if b.status == "skip" and need not in have:
+                skipped.append(f"{b.file}:{b.line}: {b.reason}")
+                continue
             folder = work / "blocks" / f"{n:02d}-{b.file.replace('/', '-').removesuffix('.md')}-{b.line}"
             shutil.rmtree(folder, ignore_errors=True)
             folder.mkdir(parents=True)
@@ -374,18 +370,9 @@ def cmd_run(a: argparse.Namespace) -> int:
                 (folder / "block.py").write_text(b.code, encoding="utf-8")
                 argv, label = [str(bin_dir / "python"), "-I", "block.py"], "the Python block"
             else:
-                todo = []
-                for c in b.commands:
-                    s = skip_of(b, c)
-                    if s and (s[1] is None or s[1] not in have):
-                        skipped.append(f"{b.file}:{b.line}: {c.text} ({s[0]})")
-                    else:
-                        todo.append(c)
-                if not todo:
-                    continue
-                script = ["set -eo pipefail"] + [swap(c.script, spec, port) for c in todo]
+                script = ["set -eo pipefail"] + [swap(c.script, spec, port) for c in b.commands]
                 argv, label = ["bash", "--noprofile", "--norc", "-c", "\n".join(script)], \
-                    "; ".join(c.text for c in todo)
+                    "; ".join(c.text for c in b.commands)
             print(f"\n== {b.file}:{b.line}: {label}", flush=True)
             try:
                 p = subprocess.run(argv, check=False, cwd=folder, env=env, stdin=subprocess.DEVNULL,
@@ -398,16 +385,19 @@ def cmd_run(a: argparse.Namespace) -> int:
             tail = out.splitlines()[-a.lines:]
             print("\n".join(tail))
             ran += 1
-            if rc != "0":
-                failed.append(f"{b.file}:{b.line} ({rc})")
-                print(f"::error::{b.file}:{b.line} failed ({rc})")
+            problems = [] if rc == "0" else [f"exit {rc}"]
+            problems += [f"output does not match expect={rx!r}" for rx in b.expects
+                         if not re.search(rx.replace("{version}", re.escape(release)), out, re.MULTILINE)]
+            if problems:
+                failed.append(f"{b.file}:{b.line} ({'; '.join(problems)})")
+                print(f"::error::{b.file}:{b.line} failed ({'; '.join(problems)})")
     finally:
         sim.send_signal(signal.SIGINT)
         try:
             sim.wait(10)
         except subprocess.TimeoutExpired:
             sim.kill()
-    print(f"\n{ran} blocks ran, {len(failed)} failed; {len(skipped)} commands not run:")
+    print(f"\n{ran} blocks ran, {len(failed)} failed; {len(skipped)} blocks not run:")
     for line in skipped:
         print(f"- {line}")
     for f in failed:
@@ -419,7 +409,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="show every block, what runs and what is skipped").set_defaults(fn=cmd_list)
-    d = sub.add_parser("make-discs", help="write album.iso, disc.iso and other.iso into DIR")
+    d = sub.add_parser("make-discs", help="write album.iso, disc.iso and other.iso into DIR (tools/docs_fixtures.py)")
     d.add_argument("dir", type=Path)
     d.set_defaults(fn=cmd_make_discs)
     r = sub.add_parser("run", help="run the blocks in WORKDIR against a release")

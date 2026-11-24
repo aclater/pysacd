@@ -7,9 +7,10 @@
 # Security
 
 pysacd reads SACD images and metadata that may come from anyone. This document records what
-pysacd treats as untrusted, and how each kind of input is validated. The realistic adversaries
-are corrupt images, buggy players and odd disc text, so the defence is input validation.
-Containment against a hypothetical exploit (sandboxing, attackers on the LAN, hostile local
+pysacd treats as untrusted, and how each kind of input is validated.
+
+The realistic adversaries are corrupt images, buggy players and odd disc text, so the defence is
+input validation. Containment against a hypothetical exploit (sandboxing, attackers on the LAN, hostile local
 configuration) is out of scope; see [Extra isolation](#extra-isolation). Related issues: #12
 (PS3 network protocol), #14 (engine, filesystem, HTTP, build), #17 (untrusted images).
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
@@ -215,6 +216,7 @@ images you trust even less, run it in a container with no network, the image mou
 read-only and only the output directory writable. For example, build a local container image
 named `pysacd` from the PyPI release, then extract `album.iso` in the current folder into `out`:
 
+<!-- docs-run: skip="needs podman and the network; tools/docs_commands.py runs it with --podman" -->
 ```sh
 podman build -t pysacd - <<'END'
 FROM registry.access.redhat.com/ubi10/python-312-minimal

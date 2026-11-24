@@ -19,6 +19,7 @@ already-decrypted ISO is indistinguishable from a PS3 to the client.
 
 Both CLIs accept a PS3 address wherever they take an ISO:
 
+<!-- docs-run: skip="needs a PS3 or a player running SACD Ripper; tools/docs_commands.py runs it against its own pysacd ps3sim" -->
 ```sh
 pysacd-extract -I -i 192.0.2.10:2002          # copy the disc to an ISO
 pysacd-extract -s -I -i 192.0.2.10:2002       # ISO + DSF; the disc crosses the network once
@@ -109,9 +110,16 @@ first block. That only affects the PS3's own decryption, not the bytes sent.
 
 ## Testing without a PS3
 
+<!-- docs-run: skip="starts a server that runs until Ctrl-C" -->
 ```sh
 pysacd ps3sim disc.iso                       # listen on 127.0.0.1:2002
-sacd_extract -I -i 127.0.0.1:2002            # copy the disc back as an ISO
+```
+
+Then, in another shell, copy the disc back as an ISO:
+
+<!-- docs-run: skip="needs sacd_extract and the simulator above; tools/docs_commands.py runs it with --sacd-extract against its own pysacd ps3sim" -->
+```sh
+sacd_extract -I -i 127.0.0.1:2002
 ```
 
 `pysacd.remote.PS3Simulator` follows `src/server.c`, including the boundary cuts and the

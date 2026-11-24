@@ -8,12 +8,14 @@
 
 A tour of what pysacd does: reading a disc's table of contents, extracting as `sacd_extract`
 would, converting into a tagged library, and using it from Python. To install it first, see
-[install](install/README.md).
+[install](install/README.md). On Windows, [install on Windows](install/windows.md) shows the same
+commands in PowerShell, with Windows paths.
 
 ## Read a disc's TOC
 
-From a file, or from a PS3:
+From a file:
 
+<!-- docs-run: group=discs expect="^Disc:" -->
 ```console
 $ pysacd toc album.iso
 == album.iso
@@ -22,11 +24,18 @@ Disc:      Nick Drake - Nick Drake: A Treasury
 Area TWOCHTOC: Stereo, DST, 15 tracks, 52:17:09 (LSN 624-453388)
    1. 01:29:68  Introduction - SACD Stereo [Nick Drake]
    ...
+```
+
+From a PS3, as JSON:
+
+<!-- docs-run: skip="needs a PS3 or a player running SACD Ripper; tools/docs_commands.py runs it against its own pysacd ps3sim" -->
+```console
 $ pysacd toc --json 192.0.2.10:2002 > disc.json
 ```
 
 ## Extract exactly as sacd_extract would
 
+<!-- docs-run: group=discs -->
 ```console
 $ pysacd-extract -2 -m -s -i album.iso       # DSF, stereo + multichannel
 ```
@@ -37,6 +46,7 @@ See [pysacd-extract](sacd_extract.md) for migrating and compatibility.
 
 With your own naming and MusicBrainz tags:
 
+<!-- docs-run: skip="needs an ordinary user: pysacd convert refuses to run as root, and docs-run runs blocks as root; tools/docs_commands.py runs it" -->
 ```console
 $ pysacd convert -f flac -o ~/Music album.iso
 MusicBrainz: A Treasury — Nick Drake (2004, Hybrid SACD (SACD layer, 2 channels)) [barcode, ISRC 15/15]

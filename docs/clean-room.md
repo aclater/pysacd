@@ -44,8 +44,9 @@ clean room. One agent studied the reference and wrote a prose specification, wit
 a second agent, which never saw the reference, implemented from that document alone.
 
 All of that left the repository with #85; it is in its history.
-- The specification:
-  [`docs/dst-bitstream.md` at v0.2.2](https://github.com/dsd-toolbox/pysacd/blob/v0.2.2/docs/dst-bitstream.md).
+
+<!-- docs-lint: ignore own-repo-link -- the file exists only at the v0.2.2 tag; a relative link would point at the current tree, where it was removed -->
+- The specification: [`docs/dst-bitstream.md` at v0.2.2](https://github.com/dsd-toolbox/pysacd/blob/v0.2.2/docs/dst-bitstream.md).
 - The decoder: `csrc/dstdec.c` at the same tag.
 
 The test-only DST encoder that builds pysacd's synthetic DST discs (`tests/native/dstenc.c`,

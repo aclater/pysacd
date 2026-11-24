@@ -31,7 +31,7 @@ Limitations: it's only been tested against a PS3 simulator. If you have a PS3 or
 
 None of this was practical with just sacd_extract. Better clients for everyone - that's what I'm after.
 
-https://github.com/aclater/pysacd
+https://github.com/dsd-toolbox/pysacd
 
 ---
 
@@ -40,11 +40,11 @@ https://github.com/aclater/pysacd
 - The clean-room Rust library happened: [scarletbook-rs](https://github.com/aclater/scarletbook-rs), MIT/Apache licensed, written only from the published spec. From 0.3.0, pysacd reads and decodes SACD images through it, and pysacd's own TOC parser and DST decoder (the one built on FFmpeg's) are gone. What's left of pysacd is all GPL-2.0-or-later.
 - Output didn't change: byte-identical to 0.2.2, and the beets plugin's disc fingerprints are the same for every disc in my library.
 - Speed: plain DSD discs now extract 3,6 to 4,0× faster than sacd_extract, and DST discs 2,5× faster.
-- The FUSE filesystem happened too: [sacdfs](https://github.com/aclater/sacdfs) 0.1.0 shows ISOs as DSF and WAV files.
+- The FUSE filesystem happened too: [sacdfs](https://github.com/dsd-toolbox/sacdfs) 0.1.0 shows ISOs as DSF and WAV files.
 
 ## See also
 
 - [Why pysacd](why-pysacd.md)
 - [Clean room and licences](clean-room.md)
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

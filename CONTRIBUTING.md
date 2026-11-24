@@ -5,7 +5,7 @@ are all welcome.
 
 ## Reporting a bug
 
-Open an [issue](https://github.com/aclater/pysacd/issues). Include the command you ran,
+Open an [issue](https://github.com/dsd-toolbox/pysacd/issues). Include the command you ran,
 what you expected, what happened, and a log: run again with `--log-file pysacd.log` and
 attach it (see [logging](docs/logging.md) for what it records). Logs from a real PS3 or
 Blu-ray player running SACD Ripper or AutoScript are especially useful (#10).
@@ -42,8 +42,8 @@ Blu-ray player running SACD Ripper or AutoScript are especially useful (#10).
 
 ## Releasing
 
-When a version is released, update [RELEASES.md](https://github.com/aclater/dsd-toolbox/blob/main/RELEASES.md)
-in aclater/dsd-toolbox (the minor version's summary and release list). A release that fixes a
+When a version is released, update [RELEASES.md](https://github.com/dsd-toolbox/dsd-toolbox/blob/main/RELEASES.md)
+in dsd-toolbox/dsd-toolbox (the minor version's summary and release list). A release that fixes a
 vulnerability follows [development: security releases](docs/development.md#security-releases).
 
 ## Rules that keep the project clean

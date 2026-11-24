@@ -168,4 +168,4 @@ through the simulator on a 3.39 GB plain-DSD disc:
 - [Security](security.md#ps3-network-protocol): the client's limits
 - [Development](development.md#testing-without-a-ps3): testing without a PS3
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

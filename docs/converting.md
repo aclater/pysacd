@@ -170,4 +170,4 @@ Replace `CLIENT_ID` with the client ID of your own MusicBrainz application: regi
 - [pysacd-extract](sacd_extract.md): `sacd_extract`-compatible output
 - [Security](security.md#musicbrainz-credentials): MusicBrainz credentials
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

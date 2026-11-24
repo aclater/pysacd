@@ -127,8 +127,8 @@ Contributor rules are in [CONTRIBUTING.md](../CONTRIBUTING.md) and [CLAUDE.md](.
 
 ## See also
 
-- [beets-pysacd](https://github.com/aclater/beets-pysacd): import SACD images into a beets library
-- [sacdfs](https://github.com/aclater/sacdfs): SACD images as DSF files in a folder
+- [beets-pysacd](https://github.com/dsd-toolbox/beets-pysacd): import SACD images into a beets library
+- [sacdfs](https://github.com/dsd-toolbox/sacdfs): SACD images as DSF files in a folder
 - [scarletbook-rs](https://github.com/aclater/scarletbook-rs): the SACD engine pysacd uses
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

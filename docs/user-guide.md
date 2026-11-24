@@ -81,6 +81,8 @@ stops cleanly. See [the Python API](api.md).
   [why](security.md#hostile-images).
 - **`pysacd convert` refuses to run as root:** run it as an ordinary user; see
   [running as root](security.md#running-as-root).
+- **Windows: a path is longer than 260 characters:** pysacd writes it anyway; other programs may
+  need long paths enabled ([long paths on Windows](install/windows.md#long-paths)).
 - **Files already exist:** `pysacd convert` and `pysacd-extract --templates` keep them and say
   so; `--overwrite` replaces them.
 

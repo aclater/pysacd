@@ -382,7 +382,7 @@ class DeviceNames(unittest.TestCase):
     def test_names_on_this_platform(self):
         from pysacd import sbcompat as sb
         win = sys.platform == "win32"
-        self.assertEqual(sb.make_filename("out", "CON", "cue"), "out/_CON.cue" if win else "out/CON.cue")
+        self.assertEqual(sb.make_filename("out", "CON", "cue"), "out\\_CON.cue" if win else "out/CON.cue")
         self.assertEqual(sb.make_filename(None, "nul", "dff"), "_nul.dff" if win else "nul.dff")
         self.assertEqual(sb.make_filename(None, "01 - CON", "dsf"), "01 - CON.dsf")
 

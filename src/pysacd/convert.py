@@ -7,7 +7,7 @@ import re
 import sys
 import time
 import unicodedata
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 if sys.version_info >= (3, 11):
@@ -359,6 +359,8 @@ def convert(iso: str, opts: Options) -> int:
             raise SystemExit(str(e)) from None
     if opts.format == "flac" and not opts.dry_run and not _native.has_flac():
         raise SystemExit("this build has no FLAC support: install flac-devel, then `make clean all`")
+    # Windows: an extended-length path, so a long album title can't make a path too long (#217)
+    opts = replace(opts, output_dir=safeio.long_path(opts.output_dir))
 
     with SACDImage(iso) as img:
         disc = img.read_toc()

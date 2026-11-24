@@ -102,11 +102,18 @@ that file exists; [converting](../converting.md) has the options and the naming 
 
 ## Long paths
 
-Windows limits a path to 260 characters unless long paths are turned on, and they are off by
-default. With pysacd 0.5.5, a track whose full output path is longer than that fails with
-`[WinError 3] The system cannot find the path specified`, which happens with very long disc or
-track titles in a deep folder. Write to a short folder, such as `C:\Music`, to stay under the
-limit. Issue [#217](https://github.com/dsd-toolbox/pysacd/issues/217) tracks it.
+pysacd writes files whose full path is longer than Windows' usual 260-character limit, such as a
+long album title in a deep output folder, with no system setting. It opens every output (DSF,
+DFF, FLAC, WAV, cue, XML, ISO copies and their temporary files) by its extended-length path
+(`\\?\C:\...`), which has no such limit. Messages and logs never show that prefix. Releases
+before the one that fixed [#217](https://github.com/dsd-toolbox/pysacd/issues/217) fail with
+`[WinError 3] The system cannot find the path specified` on such a path; there, write to a short
+folder, such as `C:\Music`.
+
+Some other programs can't open files past that limit. Those built for long paths can, once long
+paths are enabled for the whole system. That is optional: Microsoft's
+[maximum path length limitation](https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation)
+page describes the `LongPathsEnabled` setting. pysacd itself doesn't need it.
 
 ## Build from source (developers)
 

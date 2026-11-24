@@ -39,7 +39,7 @@ VERSION=${1:?usage: windows-vm.sh VERSION}
 SSH_PORT=${SSH_PORT:-2232}
 RUN_DIR=${RUN_DIR:-'~/.local/share/pysacd-platform-run'}
 OUT=$(realpath -m "${OUT:-platform-run-windows-$VERSION}")
-NAME=pysacd-run-$$
+NAME=vm-$(od -An -N4 -tx1 /dev/urandom | tr -d " \n")
 SSH=${SSH:-ssh}
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/lib.sh"

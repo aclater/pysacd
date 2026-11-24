@@ -12,7 +12,8 @@
 #   TART_HOST    ssh destination of the Mac (key login, no prompts)
 #   SSH          the ssh command to reach TART_HOST (default: ssh), e.g. with -F CONFIG
 #   TART         command that runs tart there (default: tart), e.g. with TART_HOME set
-#   BASE_VM      a tart macOS VM with Remote Login on, never changed: the run uses a clone
+#   BASE_VM      a tart macOS VM with Remote Login on, never run itself:
+#                each run clones it, and the clone (named vm-<random hex>) is stopped and deleted at the end
 #   VM_KEY       path, on the Mac, of the private key the VM's user accepts
 #   VM_USER      the VM's admin user (default: admin); VM_PASSWORD its sudo password (default:
 #                admin, as in tart's published images), used only to install Python
@@ -33,7 +34,7 @@ TART=${TART:-tart}
 VM_USER=${VM_USER:-admin}
 VM_PASSWORD=${VM_PASSWORD:-admin}
 OUT=$(realpath -m "${OUT:-platform-run-macos-$VERSION}")
-CLONE=pysacd-run-$$
+CLONE=vm-$(od -An -N4 -tx1 /dev/urandom | tr -d " \n")  # neutral: nothing on the Mac names the project
 SSH=${SSH:-ssh}
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/lib.sh"

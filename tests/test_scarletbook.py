@@ -149,6 +149,72 @@ class Fetch(unittest.TestCase):
 
 
 
+class WindowsRoots(unittest.TestCase):
+    """A fresh Windows may lack the root GitHub chains to: the fetch also trusts certifi's roots
+    there, unless the user set SSL_CERT_FILE (#222)."""
+
+    def env(self, **kv):
+        env = {k: v for k, v in os.environ.items() if k != "SSL_CERT_FILE"}
+        return mock.patch.dict(os.environ, {**env, **kv}, clear=True)
+
+    def certifi(self):
+        fake = type(sys)("certifi")
+        fake.where = lambda: "/certifi/cacert.pem"
+        return mock.patch.dict(sys.modules, {"certifi": fake})
+
+    def contexts(self, platform: str, **env):
+        with self.env(**env), self.certifi(), mock.patch.object(sbtool.sys, "platform", platform), \
+                mock.patch.object(sbtool.ssl, "create_default_context") as make:
+            ctx = sbtool.tls_context()
+        self.assertIs(ctx, make.return_value)
+        return ctx.load_verify_locations.call_args_list
+
+    def test_tool_adds_certifi_on_windows_only(self):
+        self.assertEqual(self.contexts("win32"), [mock.call(cafile="/certifi/cacert.pem")])
+        self.assertEqual(self.contexts("linux"), [])
+        self.assertEqual(self.contexts("darwin"), [])
+
+    def test_tool_leaves_ssl_cert_file_alone(self):
+        self.assertEqual(self.contexts("win32", SSL_CERT_FILE="/mine.pem"), [])
+
+    def test_tool_without_certifi_is_as_before(self):
+        with self.env(), mock.patch.dict(sys.modules, {"certifi": None}), \
+                mock.patch.object(sbtool.sys, "platform", "win32"), \
+                mock.patch.object(sbtool.ssl, "create_default_context") as make:
+            sbtool.tls_context()
+        make.return_value.load_verify_locations.assert_not_called()
+
+    def fetch_env(self):
+        """setup.py's fetch_env(), loaded with setuptools' setup() stubbed out."""
+        import importlib.util
+        try:
+            import setuptools
+        except ImportError:
+            self.skipTest("setuptools not installed")
+        spec = importlib.util.spec_from_file_location("pysacd_setup", ROOT / "setup.py")
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.object(setuptools, "setup"):
+            spec.loader.exec_module(module)
+        return module.fetch_env
+
+    def test_setup_passes_certifi_to_the_fetch_on_windows(self):
+        fetch_env = self.fetch_env()
+        with self.env(), self.certifi(), mock.patch.object(sys, "platform", "win32"):
+            env = fetch_env()
+        self.assertEqual(env["SSL_CERT_FILE"], "/certifi/cacert.pem")
+        self.assertEqual(env["PATH"], os.environ["PATH"])        # the rest is inherited
+        with self.env(SSL_CERT_FILE="/mine.pem"), self.certifi(), mock.patch.object(sys, "platform", "win32"):
+            self.assertIsNone(fetch_env())
+        with self.env(), self.certifi(), mock.patch.object(sys, "platform", "linux"):
+            self.assertIsNone(fetch_env())
+        with self.env(), mock.patch.dict(sys.modules, {"certifi": None}), mock.patch.object(sys, "platform", "win32"):
+            self.assertIsNone(fetch_env())
+
+    def test_certifi_is_a_windows_build_requirement(self):
+        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('"certifi; sys_platform == \'win32\'"', text)
+
+
 class StaleEngine(unittest.TestCase):
     """An engine built before sacdconv_cancel existed (ABI 5) is refused with a message that says
     to rebuild it, not with an AttributeError for the first symbol it lacks (found 2026-11-06,

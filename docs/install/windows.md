@@ -116,7 +116,9 @@ DLL needs nothing beside it and works with the normal python.org Python. You als
 
 <!-- docs-run: skip="Windows with MSYS2; CI's portability workflow builds it" -->
 ```sh
-# with your Python, in PowerShell, in a clone of the repository: the scarletbook library the engine links (pinned, checked)
+# with your Python, in PowerShell, in a clone of the repository: root certificates for the download (see below),
+# then the scarletbook library the engine links (pinned, checked)
+py -m pip install certifi
 py tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook
 # in an MSYS2 UCRT64 shell, in the same folder
 pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-flac
@@ -125,6 +127,15 @@ make                                          # builds src/pysacd/_sacdconv.dll
 py -m pip install setuptools==84.2.1
 py -m pip install -e '.[convert]' --no-build-isolation
 ```
+
+A fresh Windows may not yet hold the root certificate GitHub's certificate chains to: Windows
+adds such a root only when its own TLS client needs it, and Python's doesn't ask. The download of
+the scarletbook library then fails with `CERTIFICATE_VERIFY_FAILED`. So on Windows the download
+also trusts [certifi](https://pypi.org/project/certifi/)'s roots, as well as the Windows
+certificate store (roots your organisation installs there keep working): `pip install` from a
+source checkout or the sdist installs certifi for the build by itself, and
+`tools/scarletbook.py` uses it when it is installed. If you set `SSL_CERT_FILE`, pysacd uses
+that file instead of certifi's.
 
 [Development](../development.md) has the tests and CI.
 

@@ -18,7 +18,10 @@ provenance with `gh attestation verify`: built by scarletbook-rs's release workf
 pinned tag and commit. CI runs it on every pull request, so a pin that isn't an attested
 scarletbook release can't be merged. Needs the GitHub CLI, logged in.
 
-Standard library only: setup.py runs it while building a wheel or the sdist.
+Standard library only: setup.py runs it while building a wheel or the sdist. On Windows it
+also trusts certifi's root certificates when certifi is installed and SSL_CERT_FILE isn't set
+(#222): Python sees only the roots already in the Windows store, which on a fresh Windows may
+not hold GitHub's yet.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ import json
 import os
 import shlex
 import shutil
+import ssl
 import subprocess
 import sys
 import tarfile
@@ -96,12 +100,27 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def tls_context() -> ssl.SSLContext:
+    """The default context (the system's roots, and SSL_CERT_FILE's). On Windows, certifi's
+    roots too, if it is installed and SSL_CERT_FILE isn't set (#222). A fresh Windows store may
+    lack the root GitHub's certificate chains to: Windows adds it only when its own TLS client
+    asks, which Python's doesn't."""
+    ctx = ssl.create_default_context()
+    if sys.platform == "win32" and not os.environ.get("SSL_CERT_FILE"):
+        try:
+            import certifi  # optional: setup.py passes SSL_CERT_FILE instead
+        except ImportError:
+            return ctx
+        ctx.load_verify_locations(cafile=certifi.where())
+    return ctx
+
+
 def download(url: str, dest: Path) -> None:
     if not url.startswith("https://"):
         raise FetchError(f"refusing a non-HTTPS URL: {url}")
     req = urllib.request.Request(url, headers={"User-Agent": "pysacd-build"})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r, open(dest, "wb") as f:  # nosemgrep: dynamic-urllib-use-detected  # https only, checked above
+        with urllib.request.urlopen(req, timeout=TIMEOUT, context=tls_context()) as r, open(dest, "wb") as f:  # nosemgrep: dynamic-urllib-use-detected  # https only, checked above
             total = 0
             while block := r.read(1 << 20):
                 total += len(block)
@@ -109,7 +128,11 @@ def download(url: str, dest: Path) -> None:
                     raise FetchError(f"{url}: larger than {MAX_ARCHIVE} bytes")
                 f.write(block)
     except OSError as e:
-        raise FetchError(f"downloading {url} failed: {e}") from e
+        hint = ""
+        if sys.platform == "win32" and "CERTIFICATE_VERIFY_FAILED" in str(e):
+            hint = (" (a fresh Windows may lack the root certificate: run `python -m pip install certifi` "
+                    "and try again; see docs/install/README.md)")
+        raise FetchError(f"downloading {url} failed: {e}{hint}") from e
 
 
 def obtain(lock: dict, target: str, archive: Path | None, work: Path) -> Path:

@@ -10,6 +10,10 @@ The scarletbook-rs C library is linked into it statically (#85): tools/scarletbo
 downloads the release pinned in scarletbook.lock for the compiler's target and checks its
 SHA-256 first. SCARLETBOOK_DIR=DIR uses a library unpacked there instead, and
 PYSACD_SCARLETBOOK_CACHE=DIR keeps the downloaded archives for the next build.
+
+On Windows, the download also trusts certifi's root certificates (#222): Python sees only the
+roots already in the Windows certificate store, and a fresh Windows adds a missing root only
+when its own TLS client needs it, so the first download from GitHub could fail.
 """
 
 import os
@@ -30,6 +34,19 @@ ROOT = Path(__file__).resolve().parent
 LIB = {"win32": "_sacdconv.dll", "darwin": "_sacdconv.dylib"}.get(sys.platform, "_sacdconv.so")
 
 
+def fetch_env() -> dict | None:
+    """The environment for the scarletbook fetch: on Windows, SSL_CERT_FILE names certifi's
+    roots, unless the user has set it (#222). Python's default context still loads the Windows
+    store first, so roots an organisation installs there keep working. None: inherit."""
+    if sys.platform != "win32" or os.environ.get("SSL_CERT_FILE"):
+        return None
+    try:
+        import certifi  # a build requirement on Windows (pyproject.toml)
+    except ImportError:     # --no-build-isolation without it: as before
+        return None
+    return dict(os.environ, SSL_CERT_FILE=certifi.where())
+
+
 class BuildEngine(build_py):
     def run(self):
         super().run()
@@ -45,7 +62,7 @@ class BuildEngine(build_py):
                 sb_dir = (Path(tmp) / "scarletbook").as_posix()
                 # (the tool asks $CC, else the platform's compiler, for the target to fetch)
                 fetched = subprocess.run([sys.executable, "-I", (ROOT / "tools" / "scarletbook.py").as_posix(),
-                                          "fetch", "--dest", sb_dir], check=False)
+                                          "fetch", "--dest", sb_dir], check=False, env=fetch_env())
                 if fetched.returncode:
                     sys.exit("pysacd: fetching the scarletbook library failed (see above). Offline, set "
                              "SCARLETBOOK_DIR to an unpacked copy; see docs/development.md.")

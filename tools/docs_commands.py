@@ -112,6 +112,7 @@ SKIP: dict[tuple[str, str], tuple[str, str | None]] = {
     ("docs/install/README.md", "git clone https://github.com/dsd-toolbox/pysacd && cd pysacd"): (SOURCE, None),
     ("docs/install/README.md", "pip install -e '.[convert]'"): (SOURCE, None),
     ("docs/install/README.md", "make"): (SOURCE, None),
+    ("docs/install/README.md", "python -m pip install certifi"): (WINDOWS, None),
     ("docs/install/README.md", "python tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook"):
         (WINDOWS, None),
     ("docs/install/README.md", ("pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf "

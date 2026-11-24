@@ -26,6 +26,10 @@ behaviour, and a patch version only adds or fixes. Each release on
   interface is now stable (1.0).
 
 ### Fixed
+- Building from source on a fresh Windows no longer fails to download the scarletbook library with
+  `CERTIFICATE_VERIFY_FAILED`: the download also trusts certifi's root certificates there, now a
+  Windows-only build requirement, unless `SSL_CERT_FILE` is set. Roots in the Windows store still
+  count ([install](docs/install/README.md#windows-from-source)) (#222).
 - The progress count no longer ends above the total ("frames processed: 13 / total frames: 12"):
   the engine counted the PCM warm-up frames before a range and the frame after it. `run_area`'s
   result now carries the final count (`frames_done`, `frames_total`) (#205).

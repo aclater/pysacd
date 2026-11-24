@@ -21,9 +21,9 @@ Changes to what the docs say, and only these (SWAPS; each must still match a doc
 - without --musicbrainz, each folder gets `~/.config/pysacd/config.toml` with
   `musicbrainz = false`, so `pysacd convert` makes no network lookups.
 
-Commands that can't run here are in SKIP with the reason; some run when their need is given
-(--musicbrainz, --sacd-extract). A SKIP entry that matches no docs command is an error, so the
-list follows the docs. Every block that runs must exit 0.
+Commands that can't run here are in SKIP with the reason, and whole files of them in SKIP_FILES
+(the release test plan); some run when their need is given (--musicbrainz, --sacd-extract). A
+SKIP entry that matches no docs command is an error, so the list follows the docs. Every block that runs must exit 0.
 """
 
 from __future__ import annotations
@@ -55,6 +55,13 @@ SOURCE = ("builds from a source checkout, not the release under test; CI's tests
           "the same way")
 WINDOWS = "Windows with MSYS2; CI's portability workflow builds it"
 SERVER = "a server that runs until Ctrl-C; the run's own ps3sim stands in for it for the PS3 commands"
+BENCH = "a release step on real discs, timed on a quiet machine (release test plan step 8)"
+
+# Whole files whose commands are not run here, with the reason.
+SKIP_FILES: dict[str, str] = {
+    "docs/release-test-plan.md": ("the release test plan: release steps on a source checkout, in containers and VMs "
+                                  "and on real discs, each run as the plan says"),
+}
 
 # (file, command as written, continuation lines joined) -> (reason, need or None)
 SKIP: dict[tuple[str, str], tuple[str, str | None]] = {
@@ -90,9 +97,19 @@ SKIP: dict[tuple[str, str], tuple[str, str | None]] = {
     ("docs/development.md", ("python3 tools/extract_compare.py --old PREVIOUS_RELEASE/src --new src --sacd-extract BIN "
      "--no-values --require-sacd-extract IMAGE...")):
         ("a release step on real discs (release test plan step 2)", None),
+    ("docs/development.md", ("python3 tools/quality_compare.py --previous 0.5.5 --candidate . "
+     "--work /var/tmp/pysacd-quality --out docs/quality/0.6.0.md")):
+        ("a release step: builds and measures two releases for about an hour (release test plan step 11)", None),
+    ("docs/development.md", "python3 tools/bench_release.py setup --work ../bench v0.5.4 v0.5.5 new=master"):
+        (BENCH, None),
+    ("docs/development.md", ("python3 tools/bench_release.py run --tree 0.5.4=../bench/trees/0.5.4 "
+     "--tree 0.5.5=../bench/trees/0.5.5 --tree new=../bench/trees/new --disc dst2=DST_STEREO.iso "
+     "--disc dst6=DST_MULTICHANNEL.iso --disc plain=PLAIN_DSD.iso --out ../bench/results --memory-max 12G")):
+        (BENCH, None),
+    ("docs/development.md", "python3 tools/bench_release.py clean --work ../bench"): (BENCH, None),
     ("docs/install/README.md", "gh attestation verify pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl --repo aclater/pysacd"):
         ("needs the GitHub CLI signed in and that wheel file; the release steps verify every attestation", None),
-    ("docs/install/README.md", "git clone https://github.com/aclater/pysacd && cd pysacd"): (SOURCE, None),
+    ("docs/install/README.md", "git clone https://github.com/dsd-toolbox/pysacd && cd pysacd"): (SOURCE, None),
     ("docs/install/README.md", "pip install -e '.[convert]'"): (SOURCE, None),
     ("docs/install/README.md", "make"): (SOURCE, None),
     ("docs/install/README.md", "python tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook"):
@@ -207,13 +224,17 @@ def blocks(root: Path = ROOT) -> list[Block]:
 
 
 def skip_of(b: Block, c: Command) -> tuple[str, str | None] | None:
+    if b.file in SKIP_FILES:
+        return SKIP_FILES[b.file], None
     return SKIP.get((b.file, c.text))
 
 
 def check_skips(all_blocks: list[Block]) -> list[str]:
     """SKIP entries that match no command: the docs changed, so the list must follow."""
     have = {(b.file, c.text) for b in all_blocks for c in b.commands}
-    return [f"{f}: {t!r}" for f, t in SKIP if (f, t) not in have]
+    files = {b.file for b in all_blocks}
+    return ([f"{f}: {t!r}" for f, t in SKIP if (f, t) not in have]
+            + [f"{f}: (the whole file)" for f in SKIP_FILES if f not in files])
 
 
 def swap(script: str, spec: str, port: int) -> str:

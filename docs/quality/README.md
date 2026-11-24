@@ -28,4 +28,4 @@ dsd2pcm and of the measurement tool that the suite will pin.
 - [Release test plan](../release-test-plan.md)
 - [Performance](../performance.md)
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

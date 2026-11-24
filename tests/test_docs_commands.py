@@ -89,8 +89,17 @@ class Parsing(unittest.TestCase):
         # the docs changed a skipped command: the list must follow
         with tree("```sh\nmake\n```\n") as tmp, \
                 mock.patch.dict(dc.SKIP, {("README.md", "make"): ("x", None), ("README.md", "gone"): ("y", None)},
-                                clear=True):
+                                clear=True), \
+                mock.patch.dict(dc.SKIP_FILES, {}, clear=True):
             self.assertEqual(dc.check_skips(dc.blocks(Path(tmp))), ["README.md: 'gone'"])
+
+    def test_a_skipped_file_skips_every_command_and_must_exist(self):
+        with tree("```sh\nmake\npysacd toc album.iso\n```\n") as tmp, \
+                mock.patch.dict(dc.SKIP, {}, clear=True), \
+                mock.patch.dict(dc.SKIP_FILES, {"README.md": "x", "docs/gone.md": "y"}, clear=True):
+            got = dc.blocks(Path(tmp))
+            self.assertEqual([dc.skip_of(b, c) for b in got for c in b.commands], [("x", None), ("x", None)])
+            self.assertEqual(dc.check_skips(got), ["docs/gone.md: (the whole file)"])
 
     def test_swaps(self):
         s = dc.swap("pip install pysacd   # note\npysacd-extract -I -i 192.0.2.10:2002\nsacd_extract -i 127.0.0.1:2002",

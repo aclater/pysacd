@@ -650,7 +650,7 @@ A second run with the same `--work` reuses only reports made from the same build
 SHA-256, or tree commit and content hash), dsd-measure commit, suite file and inputs; each report
 folder records them in `quality-meta.json`. It exits 1 if a figure is worse than the previous release's by more than its bound, or if the two
 versions were not fed identical inputs. Such a regression blocks the release unless DECISIONS.md in
-aclater/dsd-toolbox explains and accepts it. A suite whose `final` is `false` (a dsd-measure pin
+dsd-toolbox/dsd-toolbox explains and accepts it. A suite whose `final` is `false` (a dsd-measure pin
 before its release) writes a page marked draft.
 
 ### Docs commands against a release
@@ -659,8 +659,8 @@ before its release) writes a page marked draft.
 against a published release, each block in a fresh folder that is also its HOME, on generated discs
 named as the docs name them (`album.iso`, `disc.iso`, `other.iso`). A PS3 address is served by the
 release's own `pysacd ps3sim`, and `pip install pysacd` installs the release under test. Commands
-that can't run there (development, Windows, a MusicBrainz account, `sacd_extract`) are listed in
-the tool with the reason; a list entry that no longer matches the docs fails, and so does any block
+that can't run there (development, Windows, a MusicBrainz account, `sacd_extract`, release steps
+and the whole [release test plan](release-test-plan.md)) are listed in the tool with the reason; a list entry that no longer matches the docs fails, and so does any block
 that runs and exits non-zero. From a checkout with `make test-tools` built and numpy installed:
 
 ```sh

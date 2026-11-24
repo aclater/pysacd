@@ -410,7 +410,7 @@ def main(argv: list[str] | None = None) -> int:
                                       f"`{cand_id['tree_sha256'][:16]}`") + "."]
     lines += [f"- {n}" for n in a.note]
     lines += ["", "## See also", "", "- [Development: release quality comparison](../development.md#release-quality-comparison)",
-              "- [Performance](../performance.md)", "", "Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).", ""]
+              "- [Performance](../performance.md)", "", "Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).", ""]
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines))
     (work / "summary.json").write_text(json.dumps({"previous": pv, "candidate": cv, "builds": [prev_id, cand_id],

@@ -64,7 +64,7 @@ On a 4-thread, 8 GiB container, from the release commit (the CI jobs above are t
 reproduces them in one place when CI isn't available, as in a [security release](development.md#security-releases)):
 
 ```sh
-git clone https://github.com/aclater/pysacd pysacd-release && cd pysacd-release
+git clone https://github.com/dsd-toolbox/pysacd pysacd-release && cd pysacd-release
 podman run --rm -it --memory 8g --memory-swap 8g --cpus 4 --cap-add SYS_PTRACE \
   -v .:/src:ro,Z registry.fedoraproject.org/fedora:44 bash
 ```
@@ -248,7 +248,7 @@ normal user. The `quickstart` workflow runs it on every pull request with a whee
 branch; this step runs it on what users download. From a clone of the tag:
 
 ```sh
-git clone --depth 1 --branch vVERSION https://github.com/aclater/pysacd pysacd-VERSION
+git clone --depth 1 --branch vVERSION https://github.com/dsd-toolbox/pysacd pysacd-VERSION
 podman run --rm --memory 4g --cpus 2 -v ./pysacd-VERSION:/src:ro,Z registry.fedoraproject.org/fedora:44 bash -euc '
 dnf -y -q install python3 python3-pip python3-numpy gcc make shadow-utils util-linux findutils
 cp -r /src /qs-src && make -C /qs-src test-tools
@@ -328,7 +328,7 @@ build provenance attestation:
 
 ```sh
 mkdir release-check && cd release-check
-gh release download vVERSION -R aclater/pysacd -D github
+gh release download vVERSION -R dsd-toolbox/pysacd -D github
 curl -s https://pypi.org/pypi/pysacd/VERSION/json | python3 -I -c 'import json,sys; [print(u["digests"]["sha256"] + "  " + u["filename"]) for u in json.load(sys.stdin)["urls"]]' > pypi.sha256
 (cd github && sha256sum -c ../pypi.sha256)
 ls github | grep -vc intoto.jsonl && wc -l < pypi.sha256
@@ -368,7 +368,7 @@ python3 tools/quality_compare.py --previous PREVIOUS --candidate . --work ~/tmp/
 Add the page to the table in `docs/quality/README.md`, commit both with the release, and link the
 page from the release's changelog section, which becomes the release notes. *Expected:* exit status
 0 and no figure flagged worse. A figure worse than PREVIOUS's by more than the suite's bound blocks
-the tag unless DECISIONS.md in aclater/dsd-toolbox explains and accepts it; the page says why.
+the tag unless DECISIONS.md in dsd-toolbox/dsd-toolbox explains and accepts it; the page says why.
 Unlike the other steps, the version bump doesn't matter here: no figure depends on pysacd's
 version string. *Validated:* 2026-11-24 as a trial run, not published, 0.5.5 against the 0.6.0 release
 branch with dsd-measure 0.1.1 and an unreleased dsd2pcm; new from 0.6.0.
@@ -402,4 +402,4 @@ changelog section.
 - [Performance](performance.md)
 - [Compatibility with sacd_extract](sacd_extract.md)
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

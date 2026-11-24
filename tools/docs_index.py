@@ -118,7 +118,7 @@ def index() -> str:
     for group, docs in GROUPS:
         out += [f"## {group}", ""]
         for name, blurb in docs:
-            title, sections = headings(strip_nav((DOCS / name).read_text()))
+            title, sections = headings(strip_nav((DOCS / name).read_text(encoding="utf-8")))
             out.append(f"- **[{title}]({name})**: {blurb}.")
             out += [f"  - [{s}]({name}#{a})" for s, a in sections]
         out.append("")
@@ -147,25 +147,25 @@ def main() -> int:
     problems = [f"docs/{n} is not in tools/docs_index.py GROUPS" for n in sorted(present - listed - collected)]
     for n in sorted(collected):
         folder, page = n.split("/", 1)
-        if f"]({page})" not in (DOCS / COLLECTIONS[folder]).read_text():
+        if f"]({page})" not in (DOCS / COLLECTIONS[folder]).read_text(encoding="utf-8"):
             problems.append(f"docs/{n} is not linked from docs/{COLLECTIONS[folder]}")
     problems += [f"docs/{n} is listed but missing" for n in sorted(listed - present)]
     for _, name, heading in RELEASE:
-        found = re.findall(r"^#{2,3} (.+?)\s*$", strip_nav((DOCS / name).read_text()), re.MULTILINE)
+        found = re.findall(r"^#{2,3} (.+?)\s*$", strip_nav((DOCS / name).read_text(encoding="utf-8")), re.MULTILINE)
         if heading not in found:
             problems.append(f"docs/{name} has no heading {heading!r} (tools/docs_index.py RELEASE)")
     if problems:
         print("\n".join(problems), file=sys.stderr)
         return 1
     wanted = {DOCS / "README.md": index()}
-    wanted |= {DOCS / n: with_nav((DOCS / n).read_text(), n) for n in sorted(listed | collected)}
-    stale = [p for p, text in wanted.items() if not p.exists() or p.read_text() != text]
+    wanted |= {DOCS / n: with_nav((DOCS / n).read_text(encoding="utf-8"), n) for n in sorted(listed | collected)}
+    stale = [p for p, text in wanted.items() if not p.exists() or p.read_text(encoding="utf-8") != text]
     if check:
         for p in stale:
             print(f"{p.relative_to(ROOT)} is out of date: run python3 tools/docs_index.py", file=sys.stderr)
         return 1 if stale else 0
     for p in stale:
-        p.write_text(wanted[p])
+        p.write_text(wanted[p], encoding="utf-8", newline="\n")
         print(f"wrote {p.relative_to(ROOT)}")
     return 0
 

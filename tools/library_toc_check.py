@@ -29,9 +29,10 @@ import argparse
 import hashlib
 import json
 import os
-import select
+import queue
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter
 from pathlib import Path
@@ -77,6 +78,8 @@ def describe(path: str) -> dict:
 
 def worker() -> None:
     """Read paths from stdin, one per line; answer one JSON line each."""
+    # the parent writes UTF-8 with surrogate escapes, whatever this platform's default encoding is
+    sys.stdin.reconfigure(encoding="utf-8", errors="surrogateescape")  # type: ignore[union-attr]
     for line in sys.stdin:
         path = line.rstrip("\n")
         t0 = time.monotonic()
@@ -93,6 +96,8 @@ def worker() -> None:
 class Worker:
     def __init__(self) -> None:
         self.proc: subprocess.Popen | None = None
+        self._answers: queue.Queue[str] | None = None
+        self._answers_of: subprocess.Popen | None = None
 
     def start(self) -> None:
         self.proc = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--worker"],
@@ -105,24 +110,43 @@ class Worker:
             self.proc.wait()
             self.proc = None
 
+    def answers(self, p: subprocess.Popen) -> queue.Queue[str]:
+        """The worker's answer lines, then "" at its end. A thread reads them, so that waiting with a
+        timeout works on every platform: select() takes only sockets on Windows, not pipes."""
+        if self._answers is None or self._answers_of is not p:
+            q: queue.Queue[str] = queue.Queue()
+
+            def pump() -> None:
+                try:
+                    for line in p.stdout:
+                        q.put(line)
+                except (OSError, ValueError):
+                    pass
+                q.put("")
+
+            threading.Thread(target=pump, daemon=True).start()
+            self._answers, self._answers_of = q, p
+        return self._answers
+
     def read(self, path: str, timeout: float) -> dict:
         t0 = time.monotonic()
         if self.proc is None:
             self.start()
         p = self.proc
         assert p and p.stdin and p.stdout
+        answers = self.answers(p)
         try:
             p.stdin.write(path + "\n")
             p.stdin.flush()
-            ready, _, _ = select.select([p.stdout], [], [], timeout)
-            if not ready:
+            try:
+                line = answers.get(timeout=timeout)
+            except queue.Empty:
                 self.stop()
                 return {"status": "timeout", "error": f"no answer in {timeout:g} s",
                         "read_ms": round((time.monotonic() - t0) * 1000)}
-            line = p.stdout.readline()
             if line:
                 return json.loads(line)
-        except (BrokenPipeError, ValueError):
+        except (OSError, ValueError):   # a closed pipe (BrokenPipeError, or EINVAL on Windows); bad JSON
             pass
         code = p.poll() if p.poll() is not None else p.wait()
         self.proc = None

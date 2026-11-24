@@ -13,6 +13,7 @@ Every document about pysacd, grouped by what it is for. Start with the [README](
   - [Checking a download](install/README.md#checking-a-download)
   - [From source](install/README.md#from-source)
   - [Windows from source](install/README.md#windows-from-source)
+  - [Long paths on Windows](install/README.md#long-paths-on-windows)
 
 ## Use
 

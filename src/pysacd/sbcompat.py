@@ -220,8 +220,10 @@ def make_filename(directory: str | None, name: str | None, ext: str | None) -> s
         # dots of a leading "./" or "../" and so turns a relative path into one at the root;
         # pysacd leaves it as it is (docs/sacd_extract.md).
         buf = directory.encode("utf-8", "surrogateescape")[:MAX_BUFF_FULL_PATH_LEN - 5]
-        if not buf.endswith(b"/"):
-            buf += b"/"
+        if not buf.endswith(b"/") and not (_WINDOWS and buf.endswith(b"\\")):
+            # Windows: a backslash, as an extended-length output folder (safeio.long_path(),
+            # #217) takes "/" literally
+            buf += b"\\" if _WINDOWS else b"/"
     if name:
         # never an empty name: "dir/.ext" would be a hidden file
         n = _not_device(_sanitize(_b(name)[:MAX_FILENAME_LEN - 1], _UNSAFE_FILENAME) or b"_")

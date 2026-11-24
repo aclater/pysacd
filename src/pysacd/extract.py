@@ -667,10 +667,13 @@ def main(argv: list[str] | None = None) -> int:
     if not o.two_channel and not o.multi_channel:
         o.two_channel = True
     for d in (o.output_dir, o.output_dir_conc):
-        if d and not os.path.isdir(d):
+        if d and not os.path.isdir(safeio.long_path(d)):
             say(f"{d} doesn't exist or is not a directory.")
             return 255
     o.output_dir = o.output_dir or o.output_dir_conc
+    if o.output_dir or safeio.WINDOWS:
+        # Windows: an extended-length path, so a long album title can't make a path too long (#217)
+        o.output_dir = safeio.long_path(o.output_dir or ".")
     if not o.input:
         o.input = "/dev/cdrom"
     tmp_iso = None
@@ -1046,7 +1049,7 @@ def _avoid_other_discs(disc: Disc, want: list[Area], o: Opts, out_dir: Path) -> 
         return out_dir
     label = (disc.disc_catalog_number or disc.album_catalog_number).strip()
     if not label:
-        raise SACDError(f"{out_dir!r} already holds tracks of another disc ({clash[0]!r}, ...) and this disc has "
+        raise SACDError(f"{str(out_dir)!r} already holds tracks of another disc ({clash[0]!r}, ...) and this disc has "
                         "no catalogue number to tell them apart; use -o/-y or --disc")
     base = Path(o.output_dir) if o.output_dir else Path()
     album, _, rest = sbcompat.album_path(disc, o.artist_flag).partition("/")
@@ -1143,8 +1146,6 @@ def _run(img: SACDImage, disc: Disc, o: Opts) -> int:
 
 
 def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
-    from . import tagging
-
     started = time.time()
     say(f"\n Started at: {time.asctime()}    ")
     specs = [j.spec for j in jobs]
@@ -1173,14 +1174,27 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
         run = _native.run_area(img, o.input, area, specs, o.pcm_rate, o.gain_db, o.threads,
                                iso_out=iso_tmp, progress=_progress, exact=o.exact,
                                allow_silence=o.allow_silence)
+        if iso_tmp:
+            # inside the try: a copy that can't be moved into place is removed too (#217)
+            os.replace(iso_tmp, iso_path)
     except BaseException:
         for s in specs:
             Path(s.path).unlink(missing_ok=True)
         if iso_tmp:
             iso_tmp.unlink(missing_ok=True)     # a failed or cancelled copy leaves nothing behind
         raise
-    if iso_tmp:
-        os.replace(iso_tmp, iso_path)
+    try:
+        return _finish(img, disc, area, jobs, o, run, iso_path, started)
+    except BaseException:
+        for s in specs:     # what wasn't moved into place yet (#217)
+            Path(s.path).unlink(missing_ok=True)
+        raise
+
+
+def _finish(img, disc, area, jobs: list[Job], o: Opts, run: _native.RunInfo, iso_path, started: float) -> int:
+    """After the engine's run: check, tag and move each output into place."""
+    from . import tagging
+
     rc = 0
     # WORKAROUND (#93), for what was seen on early Sony discs (Master TOC 1.00, pressed
     # 2000-2001; four discs of four titles): the area's last sector holds no audio sector header,

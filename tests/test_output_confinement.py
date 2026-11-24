@@ -47,10 +47,14 @@ class Names(unittest.TestCase):
         self.assertEqual(sb.sanitize_filename(" . . ") if not sb._WINDOWS else "_ .", "_ .")
 
     def test_make_filename_keeps_the_directory(self):
-        self.assertEqual(sb.make_filename("../../out", "n", "dsf"), "../../out/n.dsf")
-        self.assertEqual(sb.make_filename("../out", "n", "dsf"), "../out/n.dsf")
-        self.assertEqual(sb.make_filename("./out", "n", "x"), "./out/n.x")
-        self.assertEqual(sb.make_filename("/abs/.hidden/out.", "n", "x"), "/abs/.hidden/out./n.x")
+        sep = "\\" if sb._WINDOWS else "/"    # Windows: a backslash, for extended-length paths (#217)
+        self.assertEqual(sb.make_filename("../../out", "n", "dsf"), f"../../out{sep}n.dsf")
+        self.assertEqual(sb.make_filename("../out", "n", "dsf"), f"../out{sep}n.dsf")
+        self.assertEqual(sb.make_filename("./out", "n", "x"), f"./out{sep}n.x")
+        self.assertEqual(sb.make_filename("/abs/.hidden/out.", "n", "x"), f"/abs/.hidden/out.{sep}n.x")
+        self.assertEqual(sb.make_filename("out/", "n", "x"), "out/n.x")
+        if sb._WINDOWS:
+            self.assertEqual(sb.make_filename("\\\\?\\C:\\out\\", "n", "x"), "\\\\?\\C:\\out\\n.x")
 
     def test_make_filename_never_makes_a_hidden_or_empty_name(self):
         for t in TITLES:

@@ -26,6 +26,18 @@ behaviour, and a patch version only adds or fixes. Each release on
   interface is now stable (1.0).
 
 ### Fixed
+- Windows: `pysacd convert` and `pysacd-extract` write outputs whose full path is longer than
+  260 characters, such as a long album title in a deep folder, without long paths enabled for the
+  system; this failed with `[WinError 3]`. Every output folder is opened by its extended-length
+  (`\\?\`) path, which messages and logs don't show
+  ([long paths on Windows](docs/install/README.md#long-paths-on-windows)) (#217).
+- `pysacd-extract` no longer leaves a `.pysacd-….partial` file behind when an ISO copy or a track
+  can't be moved to its final name: the temporary file is removed, as after any other failure.
+  On Windows this was the ISO copy of a disc with a long title (#217).
+- `tools/docs_index.py --check` no longer reports every page as out of date on Windows: it reads
+  and writes the pages as UTF-8 whatever the system's code page (#217).
+- The tests that need the test DST encoder skip, with the usual reason, on a machine without a C
+  compiler, instead of failing (#217).
 - The progress count no longer ends above the total ("frames processed: 13 / total frames: 12"):
   the engine counted the PCM warm-up frames before a range and the frame after it. `run_area`'s
   result now carries the final count (`frames_done`, `frames_total`) (#205).

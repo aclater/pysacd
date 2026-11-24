@@ -11,9 +11,15 @@ null test between them, and writes docs/quality/<version>.md: one table and one 
 sentence, with changes beyond the suite's repeatability bounds flagged.
 
 Results in --work are reused only for the same run: each report folder records the pysacd builds
-(wheel SHA-256, or the tree's commit and content hash), the dsd-measure version and commit, the
-suite file's SHA-256 and every input's SHA-256, and anything that differs or lacks this record is
-measured again.
+(wheel SHA-256, or the tree's commit and content hash, and what `pysacd --version` printed), the
+dsd-measure version and installed commit, the SHA-256 of the measured suite text and of the device
+wrapper, and every input's SHA-256; the report's own provenance must agree (dsd-measure version,
+pysacd version). Anything that differs or lacks this record is measured again.
+
+Every comparison is checked to be like for like: dsd-measure reads each output file's word length
+and rate, and both versions must have written the format the suite names ([pysacd_quality.output],
+24-bit integer) at the same rate, or the page is void. Figures within 6 dB of dsd-measure's
+reference floor, and figures the output word length may limit, are marked on the page.
 
 Everything it downloads: the previous release (pip, from PyPI), dsd-measure (pip, from its git
 repository at the pinned commit, unless --dsd-measure gives a checkout) and their Python
@@ -68,6 +74,25 @@ write_dsf(path, bits, 2822400)
 """
 
 
+# What dsd-measure itself says about one device report, with its own rules (run in its environment):
+# the figures at the reference floor, whether the output word length may limit the result, and the
+# conditions (DSD rate, output rate, word length) that decide whether two reports are like for like.
+ANALYSE = r"""
+import json, sys
+from dsd_measure.conclusions import condition_text, conditions, format_limit
+from dsd_measure.floor import flags
+out = {}
+for path in sys.argv[1:]:
+    M = json.load(open(path))["metrics"]
+    out[path] = {"floor": sorted(flags(M.get("device_class", "A"), M)), "format_limited": bool(format_limit(M)),
+                 "conditions": conditions(M), "condition_text": condition_text(M),
+                 "output_format": M.get("output_format")}
+json.dump(out, sys.stdout)
+"""
+
+WRAPPER = [ROOT / "tools" / "quality_device.py", ROOT / "tests" / "sacdgen.py"]
+
+
 def say(msg: str) -> None:
     print(f"quality_compare: {msg}", flush=True)
 
@@ -105,7 +130,16 @@ def env_for(bindir: Path) -> dict:
     return dict(os.environ, PATH=f"{bindir}{os.pathsep}{os.environ['PATH']}")
 
 
-def install_dsd_measure(work: Path, cfg: dict, checkout: Path | None, python: str) -> Path:
+def installed_commit(bindir: Path) -> str | None:
+    """The commit pip recorded for a dsd-measure installed from git (PEP 610 direct_url.json), or None."""
+    code = ("import json, importlib.metadata as m; d = m.distribution('dsd-measure').read_text('direct_url.json'); "
+            "print(json.loads(d).get('vcs_info', {}).get('commit_id', '') if d else '')")
+    r = subprocess.run([bindir / "python", "-I", "-c", code], capture_output=True, text=True, check=False)
+    return r.stdout.strip() or None
+
+
+def install_dsd_measure(work: Path, cfg: dict, checkout: Path | None, python: str) -> tuple[Path, dict]:
+    """Install dsd-measure at the pinned commit; return its bin folder and its identity (version, commit)."""
     b = venv(work / "venv-dsd-measure", python, system_site=True)
     if checkout:
         head = subprocess.run(["git", "-C", checkout, "rev-parse", "HEAD"], capture_output=True, text=True,
@@ -113,13 +147,21 @@ def install_dsd_measure(work: Path, cfg: dict, checkout: Path | None, python: st
         if head != cfg["dsd_measure_commit"]:
             sys.exit(f"--dsd-measure is at {head}, the suite pins {cfg['dsd_measure_commit']}")
         run([b / "python", "-m", "pip", "install", "-q", "--no-build-isolation", checkout])
+        commit = head
     else:
-        run([b / "python", "-m", "pip", "install", "-q",
-             f"dsd-measure @ git+{cfg['dsd_measure_repository']}@{cfg['dsd_measure_commit']}"])
+        if installed_commit(b) != cfg["dsd_measure_commit"]:   # none yet, or another commit: replace it
+            subprocess.run([b / "python", "-m", "pip", "uninstall", "-q", "-y", "dsd-measure"], check=False,
+                           capture_output=True)
+            run([b / "python", "-m", "pip", "install", "-q",
+                 f"dsd-measure @ git+{cfg['dsd_measure_repository']}@{cfg['dsd_measure_commit']}"])
+        commit = installed_commit(b)
+        if commit != cfg["dsd_measure_commit"]:
+            sys.exit(f"dsd-measure installed from commit {commit}, the suite pins {cfg['dsd_measure_commit']}")
     got = subprocess.run([b / "dsd-measure", "--version"], capture_output=True, text=True, check=True).stdout.strip()
+    got = got.split()[-1] if got else got           # "dsd-measure 0.1.2" or "0.1.2"
     if got != cfg["dsd_measure_version"]:
         sys.exit(f"dsd-measure {got} installed, the suite pins {cfg['dsd_measure_version']}")
-    return b
+    return b, {"version": got, "commit": commit}
 
 
 def is_path(spec: str) -> bool:
@@ -198,9 +240,23 @@ def reusable(out: Path, want: dict, reports: list[Path]) -> bool:
     if not isinstance(recorded, dict) or sorted(recorded) != sorted(r.name for r in reports):
         return False
     try:
-        return all(recorded[r.name] == input_hashes(r) for r in reports)
+        return all(recorded[r.name] == input_hashes(r) and provenance_matches(r, want) for r in reports)
     except (OSError, ValueError, KeyError):
         return False
+
+
+def provenance_matches(report: Path, want: dict) -> bool:
+    """Whether a report's own provenance names the dsd-measure version, and the pysacd version, of ``want``."""
+    prov = json.loads((report / "provenance.json").read_text())
+    dm = (want.get("dsd_measure") or {}).get("version")
+    if dm and (prov.get("versions") or {}).get("dsd_measure") != dm:
+        return False
+    builds = want.get("pysacd")
+    if isinstance(builds, dict) and "device_versions" in prov:   # a suite report: the device ran that pysacd
+        printed = str((prov["device_versions"] or {}).get("version") or "")
+        if printed.split()[1:2] != [builds.get("version")]:
+            return False
+    return True
 
 
 def record(out: Path, want: dict, reports: list[Path]) -> None:
@@ -217,6 +273,17 @@ def fresh(out: Path, want: dict, reports: list[Path]) -> bool:
         say(f"{out} is from another run or has no metadata: measuring again")
         shutil.rmtree(out)
     return False
+
+
+def measured_suite(suite_text: str, lead: int) -> str:
+    """The part of suites/pysacd.toml that dsd-measure runs, with the signal shifted by ``lead`` idle frames.
+
+    [pysacd_quality] is left out, so editing a bound or a note does not make the reports stale.
+    """
+    text = suite_text.split("\n[pysacd_quality]")[0]
+    if lead:
+        text = text.replace("{input} {output}", f"--lead-frames {lead} {{input}} {{output}}")
+    return text.rstrip("\n") + "\n"
 
 
 def measure(dm: Path, bindir: Path, suite: Path, out: Path, want: dict) -> None:
@@ -242,7 +309,8 @@ def null_test(dm: Path, source: Path, a: tuple[str, str], b: tuple[str, str], ou
              "--device", f"{b[0]}={b[1]}", "-o", out], cwd=ROOT)
         record(out, want, [out])
     res = json.loads((out / "results.json").read_text())
-    return float(res["pairs"][0]["verdict"]["depth_db"])
+    v = res["pairs"][0]["verdict"]
+    return float(v["depth_db"]), list(v.get("format_limited") or [])
 
 
 def input_hashes(report: Path) -> list[str]:
@@ -251,6 +319,28 @@ def input_hashes(report: Path) -> list[str]:
     if "adapter_calls" in prov:
         return [c.get("input_sha256", "") for c in prov["adapter_calls"]]
     return [str(prov.get("source", {}).get("sha256", ""))]
+
+
+def analyse(dm: Path, results: list[Path]) -> dict[Path, dict]:
+    """dsd-measure's floor flags, format limit and conditions for each results.json (see ANALYSE)."""
+    r = subprocess.run([dm / "python", "-I", "-c", ANALYSE, *results], capture_output=True, text=True, check=True)
+    got = json.loads(r.stdout)
+    return {p: got[str(p)] for p in results}
+
+
+def format_problems(name: str, want: dict, found: list[tuple[str, dict]]) -> list[str]:
+    """Why the reports of one device are not like for like with each other and with the suite's output, if they are not."""
+    out = []
+    base = found[0][1]["conditions"]
+    for label, a in found:
+        c = a["conditions"]
+        if c.get("kind") != want.get("kind") or c.get("bits") != want.get("bits"):
+            out.append(f"{name}, {label}: wrote {a['condition_text']}; the suite expects "
+                       f"{want.get('bits')}-bit {'integer' if want.get('kind') == 'int' else want.get('kind')}")
+        if c != base:
+            out.append(f"{name}: not like for like ({found[0][0]}: {found[0][1]['condition_text']}; "
+                       f"{label}: {a['condition_text']})")
+    return out
 
 
 def fmt(v) -> str:
@@ -284,8 +374,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.exit(f"--work {work}: the path must not contain spaces")
     work.mkdir(parents=True, exist_ok=True)
 
-    dm = install_dsd_measure(work, cfg, a.dsd_measure.resolve() if a.dsd_measure else None, a.python)
-    dm_ident = {"version": cfg["dsd_measure_version"], "commit": cfg["dsd_measure_commit"]}
+    dm, dm_ident = install_dsd_measure(work, cfg, a.dsd_measure.resolve() if a.dsd_measure else None, a.python)
+    wrapper = {p.relative_to(ROOT).as_posix(): sha256(p) for p in WRAPPER}
     prev, prev_id = install_pysacd(work, "previous", a.previous, a.python, from_pypi=not is_path(a.previous))
     cand, cand_id = install_pysacd(work, "candidate", a.candidate, a.python, from_pypi=False)
     pv, cv = prev_id["version"], cand_id["version"]
@@ -294,17 +384,18 @@ def main(argv: list[str] | None = None) -> int:
 
     # 1. the suite on each version
     reports = {"previous": work / "reports" / "previous", "candidate": work / "reports" / "candidate"}
-    measure(dm, prev, SUITE, reports["previous"], {"pysacd": prev_id, "dsd_measure": dm_ident})
-    measure(dm, cand, SUITE, reports["candidate"], {"pysacd": cand_id, "dsd_measure": dm_ident})
+    suites = {}
+    for lead in [0] + list(cfg["repeatability"]["lead_frames"]):
+        suites[lead] = work / f"suite-lead{lead}.toml"
+        suites[lead].write_text(measured_suite(suite_text, lead))
+    measure(dm, prev, suites[0], reports["previous"], {"pysacd": prev_id, "dsd_measure": dm_ident, "wrapper": wrapper})
+    measure(dm, cand, suites[0], reports["candidate"], {"pysacd": cand_id, "dsd_measure": dm_ident, "wrapper": wrapper})
 
     # 2. repeatability: the candidate again with the signal shifted by idle frames (other dither draws)
     rep_reports = []
     for lead in cfg["repeatability"]["lead_frames"]:
-        text = suite_text.split("\n[pysacd_quality]")[0].replace("{input} {output}", f"--lead-frames {lead} {{input}} {{output}}")
-        p = work / f"suite-lead{lead}.toml"
-        p.write_text(text + "\n")
         out = work / "reports" / f"candidate-lead{lead}"
-        measure(dm, cand, p, out, {"pysacd": cand_id, "dsd_measure": dm_ident})
+        measure(dm, cand, suites[lead], out, {"pysacd": cand_id, "dsd_measure": dm_ident, "wrapper": wrapper})
         rep_reports.append(out)
 
     # 3. the null test: previous against candidate, and the candidate against another dither draw
@@ -321,22 +412,33 @@ def main(argv: list[str] | None = None) -> int:
     src_hash = sha256(source)
     if ncfg.get("source_sha256") and ncfg["source_sha256"] != src_hash:
         sys.exit(f"null source SHA-256 {src_hash} differs from the suite's {ncfg['source_sha256']}")
-    nulls, null_floor = {}, {}
+    nulls, null_floor, null_limited, floor_limited = {}, {}, {}, {}
     for dev in devices:
         d = safe(dev["name"])
-        nulls[dev["name"]] = null_test(dm, source, ("previous", device_command(dev, prev)),
+        nulls[dev["name"]], null_limited[dev["name"]] = null_test(dm, source, ("previous", device_command(dev, prev)),
                                        ("candidate", device_command(dev, cand)), work / "null" / d,
-                                       {"pysacd": [prev_id, cand_id], "dsd_measure": dm_ident})
-        null_floor[dev["name"]] = null_test(dm, source, ("candidate", device_command(dev, cand)),
+                                       {"pysacd": [prev_id, cand_id], "dsd_measure": dm_ident, "wrapper": wrapper})
+        null_floor[dev["name"]], floor_limited[dev["name"]] = null_test(dm, source, ("candidate", device_command(dev, cand)),
                                             ("candidate-lead1", device_command(dev, cand, " --lead-frames 1")),
-                                            work / "null-dither" / d, {"pysacd": [cand_id, cand_id], "dsd_measure": dm_ident})
+                                            work / "null-dither" / d,
+                                            {"pysacd": [cand_id, cand_id], "dsd_measure": dm_ident, "wrapper": wrapper})
 
     # 4. the table
     metrics = cfg["metric"]
     rows, flags, regressions, spreads = [], [], [], {}
     same_inputs = True
+    want_out = cfg.get("output", {"kind": "int", "bits": 24})
+    labelled = [("previous", reports["previous"]), ("candidate", reports["candidate"])] + \
+               [(r.name, r) for r in rep_reports]
+    info = analyse(dm, [r / safe(dev["name"]) / "results.json" for _, r in labelled for dev in devices])
+    format_issues, formats, floors, limited = [], {}, {}, {}
     for dev in devices:
         d = safe(dev["name"])
+        found = [(lab, info[r / d / "results.json"]) for lab, r in labelled]
+        format_issues += format_problems(dev["name"], want_out, found)
+        formats[dev["name"]] = found[1][1]["condition_text"]
+        floors[dev["name"]] = {lab: a["floor"] for lab, a in found[:2]}
+        limited[dev["name"]] = [lab for lab, a in found[:2] if a["format_limited"]]
         rp = json.loads((reports["previous"] / d / "results.json").read_text())
         rc = json.loads((reports["candidate"] / d / "results.json").read_text())
         reps = [json.loads((r / d / "results.json").read_text()) for r in rep_reports]
@@ -354,6 +456,11 @@ def main(argv: list[str] | None = None) -> int:
                 flags.append(f"{dev['name']}, {m['label']}: {delta:+.2f} dB{mark.strip()}")
                 if worse:
                     regressions.append(flags[-1])
+            tags = [f"floor ({lab})" for lab in ("previous", "candidate")
+                    if m.get("floor_flag") and m["floor_flag"] in floors[dev["name"]][lab]]
+            if m["key"] in ("sinad", "thdn") and limited[dev["name"]]:
+                tags.append("word length")
+            mark += "".join(f" [{t}]" for t in tags)
             rows.append((dev["name"], m["label"], vp, vc, delta, m["bound"], mark))
         depth, floor = nulls[dev["name"]], null_floor[dev["name"]]
         mark = ""
@@ -377,6 +484,8 @@ def main(argv: list[str] | None = None) -> int:
         conclusion = f"{cv} measures the same as {pv} within the suite's repeatability on every figure."
     if not same_inputs:
         conclusion += " The two versions were not fed identical inputs, so this comparison is void."
+    if format_issues:
+        conclusion += " The outputs were not like for like (see notes), so this comparison is void."
 
     lines = [
         "<!-- nav: generated by tools/docs_index.py -->",
@@ -385,11 +494,11 @@ def main(argv: list[str] | None = None) -> int:
         f"# PCM quality: {cv}", "",
     ]
     if draft:
-        lines += [(f"**DRAFT.** Measured with dsd-measure {cfg['dsd_measure_version']}"
+        lines += [(f"**DRAFT.** Measured with dsd-measure {dm_ident['version']}"
                   " and not final: the published comparison is re-run with the pinned releases (see notes)."), ""]
     lines += [
-        (f"pysacd {cv}'s PCM output against {pv}'s, measured with dsd-measure {cfg['dsd_measure_version']} "
-        f"(commit {cfg['dsd_measure_commit'][:7]}) on the same machine with the same inputs, from the "
+        (f"pysacd {cv}'s PCM output against {pv}'s, measured with dsd-measure {dm_ident['version']} "
+        f"(commit {dm_ident['commit'][:7]}) on the same machine with the same inputs, from the "
         "[pinned suite](../../suites/pysacd.toml). A change larger than the bound is flagged."), "",
         "## Results", "",
         f"| Output | Figure | {pv} | {label_c} | Change | Bound |",
@@ -404,6 +513,28 @@ def main(argv: list[str] | None = None) -> int:
     lines += ["", f"**Conclusion.** {conclusion}", "", "## Notes", ""]
     lines += [(f"- Inputs: {'identical for both versions (SHA-256 of every file fed to pysacd)' if same_inputs else 'NOT identical'}; "
               f"null-test source SHA-256 `{src_hash[:16]}`.")]
+    lines += ["- Output format, read by dsd-measure from each file: "
+              + "; ".join(f"{n} {formats[n]}" for n in formats)
+              + (f". Not like for like: {'; '.join(format_issues)}." if format_issues
+                 else f", the same for {pv} and {cv} on every output.")]
+    word = [f"{n} ({', '.join(v)})" for n, v in limited.items() if v]
+    if word:
+        lines += ["- Word length: SINAD of " + "; ".join(word) + " lies within 6 dB of the SINAD that the output's "
+                  "integer word length allows (dsd-measure's \"Not judged: output format\"); it describes the file format "
+                  "as much as the converter, and both versions write the same format. Marked [word length]."]
+    floored = []
+    for n, d in floors.items():
+        if d["previous"] == d["candidate"]:
+            floored += [f"{n}: {', '.join(d['previous'])}"] if d["previous"] else []
+        else:
+            floored += [f"{n} {lab}: {', '.join(v)}" for lab, v in d.items() if v]
+    if floored:
+        lines += ["- Reference floor: figures within 6 dB of dsd-measure's reference floor, limited by the measurement "
+                  "(dsd-measure's names; those in the table are marked [floor]): " + "; ".join(floored) + "."]
+    nl = [f"{n} ({', '.join(v)})" for n, v in null_limited.items() if v]
+    if nl:
+        lines += ["- Null depth against the previous release is set by the 24-bit rounding noise of the output, "
+                  "not the converter, on: " + "; ".join(nl) + " (dsd-measure's format limit)."]
     lines += ["- Repeatability: largest spread over three dither draws of the candidate, per figure: "
               + ", ".join(f"{m['key']} {spread_text(worst_spread[m['key']])}" for m in metrics) + "."]
     lines += ["- Null depth: " + "; ".join(f"{n} {nulls[n]:.1f} dB (two dither draws of the candidate: {null_floor[n]:.1f} dB)"
@@ -419,13 +550,17 @@ def main(argv: list[str] | None = None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines))
     (work / "summary.json").write_text(json.dumps({"previous": pv, "candidate": cv, "builds": [prev_id, cand_id],
-                                                   "dsd_measure": dm_ident, "rows": rows, "flags": flags,
+                                                   "dsd_measure": dm_ident, "wrapper": wrapper, "rows": rows, "flags": flags,
+                                                   "formats": formats, "format_issues": format_issues,
+                                                   "floor_flags": floors, "word_length_limited": limited,
+                                                   "null_format_limited": null_limited,
+                                                   "null_floor_format_limited": floor_limited,
                                                    "regressions": regressions, "nulls": nulls, "null_floor": null_floor,
                                                    "spreads": {f"{k[0]}|{k[1]}": v for k, v in spreads.items()},
                                                    "null_source_sha256": src_hash, "same_inputs": same_inputs},
                                                   indent=1))
     say(f"wrote {out}: {conclusion}")
-    return 1 if regressions or not same_inputs else 0
+    return 1 if regressions or not same_inputs or format_issues else 0
 
 
 if __name__ == "__main__":

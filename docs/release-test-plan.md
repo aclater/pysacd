@@ -357,7 +357,8 @@ Its findings go in the release issue. Each is fixed or answered before the tag.
 
 The release's PCM output measured against PREVIOUS's with the pinned suite
 ([development](development.md#release-quality-comparison)): stereo FLAC and 5.1 WAV at 88.2 and
-176.4 kHz, SINAD, THD+N, noise floor, alias rejection and the null depth between the two releases.
+176.4 kHz, SINAD (= -THD+N), THD, noise floor, alias rejection and the null depth between the two
+releases, each output checked to be 24-bit at the same rate for both.
 On the release commit, in the container of [step 1](#linux-x86-64) with `cargo`, `rust` and
 `ffmpeg-free` added, on one lab machine for both versions:
 
@@ -370,8 +371,9 @@ page from the release's changelog section, which becomes the release notes. *Exp
 0 and no figure flagged worse. A figure worse than PREVIOUS's by more than the suite's bound blocks
 the tag unless DECISIONS.md in dsd-toolbox/dsd-toolbox explains and accepts it; the page says why.
 Unlike the other steps, the version bump doesn't matter here: no figure depends on pysacd's
-version string. *Validated:* 2026-11-24 as a trial run, not published, 0.5.5 against the 0.6.0 release
-branch with dsd-measure 0.1.1 and an unreleased dsd2pcm; new from 0.6.0.
+version string. *Validated:* 2026-11-24 as trial runs, not published: 0.5.5 against the 0.6.0
+release branch with dsd-measure 0.1.1 and an unreleased dsd2pcm, and 0.5.5 against master (the old C
+filter) with dsd-measure 0.1.2; new from 0.6.0.
 
 ## Sign-off
 

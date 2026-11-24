@@ -13,8 +13,11 @@ blocks the release unless it is explained.
 
 The suite is [suites/pysacd.toml](../../suites/pysacd.toml). `pysacd convert` turns synthetic DSD64
 test signals, wrapped into a one-track SACD image, into stereo FLAC and 5.1 WAV at 88.2 kHz and
-176.4 kHz. The figures are SINAD, THD+N, the noise floor and alias rejection, and the null depth of
-the new release's output against the previous one's on a music-like test signal. How to run it is
+176.4 kHz, 24-bit. The figures are SINAD (THD+N with the sign turned), THD (the harmonics alone),
+the noise floor and alias rejection, and the null depth of the new release's output against the
+previous one's on a music-like test signal. Each output's word length and rate are read from the
+file, and the two releases are compared only when they match. A figure close to the measurement's
+own floor, or one that the 24-bit word length may limit, is marked. How to run it is
 in [development](../development.md#release-quality-comparison).
 
 ## Releases

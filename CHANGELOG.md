@@ -16,6 +16,11 @@ behaviour, and a patch version only adds or fixes. Each release on
   ([development](docs/development.md#docs-commands-against-a-release)) (#215).
 
 ### Changed
+- The release quality suite (`suites/pysacd.toml`) pins dsd-measure 0.1.2: THD is compared apart
+  from SINAD, each output's word length and rate are read from the file and must match between the
+  two releases, figures at the measurement's floor or limited by the 24-bit word length are marked,
+  and reused reports must name the same dsd-measure and pysacd versions
+  ([development](docs/development.md#release-quality-comparison)).
 - docs/security.md: the container example builds a local image named `pysacd` and reads
   `album.iso` from the current folder, with no placeholders, as tested (#216).
 - docs/sacd_extract.md: the migration creates `~/bin` first; on a new account the link failed

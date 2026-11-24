@@ -626,7 +626,9 @@ From the release commit, in the Fedora container of the [release test plan](rele
 python3 tools/quality_compare.py --previous 0.5.5 --candidate . --work /var/tmp/pysacd-quality --out docs/quality/0.6.0.md
 ```
 
-It exits 1 if a figure is worse than the previous release's by more than its bound, or if the two
+A second run with the same `--work` reuses only reports made from the same builds (wheel
+SHA-256, or tree commit and content hash), dsd-measure commit, suite file and inputs; each report
+folder records them in `quality-meta.json`. It exits 1 if a figure is worse than the previous release's by more than its bound, or if the two
 versions were not fed identical inputs. Such a regression blocks the release unless DECISIONS.md in
 aclater/dsd-toolbox explains and accepts it. A suite whose `final` is `false` (a dsd-measure pin
 before its release) writes a page marked draft.

@@ -17,6 +17,7 @@ SCRIPT = ROOT / "tools" / "bench_release.py"
 spec = importlib.util.spec_from_file_location("bench_release", SCRIPT)
 assert spec and spec.loader
 bench = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = bench  # dataclasses look the module up here (Python <= 3.14)
 spec.loader.exec_module(bench)
 
 

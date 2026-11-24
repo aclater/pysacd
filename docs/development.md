@@ -606,6 +606,31 @@ Its steps include:
    only accepts `v*` tags, so nothing but a release tag can publish. No API token
    is stored anywhere.
 
+### Release quality comparison
+
+Every release from 0.6.0 measures its PCM output against the previous release and publishes the
+result as `docs/quality/VERSION.md` ([PCM quality by release](quality/README.md)), linked from the
+release notes. The suite, [suites/pysacd.toml](../suites/pysacd.toml), pins the
+[dsd-measure](https://github.com/dsd-toolbox/dsd-measure) commit, the outputs (`pysacd convert` to
+stereo FLAC and 5.1 WAV at 88.2 and 176.4 kHz), the figures (SINAD, THD+N, noise floor, alias
+rejection, null depth) and each figure's repeatability bound. `tools/quality_device.py` makes
+pysacd look like any DSD-to-PCM converter to dsd-measure: it wraps each synthetic DSD test signal in
+a one-track SACD image with `tests/sacdgen.py` and runs `pysacd convert` on it.
+
+`tools/quality_compare.py` installs the previous release from PyPI and the candidate side by side,
+runs the suite and the null test on both on one machine, and writes the page. It needs Rust, a C
+compiler, `flac-devel`, `ffmpeg` and git, as for a source build, and takes about an hour on 6 cores.
+From the release commit, in the Fedora container of the [release test plan](release-test-plan.md):
+
+```sh
+python3 tools/quality_compare.py --previous 0.5.5 --candidate . --work /var/tmp/pysacd-quality --out docs/quality/0.6.0.md
+```
+
+It exits 1 if a figure is worse than the previous release's by more than its bound, or if the two
+versions were not fed identical inputs. Such a regression blocks the release unless DECISIONS.md in
+aclater/dsd-toolbox explains and accepts it. A suite whose `final` is `false` (a dsd-measure pin
+before its release) writes a page marked draft.
+
 ### Security releases
 
 A fix for a vulnerability stays private until the fixed release is on PyPI. Every step below was

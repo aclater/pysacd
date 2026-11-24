@@ -55,6 +55,9 @@ Every document about pysacd, grouped by what it is for. Start with the [README](
   - [MusicBrainz credentials](security.md#musicbrainz-credentials)
   - [PS3 network protocol](security.md#ps3-network-protocol)
   - [Fuzzing](security.md#fuzzing)
+- **[PCM quality by release](quality/README.md)**: each release's PCM output measured against the release before.
+  - [What is measured](quality/README.md#what-is-measured)
+  - [Releases](quality/README.md#releases)
 - **[Performance](performance.md)**: benchmarks and their conditions.
   - [Conditions](performance.md#conditions)
   - [Extracting to DSF](performance.md#extracting-to-dsf)
@@ -98,6 +101,7 @@ Every document about pysacd, grouped by what it is for. Start with the [README](
   - [8. Performance](release-test-plan.md#8-performance)
   - [9. Security](release-test-plan.md#9-security)
   - [10. Fresh-eyes review for first releases](release-test-plan.md#10-fresh-eyes-review-for-first-releases)
+  - [11. PCM quality comparison](release-test-plan.md#11-pcm-quality-comparison)
   - [Sign-off](release-test-plan.md#sign-off)
 
 ## Project

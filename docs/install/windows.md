@@ -128,6 +128,9 @@ py -m pip install setuptools==84.2.1
 py -m pip install -e '.[convert]' --no-build-isolation
 ```
 
+To link a scarletbook library unpacked elsewhere, set `SCARLETBOOK_DIR` to its folder, with
+forward slashes or backslashes. The build stops with an error if the engine would lack it.
+
 A fresh Windows may not yet hold the root certificate GitHub's certificate chains to: Windows
 adds such a root only when its own TLS client needs it, and Python's doesn't ask. The download of
 the scarletbook library then fails with `CERTIFICATE_VERIFY_FAILED`. So on Windows the download

@@ -62,6 +62,12 @@ behaviour, and a patch version only adds or fixes. Each release on
 - A cancelled run (Ctrl-C during `pysacd convert` or `pysacd-extract`, or `sacdconv_cancel()`) no
   longer hangs now and then: the cancel now wakes the engine's threads that wait for a batch, so
   the run ends within a batch, as documented.
+- Building from source no longer produces an engine without the scarletbook library and exits 0.
+  On Windows, a `SCARLETBOOK_DIR` written with backslashes left scarletbook's functions out of the
+  DLL's export list, and `build_info()` then reported no scarletbook library. Backslash and
+  forward-slash paths now both work, and on every platform the build stops with an error when the
+  export list or the linked engine lacks scarletbook's functions
+  ([Windows from source](docs/install/windows.md#build-from-source-developers)) (#225).
 
 ### Security
 - The private-names check (`scripts/check-private-names.sh`) now fails when it cannot run,

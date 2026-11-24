@@ -33,7 +33,16 @@ def run(*cmd: str, cwd: Path) -> None:
 
 def main() -> int:
     from pysacd import _native
-    print("engine:", _native.build_info())
+    # an engine built without the scarletbook library fails here, with a message saying so (#225)
+    try:
+        engine = _native.build_info()
+    except _native.NativeError as e:
+        print(f"the wheel's engine is unusable: {e}", file=sys.stderr)
+        return 1
+    print("engine:", engine)
+    if f"scarletbook {_native.scarletbook_version()}" not in engine:
+        print("the wheel's engine reports no scarletbook library", file=sys.stderr)
+        return 1
     print("scarletbook:", _native.scarletbook_build_info())
     # the wheel must carry the scarletbook release pinned (and attested) in scarletbook.lock (#85)
     lock = Path(__file__).resolve().parent.parent / "scarletbook.lock"

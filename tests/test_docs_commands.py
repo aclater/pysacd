@@ -117,6 +117,15 @@ class Parsing(unittest.TestCase):
             [b] = dc.blocks(Path(tmp))
         self.assertEqual(b.status, "unmarked")
 
+    def test_powershell_blocks_are_skipped_for_windows(self):
+        ok = '<!-- docs-run: skip="Windows: the py launcher" -->\n```powershell\npy -m pip install pysacd\n```\n'
+        with tree(ok) as tmp:
+            self.assertEqual(dc.blocks(Path(tmp)), [])
+        for marker in ("", '<!-- docs-run: -->\n', '<!-- docs-run: skip="needs a GPU" -->\n'):
+            with self.subTest(marker), tree(f"{marker}```powershell\npy --version\n```\n") as tmp, \
+                    self.assertRaises(dc.MarkerError):
+                dc.blocks(Path(tmp))
+
     def test_a_bad_marker_is_an_error(self):
         for marker in ('skip=""', "colour=red", "plain"):
             with self.subTest(marker), tree(f"<!-- docs-run: {marker} -->\n```sh\nmake\n```\n") as tmp, \

@@ -55,6 +55,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 import docs_fixtures
 
+PS_LANGS = {"powershell", "ps1", "pwsh", "cmd", "bat"}
 LANGS = {"sh": "sh", "bash": "sh", "shell": "sh", "console": "console", "python": "python"}
 DISCS = docs_fixtures.DISCS
 PS3_ADDRESSES = ("192.0.2.10:2002", "127.0.0.1:2002")
@@ -191,9 +192,13 @@ def blocks(root: Path = ROOT) -> list[Block]:
                 body.append(lines[i][indent:] if lines[i][:indent].strip() == "" else lines[i])
                 i += 1
             i += 1
-            if lang == "powershell":
-                raise MarkerError(f"{rel}:{start}: a powershell block; add Windows handling to "
-                                  f"{Path(__file__).name} first")
+            if lang in PS_LANGS:
+                # Windows commands: this tool runs on Linux, so they never run here. Each must be
+                # skipped with a reason that starts with "Windows", for the Windows pass to find.
+                if near is None or not near[0].get("skip", "").startswith("Windows"):
+                    raise MarkerError(f"{rel}:{start}: a {lang} block needs "
+                                      f'<!-- docs-run: skip="Windows: reason" -->')
+                continue
             kind = LANGS.get(lang)
             if not kind:
                 continue

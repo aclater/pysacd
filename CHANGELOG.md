@@ -11,6 +11,11 @@ behaviour, and a patch version only adds or fixes. Each release on
 ## [Unreleased]
 
 ### Added
+- docs/install/windows.md: installing on Windows 11 from PyPI with python.org Python and
+  `py -m pip install pysacd` or pipx, the first commands with Windows paths, Windows file names,
+  long paths, and the MSYS2 build for developers. The README and docs/install/README.md point
+  to it, where they used to give only the MSYS2 build. `tools/docs_commands.py` accepts
+  PowerShell blocks skipped with a reason that starts with "Windows".
 - `tools/docs_commands.py` runs every command block of the Markdown against a release on
   generated discs (`tools/docs_fixtures.py`). Each block carries a marker of the DSD Toolbox docs
   tools that runs it or says why it can't; the shared `docs-run` workflow reads the same markers

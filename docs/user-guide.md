@@ -8,7 +8,8 @@
 
 A tour of what pysacd does: reading a disc's table of contents, extracting as `sacd_extract`
 would, converting into a tagged library, and using it from Python. To install it first, see
-[install](install/README.md).
+[install](install/README.md). On Windows, [install on Windows](install/windows.md) shows the same
+commands in PowerShell, with Windows paths.
 
 ## Read a disc's TOC
 

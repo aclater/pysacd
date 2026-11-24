@@ -22,6 +22,7 @@ DOCS = ROOT / "docs"
 GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
     ("Install", [
         ("install/README.md", "wheels, checking a download, building from source"),
+        ("install/windows.md", "Python and pysacd from PyPI in PowerShell, first commands, long paths, MSYS2"),
     ]),
     ("Use", [
         ("user-guide.md", "a tour of the commands, and troubleshooting"),

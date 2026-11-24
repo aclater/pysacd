@@ -21,7 +21,7 @@ same file names, the same bytes.
 |---|---|---|
 | Linux | Wheels on PyPI for x86-64 and aarch64 with glibc 2.28 or later (manylinux), and x86-64 with musl 1.2 or later (musllinux). Engine, libFLAC and the scarletbook library included. Run-tested on the release's CI runners | [install](docs/install/README.md) |
 | macOS | Wheels for Apple Silicon (macOS 11 or later) and Intel (macOS 10.13 or later). Not code-signed or notarised. Run-tested on macOS 15 only, on CI | [install](docs/install/README.md) |
-| Windows | Wheel for x86-64. Not code-signed. Run-tested on the release's CI runner | [install](docs/install/README.md) |
+| Windows | Wheel for x86-64: `py -m pip install pysacd`, no compiler needed. Not code-signed. Run-tested on the release's CI runner | [install on Windows](docs/install/windows.md) |
 | Anything else | Builds from source with a C compiler and make (libFLAC for FLAC output) | [from source](docs/install/README.md#from-source) · [development](docs/development.md) |
 
 Every wheel is for Python <!-- facts:python-min -->3.10<!-- /facts --> or later and carries a build provenance attestation on its
@@ -32,7 +32,8 @@ Blu-ray player running SACD Ripper ([reading from a PS3](docs/ps3-protocol.md#re
 ## Quick start
 
 You need Python <!-- facts:python-min -->3.10<!-- /facts --> or later on Linux or macOS, and an SACD image. The commands use
-`album.iso` in the current folder; type your image's name instead.
+`album.iso` in the current folder; type your image's name instead. On Windows, follow
+[install on Windows](docs/install/windows.md): the same commands, in PowerShell.
 
 1. Install pysacd in a virtual environment of its own:
 
@@ -66,7 +67,7 @@ You need Python <!-- facts:python-min -->3.10<!-- /facts --> or later on Linux o
    in a `Stereo` folder inside it, as `sacd_extract` writes them.
 
 Next: FLAC and WAV with your own naming and MusicBrainz tags in [converting](docs/converting.md),
-Windows and building from source in [install](docs/install/README.md), a tour of the commands in
+building from source in [install](docs/install/README.md), a tour of the commands in
 the [user guide](docs/user-guide.md), and the [Python API](docs/api.md).
 
 ## Documentation
@@ -75,7 +76,8 @@ The [documentation index](docs/README.md) lists every document and its sections.
 
 - [Why pysacd](docs/why-pysacd.md): what it brings, a first Python example, and the
   [author's note](docs/author.md)
-- [Install](docs/install/README.md): wheels, checking a download, building from source
+- [Install](docs/install/README.md): wheels, checking a download, building from source;
+  [on Windows](docs/install/windows.md)
 - [User guide](docs/user-guide.md): a tour of the commands, and troubleshooting
 - [pysacd-extract](docs/sacd_extract.md): migrating from `sacd_extract`, compatibility policy
 - [Converting](docs/converting.md): naming templates, tags, MusicBrainz, gapless PCM

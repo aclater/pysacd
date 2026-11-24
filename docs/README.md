@@ -14,7 +14,14 @@ The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for
   - [From PyPI](install/README.md#from-pypi)
   - [Checking a download](install/README.md#checking-a-download)
   - [From source](install/README.md#from-source)
-  - [Windows from source](install/README.md#windows-from-source)
+  - [Windows](install/README.md#windows)
+- **[Install on Windows](install/windows.md)**: Python and pysacd from PyPI in PowerShell, first commands, long paths, MSYS2.
+  - [Install Python](install/windows.md#install-python)
+  - [Install pysacd](install/windows.md#install-pysacd)
+  - [First commands](install/windows.md#first-commands)
+  - [Windows file names](install/windows.md#windows-file-names)
+  - [Long paths](install/windows.md#long-paths)
+  - [Build from source (developers)](install/windows.md#build-from-source-developers)
 
 ## Use
 

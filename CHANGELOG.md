@@ -30,6 +30,10 @@ behaviour, and a patch version only adds or fixes. Each release on
   the engine counted the PCM warm-up frames before a range and the frame after it. `run_area`'s
   result now carries the final count (`frames_done`, `frames_total`) (#205).
 
+### Security
+- The private-names check (`scripts/check-private-names.sh`) now fails when it cannot run,
+  and refuses a name list that would match every line.
+
 ## [0.5.5] - 2026-11-23
 
 `pysacd-extract -z` now splits a gapless chain where `sacd_extract` does, so those files are

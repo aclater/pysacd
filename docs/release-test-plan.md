@@ -349,6 +349,7 @@ find github -name '*.whl' -o -name '*.tar.gz' | xargs -I FILE gh attestation ver
 *Expected:* every file `OK`, the two counts equal (7 for 0.5.5), every verification passes.
 *Validated:* 2026-11-23 on 0.5.5.
 
+<!-- docs-lint: ignore-file old-owner -- releases up to 0.5.5 verify only as aclater/pysacd, signed before the move -->
 **First release from `dsd-toolbox` (0.6.0).** The two verify lines above, with `--repo dsd-toolbox/pysacd`
 and without `--bundle`, then with it, have not yet been run on a release signed from that
 repository: 0.5.5 and earlier verify only as `aclater/pysacd` and only with `--bundle`

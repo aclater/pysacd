@@ -633,6 +633,24 @@ versions were not fed identical inputs. Such a regression blocks the release unl
 aclater/dsd-toolbox explains and accepts it. A suite whose `final` is `false` (a dsd-measure pin
 before its release) writes a page marked draft.
 
+### Docs commands against a release
+
+`tools/docs_commands.py` runs every `sh`, `console` and `python` block of README.md and `docs/`
+against a published release, each block in a fresh folder that is also its HOME, on generated discs
+named as the docs name them (`album.iso`, `disc.iso`, `other.iso`). A PS3 address is served by the
+release's own `pysacd ps3sim`, and `pip install pysacd` installs the release under test. Commands
+that can't run there (development, Windows, a MusicBrainz account, `sacd_extract`) are listed in
+the tool with the reason; a list entry that no longer matches the docs fails, and so does any block
+that runs and exits non-zero. From a checkout with `make test-tools` built and numpy installed:
+
+```sh
+python3 -I tools/docs_commands.py list
+python3 -I tools/docs_commands.py run --spec pysacd==VERSION --workdir build/docs-commands
+```
+
+VERSION is the release under test. `--wheel` takes a wheel file instead; `--musicbrainz`,
+`--podman` and `--sacd-extract` also run the commands that need them.
+
 ### Security releases
 
 A fix for a vulnerability stays private until the fixed release is on PyPI. Every step below was

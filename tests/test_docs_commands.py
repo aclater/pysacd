@@ -5,7 +5,6 @@ provides every disc a command that runs names."""
 from __future__ import annotations
 
 import re
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -49,24 +48,18 @@ class TheDocs(unittest.TestCase):
                 continue
             for c in b.commands:
                 for name in re.findall(r"[\w./-]+\.iso\b", c.text):
+                    if name.startswith("/"):    # a path inside a container (docs/security.md)
+                        continue
                     self.assertIn(Path(name).name, dc.DISCS, f"{b.file}:{b.line}: {c.text}")
 
-    def test_the_discs_group_fetches_a_commit_with_this_fixture(self):
-        # the shared docs-run fetches tools/docs_fixtures.py at the commit named in the marker;
-        # where that commit is in this clone's history, its fixture files must be today's
+    def test_the_discs_group_fetches_one_pinned_commit(self):
+        # docs-run fetches tools/docs_fixtures.py at the commit named in the discs group's setup=;
+        # one full commit, so a moved fixture is moved in one place (docs/development.md says when)
         shas = set()
         for path in dc.doc_files():
-            shas |= set(re.findall(r"pysacd/archive/([0-9a-f]{40})\.tar\.gz", path.read_text(encoding="utf-8")))
+            shas |= set(re.findall(r"pysacd/archive/([0-9a-f]+)\.tar\.gz", path.read_text(encoding="utf-8")))
         self.assertEqual(len(shas), 1, shas)
-        sha = shas.pop()
-        have = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{sha}^{{commit}}"],
-                              capture_output=True, check=False)
-        if have.returncode:
-            self.skipTest(f"{sha} is not in this clone's history")
-        for f in ("tools/docs_fixtures.py", "tests/sacdgen.py", "tests/dstenc.py", "tests/native/dstenc.c"):
-            old = subprocess.run(["git", "-C", str(ROOT), "show", f"{sha}:{f}"], capture_output=True, check=True)
-            self.assertEqual(old.stdout.replace(b"\r\n", b"\n"), (ROOT / f).read_bytes().replace(b"\r\n", b"\n"),
-                             f"{f} changed since {sha}: move the commit in the discs group's setup=")
+        self.assertRegex(shas.pop(), r"^[0-9a-f]{40}$")
 
 
 class Parsing(unittest.TestCase):

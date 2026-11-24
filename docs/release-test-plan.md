@@ -294,8 +294,9 @@ python3 -I tools/docs_commands.py run --spec pysacd==VERSION --workdir build/doc
 
 *Expected:* `list` reports no block without a marker; `run` reports 0 failed, and every block it
 did not run is listed with the reason from its marker. Blocks skipped for a PS3 run against the
-release's own `pysacd ps3sim`. *Validated:* 2026-11-24, `list` on master after 0.5.5 and the
-`docs-run` blocks against 0.5.5 from PyPI.
+release's own `pysacd ps3sim`. *Validated:* 2026-11-24 against 0.5.5 from PyPI: `run` with `--podman`
+(21 blocks ran, 0 failed; without `sacd_extract`), and the `docs-run` blocks with Podman (10
+passed, 40 skipped with a reason).
 
 ## 8. Performance
 

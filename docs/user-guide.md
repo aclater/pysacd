@@ -45,7 +45,7 @@ See [pysacd-extract](sacd_extract.md) for migrating and compatibility.
 
 With your own naming and MusicBrainz tags:
 
-<!-- docs-run: group=discs expect="tracks ->" -->
+<!-- docs-run: skip="needs an ordinary user: pysacd convert refuses to run as root, and docs-run runs blocks as root; tools/docs_commands.py runs it" -->
 ```console
 $ pysacd convert -f flac -o ~/Music album.iso
 MusicBrainz: A Treasury — Nick Drake (2004, Hybrid SACD (SACD layer, 2 channels)) [barcode, ISRC 15/15]

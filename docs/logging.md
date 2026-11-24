@@ -8,7 +8,7 @@ Both tools write a detailed diagnostic log on request. That log is what to
 attach when something fails, for example against a PS3, a drive or a damaged
 disc.
 
-<!-- docs-run: group=discs -->
+<!-- docs-run: skip="needs an ordinary user: pysacd convert refuses to run as root, and docs-run runs blocks as root; tools/docs_commands.py runs it" -->
 ```sh
 pysacd --log-file pysacd.log convert disc.iso
 PYSACD_LOG=debug:~/pysacd.log pysacd-extract -2 -s -i album.iso    # for GUIs and scripts

@@ -6,7 +6,7 @@
 
 `pysacd convert` turns an SACD image (or a PS3 disc) into tagged DSF, FLAC or WAV files with your own naming. For `sacd_extract`-compatible output use `pysacd-extract` instead.
 
-<!-- docs-run: group=discs -->
+<!-- docs-run: skip="needs an ordinary user: pysacd convert refuses to run as root, and docs-run runs blocks as root; tools/docs_commands.py runs it" -->
 ```sh
 pysacd convert disc.iso                   # stereo area -> DSF, tagged
 pysacd convert -f flac disc.iso           # 24-bit/88.2 kHz FLAC

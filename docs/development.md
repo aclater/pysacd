@@ -682,8 +682,9 @@ says why it can't run. The markers are the only list of what runs. Two tools rea
   pip requirement, each block in a fresh folder that is also its HOME, with the same generated
   discs. A PS3 address is served by the release's own `pysacd ps3sim`, and `pip install pysacd`
   installs the release under test. A block skipped because it "needs a PS3" runs here too, and
-  so does one that "needs sacd_extract" or "needs podman" when `--sacd-extract` or `--podman` is
-  given. A block without a marker fails, and so does any block that runs and exits non-zero or
+  so does one that "needs an ordinary user" (docs-run's containers run as root, which
+  `pysacd convert` refuses), and one that "needs sacd_extract" or "needs podman" when
+  `--sacd-extract` or `--podman` is given. A block without a marker fails, and so does any block that runs and exits non-zero or
   misses its `expect=`. From a checkout with numpy and a C compiler:
 
 <!-- docs-run: skip="runs this check itself, from a source checkout" -->

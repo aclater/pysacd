@@ -28,7 +28,9 @@ Changes to what the docs say, and only these (each must still match a docs line)
   `musicbrainz = false`, so `pysacd convert` makes no network lookups.
 
 A block skipped for a need this tool can supply runs here (NEEDS): a skip reason that starts
-with "needs a PS3" runs against the ps3sim above, "needs sacd_extract" with --sacd-extract, and
+with "needs a PS3" runs against the ps3sim above, "needs an ordinary user" when this does not run
+as root (docs-run's containers run blocks as root, and `pysacd convert` refuses root), "needs
+sacd_extract" with --sacd-extract, and
 "needs podman" with --podman. Every block that runs must exit 0, and match its `expect=` patterns.
 """
 
@@ -58,9 +60,10 @@ DISCS = docs_fixtures.DISCS
 PS3_ADDRESSES = ("192.0.2.10:2002", "127.0.0.1:2002")
 
 # Needs a run can supply: a block skipped with a reason that starts with the key runs when the
-# need is given (PS3 always is: the run's own ps3sim).
-PS3, SACD_EXTRACT, PODMAN = "ps3", "sacd_extract", "podman"
-NEEDS = {"needs a PS3": PS3, "needs sacd_extract": SACD_EXTRACT, "needs podman": PODMAN}
+# need is given (PS3 always is: the run's own ps3sim; so is an ordinary user, unless this runs as root).
+PS3, USER, SACD_EXTRACT, PODMAN = "ps3", "user", "sacd_extract", "podman"
+NEEDS = {"needs a PS3": PS3, "needs an ordinary user": USER, "needs sacd_extract": SACD_EXTRACT,
+         "needs podman": PODMAN}
 
 # The marker syntax of the shared docs-run (dsd-toolbox tools/docs/docs_run.py): a marker applies
 # to a fence at most two lines below it. Keys this tool reads: skip, expect; the others (image,
@@ -252,7 +255,7 @@ def cmd_list(_: argparse.Namespace) -> int:
             skips += 1
             n = need_of(b)
             print(f"skip  {b.file}:{b.line} ({b.lang}): {b.reason}"
-                  + (f" [runs here {'always' if n == PS3 else 'with --' + n.replace('_', '-')}]" if n else ""))
+                  + (f" [runs here {'always' if n in (PS3, USER) else 'with --' + n.replace('_', '-')}]" if n else ""))
         elif b.status == "run":
             runs += 1
             print(f"run   {b.file}:{b.line} ({b.lang})")
@@ -306,7 +309,7 @@ def cmd_run(a: argparse.Namespace) -> int:
     bin_dir = env_dir / "bin"
     tools = work / "tools-bin"
     tools.mkdir(exist_ok=True)
-    have = {PS3}
+    have = {PS3} | ({USER} if not hasattr(os, "geteuid") or os.geteuid() != 0 else set())
     if a.podman:
         have.add(PODMAN)
     if a.sacd_extract:

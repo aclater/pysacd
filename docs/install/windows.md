@@ -121,7 +121,8 @@ py tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarle
 # in an MSYS2 UCRT64 shell, in the same folder
 pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-flac
 make                                          # builds src/pysacd/_sacdconv.dll
-# then, in PowerShell again
+# then, in PowerShell again: a fresh python.org Python has no setuptools, which --no-build-isolation needs
+py -m pip install setuptools==84.2.1
 py -m pip install -e '.[convert]' --no-build-isolation
 ```
 

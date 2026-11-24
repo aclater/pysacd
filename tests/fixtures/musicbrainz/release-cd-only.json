@@ -1,0 +1,226 @@
+{
+ "id": "21800000-0000-4000-8000-000000000003",
+ "title": "Synthetic CD Album",
+ "status": "Official",
+ "status-id": "0021805f-0000-4000-8000-00000021805f",
+ "quality": "normal",
+ "date": "2004-05-01",
+ "country": "XE",
+ "barcode": "",
+ "packaging": "Jewel Case",
+ "disambiguation": "",
+ "asin": null,
+ "text-representation": {
+  "language": "zxx",
+  "script": "Latn"
+ },
+ "artist-credit": [
+  {
+   "name": "Test Ensemble",
+   "joinphrase": "",
+   "artist": {
+    "id": "0f0f0f0f-1111-4222-8333-444444444444",
+    "name": "Test Ensemble",
+    "sort-name": "Test Ensemble",
+    "disambiguation": ""
+   }
+  }
+ ],
+ "label-info": [
+  {
+   "catalog-number": "PYSACD-MB-220",
+   "label": {
+    "id": "00218060-0000-4000-8000-000000218060",
+    "name": "Test Label",
+    "disambiguation": ""
+   }
+  }
+ ],
+ "release-group": {
+  "id": "00218061-0000-4000-8000-000000218061",
+  "title": "Synthetic CD Album",
+  "primary-type": "Album",
+  "secondary-types": [],
+  "first-release-date": "2004-05-01",
+  "disambiguation": ""
+ },
+ "media": [
+  {
+   "format": "CD",
+   "format-id": "0021805e-0000-4000-8000-00000021805e",
+   "position": 1,
+   "title": "",
+   "track-count": 4,
+   "track-offset": 0,
+   "tracks": [
+    {
+     "id": "00218056-0000-4000-8000-000000218056",
+     "position": 1,
+     "number": "1",
+     "title": "First Movement",
+     "length": 4200,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218057-0000-4000-8000-000000218057",
+      "title": "First Movement",
+      "length": 4200,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218058-0000-4000-8000-000000218058",
+     "position": 2,
+     "number": "2",
+     "title": "Second Movement",
+     "length": 4400,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218059-0000-4000-8000-000000218059",
+      "title": "Second Movement",
+      "length": 4400,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021805a-0000-4000-8000-00000021805a",
+     "position": 3,
+     "number": "3",
+     "title": "Third Movement",
+     "length": 4000,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021805b-0000-4000-8000-00000021805b",
+      "title": "Third Movement",
+      "length": 4000,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021805c-0000-4000-8000-00000021805c",
+     "position": 4,
+     "number": "4",
+     "title": "Fourth Movement",
+     "length": 4600,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021805d-0000-4000-8000-00000021805d",
+      "title": "Fourth Movement",
+      "length": 4600,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    }
+   ]
+  }
+ ],
+ "cover-art-archive": {
+  "artwork": false,
+  "count": 0,
+  "front": false,
+  "back": false,
+  "darkened": false
+ }
+}

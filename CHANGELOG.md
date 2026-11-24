@@ -29,6 +29,13 @@ behaviour, and a patch version only adds or fixes. Each release on
 - The progress count no longer ends above the total ("frames processed: 13 / total frames: 12"):
   the engine counted the PCM warm-up frames before a range and the frame after it. `run_area`'s
   result now carries the final count (`frames_done`, `frames_total`) (#205).
+- A multichannel area whose track lengths miss MusicBrainz's by more than 3 s on average (often,
+  because MusicBrainz lists the stereo lengths for the multichannel medium) now matches the release
+  its disc's stereo area matches, if that release has a multichannel SACD medium on the same disc
+  with the same track count. The match carries a warning, and ISRCs are not submitted for it
+  ([converting](docs/converting.md)) (#218).
+- A one-track area no longer matches any one-track medium whatever its length: an ISRC match now
+  needs at least one ISRC (#218).
 
 ### Security
 - The private-names check (`scripts/check-private-names.sh`) now fails when it cannot run,

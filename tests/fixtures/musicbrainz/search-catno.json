@@ -1,0 +1,166 @@
+{
+ "PYSACD-MB-218": {
+  "created": "2026-11-24T00:00:00.000Z",
+  "count": 1,
+  "offset": 0,
+  "releases": [
+   {
+    "id": "21800000-0000-4000-8000-000000000001",
+    "score": 100,
+    "title": "Synthetic Hybrid Album",
+    "status": "Official",
+    "artist-credit": [
+     {
+      "name": "Test Ensemble",
+      "joinphrase": "",
+      "artist": {
+       "id": "0f0f0f0f-1111-4222-8333-444444444444",
+       "name": "Test Ensemble",
+       "sort-name": "Test Ensemble",
+       "disambiguation": ""
+      }
+     }
+    ],
+    "track-count": 12,
+    "media": [
+     {
+      "format": "Hybrid SACD (CD layer)",
+      "track-count": 4
+     },
+     {
+      "format": "Hybrid SACD (SACD layer, 2 channels)",
+      "track-count": 4
+     },
+     {
+      "format": "Hybrid SACD (SACD layer, multichannel)",
+      "track-count": 4
+     }
+    ]
+   }
+  ]
+ },
+ "PYSACD-MB-219": {
+  "created": "2026-11-24T00:00:00.000Z",
+  "count": 1,
+  "offset": 0,
+  "releases": [
+   {
+    "id": "21800000-0000-4000-8000-000000000002",
+    "score": 100,
+    "title": "Synthetic Two-Disc Set",
+    "status": "Official",
+    "artist-credit": [
+     {
+      "name": "Test Ensemble",
+      "joinphrase": "",
+      "artist": {
+       "id": "0f0f0f0f-1111-4222-8333-444444444444",
+       "name": "Test Ensemble",
+       "sort-name": "Test Ensemble",
+       "disambiguation": ""
+      }
+     }
+    ],
+    "track-count": 23,
+    "media": [
+     {
+      "format": "Hybrid SACD (CD layer)",
+      "track-count": 4
+     },
+     {
+      "format": "Hybrid SACD (SACD layer, 2 channels)",
+      "track-count": 4
+     },
+     {
+      "format": "Hybrid SACD (SACD layer, multichannel)",
+      "track-count": 3
+     },
+     {
+      "format": "Hybrid SACD (CD layer)",
+      "track-count": 4
+     },
+     {
+      "format": "Hybrid SACD (SACD layer, 2 channels)",
+      "track-count": 4
+     },
+     {
+      "format": "Hybrid SACD (SACD layer, multichannel)",
+      "track-count": 4
+     }
+    ]
+   }
+  ]
+ },
+ "PYSACD-MB-220": {
+  "created": "2026-11-24T00:00:00.000Z",
+  "count": 1,
+  "offset": 0,
+  "releases": [
+   {
+    "id": "21800000-0000-4000-8000-000000000003",
+    "score": 100,
+    "title": "Synthetic CD Album",
+    "status": "Official",
+    "artist-credit": [
+     {
+      "name": "Test Ensemble",
+      "joinphrase": "",
+      "artist": {
+       "id": "0f0f0f0f-1111-4222-8333-444444444444",
+       "name": "Test Ensemble",
+       "sort-name": "Test Ensemble",
+       "disambiguation": ""
+      }
+     }
+    ],
+    "track-count": 4,
+    "media": [
+     {
+      "format": "CD",
+      "track-count": 4
+     }
+    ]
+   }
+  ]
+ },
+ "text": {
+  "created": "2026-11-24T00:00:00.000Z",
+  "count": 1,
+  "offset": 0,
+  "releases": [
+   {
+    "id": "21800000-0000-4000-8000-000000000001",
+    "score": 100,
+    "title": "Synthetic Hybrid Album",
+    "status": "Official",
+    "artist-credit": [
+     {
+      "name": "Test Ensemble",
+      "joinphrase": "",
+      "artist": {
+       "id": "0f0f0f0f-1111-4222-8333-444444444444",
+       "name": "Test Ensemble",
+       "sort-name": "Test Ensemble",
+       "disambiguation": ""
+      }
+     }
+    ],
+    "track-count": 12,
+    "media": [
+     {
+      "format": "Hybrid SACD (CD layer)",
+      "track-count": 4
+     },
+     {
+      "format": "Hybrid SACD (SACD layer, 2 channels)",
+      "track-count": 4
+     },
+     {
+      "format": "Hybrid SACD (SACD layer, multichannel)",
+      "track-count": 4
+     }
+    ]
+   }
+  ]
+ }
+}

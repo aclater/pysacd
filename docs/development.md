@@ -76,7 +76,7 @@ in the archive's `native-static-libs.txt`.
   release with cancellation, progress, and stored and decoded frames in one pass, 0.5.1
   the first with the TOC's timecodes as stored, 0.5.2 the first with the whole TOC in one call
   (`sb_disc_toc`), and 0.5.4 the first whose output API can lay out `sacd_extract`'s DSF and
-  DSDIFF files byte for byte (scarletbook-rs#169). The pin is 0.7.0 (see [performance](performance.md#scarletbook-rs-070)), which moves `-z` chain boundaries to `sacd_extract`'s (#182) and changes no other output over 0.6.2 (0.6.2 changed none over 0.6.1, [performance](performance.md#scarletbook-rs-062); 0.6.1 changed none over 0.5.9, [performance](performance.md#scarletbook-rs-061); 0.5.9 changed none over 0.5.8, [performance](performance.md#scarletbook-rs-059); 0.5.8 changed no speed over 0.5.7, [performance](performance.md#scarletbook-rs-058); 0.5.7 won back 0.5.6's one-thread DST regression, [performance](performance.md#scarletbook-rs-057)). 0.5.5 added the DST decoder, which chooses an AVX2/BMI2 build of
+  DSDIFF files byte for byte (scarletbook-rs#169). The pin is 1.0.2: the same code and the same output as 0.7.0, under the frozen 1.0 interface (the same C ABI, `SB_ABI_VERSION` 2; 1.0.0, 1.0.1 and 1.0.2 changed no code, [release notes](https://github.com/aclater/scarletbook-rs/releases/tag/v1.0.2)). 0.7.0 ([performance](performance.md#scarletbook-rs-070)) moved `-z` chain boundaries to `sacd_extract`'s (#182) and changes no other output over 0.6.2 (0.6.2 changed none over 0.6.1, [performance](performance.md#scarletbook-rs-062); 0.6.1 changed none over 0.5.9, [performance](performance.md#scarletbook-rs-061); 0.5.9 changed none over 0.5.8, [performance](performance.md#scarletbook-rs-059); 0.5.8 changed no speed over 0.5.7, [performance](performance.md#scarletbook-rs-058); 0.5.7 won back 0.5.6's one-thread DST regression, [performance](performance.md#scarletbook-rs-057)). 0.5.5 added the DST decoder, which chooses an AVX2/BMI2 build of
   itself at run time on x86-64 (#109; [performance](performance.md#where-dst-time-goes-109)); 0.5.4
   still works, more slowly.
 - **Logged.** `_native.build_info()` (in `pysacd --version` and in log files) names the
@@ -122,6 +122,7 @@ Its `read_sectors()` reads 2048-byte logical sectors whatever the image's sector
   library can't read a path, it is opened in Python instead, so a missing or unreadable file
   raises the `OSError` it always did. A failing read is an `OSError`, an image scarletbook
   rejects a `SACDError`.
+- **Library TOC check.** `tools/library_toc_check.py DIR [--compare OLD.tsv]` reads the TOC of every `.iso` under DIR, one image at a time with a timeout, and writes a TSV (no paths) and a summary; release test plan step 2 (#213).
 - **Checked against the old reader.** `tools/toc_compare.py --old OLD_SRC --new NEW_SRC IMAGE...`
   compares the repr of every Disc, Area and Track and the bytes of `toc --json` between two
   source trees, with `--mutations N` on mutated copies too. The one-call reader matched the
@@ -382,6 +383,23 @@ encoder, and configured runs (`cfg-*.iso`) that each reach one of the paths abov
 input goes, minimised, into `fuzz/regressions/fuzz_engine/` along with its fix.
 `tests/test_fuzz_engine.py` builds the same harness without libFuzzer (`make fuzz-replay`, any C
 compiler) and replays those inputs and the seeds, under ASan and UBSan, and under TSan, in CI.
+`tests/test_cancel_wakeup.py` builds the engine with its test hooks (`make cancel-wakeup`,
+`SC_TEST_HOOKS`; never in the library pysacd loads), holds the worker of a run, cancels it from
+another thread while the writer and the reader wait, and fails if the run doesn't return.
+
+**Platforms CI doesn't test.** CI builds the aarch64 wheel and runs only its smoke test, and runs
+the suite on macOS and Windows from a source build, never from the published wheels. The scripts
+in `tools/platform_run/` cover that at release time (#214), each from a Linux machine; the header
+of each says what it needs:
+
+- `aarch64-container.sh wheel VERSION` runs the tag's suite against the published manylinux
+  aarch64 wheel, and `aarch64-container.sh source [REF]` the suite on a source build, in a Fedora
+  44 arm64 container: natively on an aarch64 machine, or under qemu-user emulation (untimed);
+- `windows-vm.sh VERSION` and `macos-vm.sh VERSION` install the published wheel in a throwaway
+  copy of a Windows 11 VM (libvirt) or a macOS arm64 VM (tart), and run the tag's suite against
+  it, `tests/wheel_smoke.py` and the README's Quick start on a generated disc.
+
+The VM scripts install python.org's Python, checked by SHA-256, when the VM has no 3.10 or later.
 
 To report a vulnerability, see [SECURITY.md](../SECURITY.md).
 
@@ -456,7 +474,9 @@ Every pull request runs:
   `src/`, the tests or the scarletbook pin change: the engine built with warnings as errors, then
   the test suite. On Windows the engine is built with MSYS2's UCRT64 toolchain.
 - **CodeQL** (Python, C, workflows) and **semgrep**.
-- **A check for private names**, in files and commit identities.
+- **A check for private names**, in files and commit identities (`scripts/check-private-names.sh`).
+  It fails when it cannot run, for example on an invalid name list;
+  `tests/test_check_private_names.py` tests it.
 - **scarletbook provenance**: every archive pinned in `scarletbook.lock` must match its digest
   and carry a valid build provenance attestation from scarletbook-rs's release workflow, for the
   pinned tag and commit (see [the scarletbook library](#the-scarletbook-library)).
@@ -570,7 +590,8 @@ installed console scripts, and checks that the engine has the pinned scarletbook
 (version and commit) linked in. Building from the sdist downloads that release, as `make` does. Runtime SIMD dispatch needs glibc, so musllinux wheels
 use the plain filters.
 
-To release:
+To release, run the [release test plan](release-test-plan.md) and record it in the release issue.
+Its steps include:
 
 1. **Compare with `sacd_extract` on real discs,** which CI can't, before the version bump: pysacd's
    version is in its output (DSDIFF comment, cue, XML, `-P`, tags), so two trees compare equal only
@@ -592,7 +613,8 @@ To release:
    - creates build provenance attestations for every wheel and the sdist;
    - attaches the files to a GitHub release, each with its attestation bundle beside it
      (the file's name plus `.intoto.jsonl`, verified in the job first). Check a download with
-     `gh attestation verify` on the file, with `--repo aclater/pysacd`, adding
+     `gh attestation verify` on the file, with `--repo dsd-toolbox/pysacd` (`aclater/pysacd` for
+     0.5.5 and earlier, signed before the repository moved), adding
      `--bundle` and the bundle's name to check against the attached bundle. OpenSSF
      Scorecard counts only these assets as provenance;
    - publishes to TestPyPI, if the repository variable `TESTPYPI_PUBLISH` is
@@ -604,6 +626,75 @@ To release:
    (the PyPI publisher is constrained to it). On GitHub, the `pypi` environment
    only accepts `v*` tags, so nothing but a release tag can publish. No API token
    is stored anywhere.
+
+### Release quality comparison
+
+Every release from 0.6.0 measures its PCM output against the previous release and publishes the
+result as `docs/quality/VERSION.md` ([PCM quality by release](quality/README.md)), linked from the
+release notes. The suite, [suites/pysacd.toml](../suites/pysacd.toml), pins the
+[dsd-measure](https://github.com/dsd-toolbox/dsd-measure) commit, the outputs (`pysacd convert` to
+stereo FLAC and 5.1 WAV at 88.2 and 176.4 kHz), the figures (SINAD, THD+N, noise floor, alias
+rejection, null depth) and each figure's repeatability bound. `tools/quality_device.py` makes
+pysacd look like any DSD-to-PCM converter to dsd-measure: it wraps each synthetic DSD test signal in
+a one-track SACD image with `tests/sacdgen.py` and runs `pysacd convert` on it.
+
+`tools/quality_compare.py` installs the previous release from PyPI and the candidate side by side,
+runs the suite and the null test on both on one machine, and writes the page. It needs Python 3.11
+or later (as dsd-measure does), Rust, a C compiler, `flac-devel`, `ffmpeg` and git, as for a source
+build, and takes about an hour on 6 cores.
+From the release commit, in the Fedora container of the [release test plan](release-test-plan.md):
+
+```sh
+python3 tools/quality_compare.py --previous 0.5.5 --candidate . --work /var/tmp/pysacd-quality --out docs/quality/0.6.0.md
+```
+
+A second run with the same `--work` reuses only reports made from the same builds (wheel
+SHA-256, or tree commit and content hash), dsd-measure commit, suite file and inputs; each report
+folder records them in `quality-meta.json`. It exits 1 if a figure is worse than the previous release's by more than its bound, or if the two
+versions were not fed identical inputs. Such a regression blocks the release unless DECISIONS.md in
+dsd-toolbox/dsd-toolbox explains and accepts it. A suite whose `final` is `false` (a dsd-measure pin
+before its release) writes a page marked draft.
+
+### Docs commands against a release
+
+`tools/docs_commands.py` runs every `sh`, `console` and `python` block of README.md and `docs/`
+against a published release, each block in a fresh folder that is also its HOME, on generated discs
+named as the docs name them (`album.iso`, `disc.iso`, `other.iso`). A PS3 address is served by the
+release's own `pysacd ps3sim`, and `pip install pysacd` installs the release under test. Commands
+that can't run there (development, Windows, a MusicBrainz account, `sacd_extract`, release steps
+and the whole [release test plan](release-test-plan.md)) are listed in the tool with the reason; a list entry that no longer matches the docs fails, and so does any block
+that runs and exits non-zero. From a checkout with `make test-tools` built and numpy installed:
+
+```sh
+python3 -I tools/docs_commands.py list
+python3 -I tools/docs_commands.py run --spec pysacd==VERSION --workdir build/docs-commands
+```
+
+VERSION is the release under test. `--wheel` takes a wheel file instead; `--musicbrainz`,
+`--podman` and `--sacd-extract` also run the commands that need them.
+
+### Release timings
+
+`tools/bench_release.py` runs the by-release table of [performance](performance.md) on real discs
+(#212): the release plan's rows, plus plain DSD and FLAC at 88.2 kHz, and a DST stereo row on the
+CPU's low-end core (an E-core, or on a uniform CPU the lowest-ranked core). Trees alternate with
+the order rotated each round; each run is one row with one tree, under `benchlock run` when the host
+has it, pinned with `taskset`. It records wall time, peak RSS, bytes written, and the CPU temperature
+and throttle counters around each run, and fails (exit 2) when the newest tree is more than 5 %
+slower or uses more than 10 % more peak memory than the previous one.
+
+```sh
+python3 tools/bench_release.py setup --work ../bench v0.5.4 v0.5.5 new=master   # worktree, venv, make
+python3 tools/bench_release.py run --tree 0.5.4=../bench/trees/0.5.4 --tree 0.5.5=../bench/trees/0.5.5 \
+    --tree new=../bench/trees/new --disc dst2=DST_STEREO.iso --disc dst6=DST_MULTICHANNEL.iso \
+    --disc plain=PLAIN_DSD.iso --out ../bench/results --memory-max 12G
+python3 tools/bench_release.py clean --work ../bench
+```
+
+Results go to `runs.csv` and `table.md` in the `--out` folder; a run already in `runs.csv` is not
+repeated, so an interrupted run resumes. `--deadline` (epoch seconds) stops before a run that would
+end after it; `--dry-run` prints the commands. The test (`tests/test_bench_release.py`) runs it on a
+generated disc.
 
 ### Security releases
 
@@ -637,7 +728,7 @@ run for 0.5.1, except where marked.
    published while they are open), set the patched version, request a CVE and publish. GitHub
    deletes the private fork. Then set the GitHub release's notes from the changelog section.
 7. File the hardening that didn't belong in the fix as ordinary issues, and update RELEASES.md and
-   DECISIONS.md in aclater/dsd-toolbox.
+   DECISIONS.md in dsd-toolbox/dsd-toolbox.
 
 ## CI speed
 
@@ -650,4 +741,4 @@ A pull request's checks finish in about 3 min, and a new push cancels the supers
 - [Clean room and licences](clean-room.md)
 - [Performance](performance.md)
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

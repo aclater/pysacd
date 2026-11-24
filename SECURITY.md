@@ -7,7 +7,7 @@ branches: if you're on an older release, the fix is to upgrade.
 
 | Version | Supported |
 | --- | --- |
-| latest release ([releases](https://github.com/aclater/pysacd/releases)) | yes |
+| latest release ([releases](https://github.com/dsd-toolbox/pysacd/releases)) | yes |
 | `master` | yes |
 | anything older | no |
 
@@ -16,10 +16,10 @@ branches: if you're on an older release, the fix is to upgrade.
 Please don't open a public issue, pull request or discussion for a vulnerability. Report it
 privately through GitHub's private vulnerability reporting:
 
-**<https://github.com/aclater/pysacd/security/advisories/new>**
+**<https://github.com/dsd-toolbox/pysacd/security/advisories/new>**
 
 (or the **Report a vulnerability** button on the repository's
-[Security tab](https://github.com/aclater/pysacd/security)). Only the maintainer sees the
+[Security tab](https://github.com/dsd-toolbox/pysacd/security)). Only the maintainer sees the
 report.
 
 Please include:
@@ -72,4 +72,4 @@ Out of scope, by design:
   reach the port.
 
 How each kind of input is contained, and the tests that check it, are described in the threat
-model, [docs/security.md](https://github.com/aclater/pysacd/blob/master/docs/security.md).
+model, [docs/security.md](https://github.com/dsd-toolbox/pysacd/blob/master/docs/security.md).

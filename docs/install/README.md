@@ -46,11 +46,11 @@ with its build provenance attestation beside it as the wheel's file name plus `.
 Check a wheel with the GitHub CLI (`gh`) against that bundle; no GitHub sign-in is needed. Which
 account to name depends on the release.
 
+<!-- docs-lint: ignore-file old-owner -- releases up to 0.5.5 were signed before the move, so their attestations name aclater/pysacd -->
 **Releases up to 0.5.5** were signed before the repository moved to the DSD Toolbox organisation,
 so their attestation names `aclater/pysacd`. For 0.5.5's Linux x86-64 wheel:
 
 <!-- docs-run: group=attestation packages=gh -->
-<!-- docs-lint: ignore old-owner -- 0.5.5 was signed before the repository moved, so its attestation names aclater/pysacd -->
 ```sh
 # facts:assets repo=dsd-toolbox/pysacd tag=v0.5.5 match="manylinux_2_28_x86_64\.whl" fmt="curl -fsSLO https://github.com/dsd-toolbox/pysacd/releases/download/{tag}/{name}"
 curl -fsSLO https://github.com/dsd-toolbox/pysacd/releases/download/v0.5.5/pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl
@@ -63,7 +63,6 @@ gh attestation verify pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl --repo acl
 The command exits 0 when the wheel matches (piped, it prints nothing; in a terminal it may print a success line). Tested on the 0.5.5 wheel
 (2026-11-24):
 
-<!-- docs-lint: ignore old-owner -- the table lists what each name gives for the 0.5.5 and earlier releases signed as aclater/pysacd -->
 | Command | Result |
 |---|---|
 | `--repo aclater/pysacd --bundle` | passes, no sign-in needed |

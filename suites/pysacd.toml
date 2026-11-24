@@ -59,7 +59,8 @@ final = false
 # improvement. "bound" is the repeatability in dB: the spread of the figure over three dither draws
 # of one build (the same signal shifted by 0, 1 and 2 idle frames, see [pysacd_quality.repeatability]),
 # doubled and rounded up. A change within the bound is noise; a change beyond it is flagged, and a
-# worse one is a regression.
+# worse one is a regression. Derived on 2026-11-24 from 0.6.0's draft run (largest spreads: SINAD and
+# THD+N 0.10 dB, noise 0.02 dB, alias 0.11 dB); re-derive when dsd-measure is re-pinned.
 [[pysacd_quality.metric]]
 key = "sinad"
 label = "SINAD, 1 kHz at 0 dB SACD (dB)"
@@ -79,26 +80,27 @@ key = "noise"
 label = "Noise floor, 20 Hz to 20 kHz (dBFS)"
 path = "metrics.noise.unweighted_dbfs"
 better = "lower"
-bound = 0.2
+bound = 0.1
 
 [[pysacd_quality.metric]]
 key = "alias"
 label = "Alias rejection, worst image (dB)"
 path = "metrics.alias_tones.worst_image_db"
 better = "lower"
-bound = 1.0
+bound = 0.3
 
 # Null test: each device's output from the previous release against the candidate's, on one
 # synthetic music-like source (band-limited pink noise and tones, made by tools/quality_compare.py
 # with the tool's reference modulator, its SHA-256 checked). Null depth = the source's level minus
 # the difference's level, 20 Hz to 20 kHz. The bound is the depth of two dither draws of the
 # candidate against each other: a release that differs from its predecessor by no more than the
-# dither does reaches it.
+# dither does reaches it (0.6.0's draft: within 0.3 dB on every output; bound set at 1 dB).
 [pysacd_quality.null]
 seconds = 20
 seed = 20261124
-source_sha256 = ""      # filled in by the first run on the pinned dsd-measure; checked afterwards
-bound = 3.0
+# made with dsd-measure 0.1.1 (d234b7a); re-pin with dsd-measure
+source_sha256 = "128f6ecb97a4060a38637bf9be746912d3f613f681a76093e04a0a54cbd4d24b"
+bound = 1.0
 
 [pysacd_quality.repeatability]
 lead_frames = [1, 2]

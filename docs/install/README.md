@@ -60,7 +60,7 @@ gh attestation verify pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl --repo acl
     --bundle pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl.intoto.jsonl
 ```
 
-The command prints nothing and exits 0 when the wheel matches. Tested on the 0.5.5 wheel
+The command exits 0 when the wheel matches (piped, it prints nothing; in a terminal it may print a success line). Tested on the 0.5.5 wheel
 (2026-11-24):
 
 <!-- docs-lint: ignore old-owner -- the table lists what each name gives for the 0.5.5 and earlier releases signed as aclater/pysacd -->

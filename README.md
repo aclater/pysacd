@@ -48,7 +48,7 @@ on its first screen; the Windows commands are in the box after step 1, and
    # /facts
    ```
 
-   On Windows, open PowerShell and run this instead; the rest of the steps work unchanged, with
+   On Windows, open PowerShell and run this instead (it installs into your Python rather than a virtual environment); the rest of the steps work unchanged, with
    your image's path in place of `album.iso`:
 
    <!-- docs-run: skip="Windows: PowerShell and the py launcher; the same pip install runs on Linux above" -->

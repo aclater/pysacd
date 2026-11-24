@@ -49,7 +49,7 @@ command = "python3 -I tools/quality_device.py --format wav --rate 176400 --area 
 [pysacd_quality]
 # dsd-measure version pin. TO BE RE-PINNED AT 0.1.2: 0.1.2 (output word-length detection) is not
 # tagged yet, so this pins 0.1.1 (tag v0.1.1, the head of its main branch on 2026-11-24). A
-# comparison made with this pin is a draft, never a published verdict (owner rule).
+# comparison made with this pin is a draft, never a published verdict (project rule).
 dsd_measure_version = "0.1.1"
 dsd_measure_commit = "d234b7a8233ccfe391776e7c6425cbf8643c47e3"
 dsd_measure_repository = "https://github.com/dsd-toolbox/dsd-measure"

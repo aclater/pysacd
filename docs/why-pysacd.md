@@ -59,4 +59,4 @@ Why it exists, in the author's words: [author's note](author.md).
 - [User guide](user-guide.md)
 - [Author's note](author.md)
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

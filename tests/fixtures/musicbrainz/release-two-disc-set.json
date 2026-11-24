@@ -1,0 +1,1036 @@
+{
+ "id": "21800000-0000-4000-8000-000000000002",
+ "title": "Synthetic Two-Disc Set",
+ "status": "Official",
+ "status-id": "00218053-0000-4000-8000-000000218053",
+ "quality": "normal",
+ "date": "2004-05-01",
+ "country": "XE",
+ "barcode": "",
+ "packaging": "Jewel Case",
+ "disambiguation": "",
+ "asin": null,
+ "text-representation": {
+  "language": "zxx",
+  "script": "Latn"
+ },
+ "artist-credit": [
+  {
+   "name": "Test Ensemble",
+   "joinphrase": "",
+   "artist": {
+    "id": "0f0f0f0f-1111-4222-8333-444444444444",
+    "name": "Test Ensemble",
+    "sort-name": "Test Ensemble",
+    "disambiguation": ""
+   }
+  }
+ ],
+ "label-info": [
+  {
+   "catalog-number": "PYSACD-MB-219",
+   "label": {
+    "id": "00218054-0000-4000-8000-000000218054",
+    "name": "Test Label",
+    "disambiguation": ""
+   }
+  }
+ ],
+ "release-group": {
+  "id": "00218055-0000-4000-8000-000000218055",
+  "title": "Synthetic Two-Disc Set",
+  "primary-type": "Album",
+  "secondary-types": [],
+  "first-release-date": "2004-05-01",
+  "disambiguation": ""
+ },
+ "media": [
+  {
+   "format": "Hybrid SACD (CD layer)",
+   "format-id": "00218027-0000-4000-8000-000000218027",
+   "position": 1,
+   "title": "",
+   "track-count": 4,
+   "track-offset": 0,
+   "tracks": [
+    {
+     "id": "0021801f-0000-4000-8000-00000021801f",
+     "position": 1,
+     "number": "1",
+     "title": "Opening",
+     "length": 4200,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218020-0000-4000-8000-000000218020",
+      "title": "Opening",
+      "length": 4200,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218021-0000-4000-8000-000000218021",
+     "position": 2,
+     "number": "2",
+     "title": "Interlude",
+     "length": 4400,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218022-0000-4000-8000-000000218022",
+      "title": "Interlude",
+      "length": 4400,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218023-0000-4000-8000-000000218023",
+     "position": 3,
+     "number": "3",
+     "title": "Song",
+     "length": 4000,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218024-0000-4000-8000-000000218024",
+      "title": "Song",
+      "length": 4000,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218025-0000-4000-8000-000000218025",
+     "position": 4,
+     "number": "4",
+     "title": "Closing",
+     "length": 4600,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218026-0000-4000-8000-000000218026",
+      "title": "Closing",
+      "length": 4600,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    }
+   ]
+  },
+  {
+   "format": "Hybrid SACD (SACD layer, 2 channels)",
+   "format-id": "00218030-0000-4000-8000-000000218030",
+   "position": 2,
+   "title": "",
+   "track-count": 4,
+   "track-offset": 0,
+   "tracks": [
+    {
+     "id": "00218028-0000-4000-8000-000000218028",
+     "position": 1,
+     "number": "1",
+     "title": "Opening",
+     "length": 4200,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218029-0000-4000-8000-000000218029",
+      "title": "Opening",
+      "length": 4200,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021802a-0000-4000-8000-00000021802a",
+     "position": 2,
+     "number": "2",
+     "title": "Interlude",
+     "length": 4400,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021802b-0000-4000-8000-00000021802b",
+      "title": "Interlude",
+      "length": 4400,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021802c-0000-4000-8000-00000021802c",
+     "position": 3,
+     "number": "3",
+     "title": "Song",
+     "length": 4000,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021802d-0000-4000-8000-00000021802d",
+      "title": "Song",
+      "length": 4000,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021802e-0000-4000-8000-00000021802e",
+     "position": 4,
+     "number": "4",
+     "title": "Closing",
+     "length": 4600,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021802f-0000-4000-8000-00000021802f",
+      "title": "Closing",
+      "length": 4600,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    }
+   ]
+  },
+  {
+   "format": "Hybrid SACD (SACD layer, multichannel)",
+   "format-id": "00218037-0000-4000-8000-000000218037",
+   "position": 3,
+   "title": "",
+   "track-count": 3,
+   "track-offset": 0,
+   "tracks": [
+    {
+     "id": "00218031-0000-4000-8000-000000218031",
+     "position": 1,
+     "number": "1",
+     "title": "Opening",
+     "length": 4200,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218032-0000-4000-8000-000000218032",
+      "title": "Opening",
+      "length": 4200,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218033-0000-4000-8000-000000218033",
+     "position": 2,
+     "number": "2",
+     "title": "Interlude",
+     "length": 4400,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218034-0000-4000-8000-000000218034",
+      "title": "Interlude",
+      "length": 4400,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218035-0000-4000-8000-000000218035",
+     "position": 3,
+     "number": "3",
+     "title": "Song",
+     "length": 4000,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218036-0000-4000-8000-000000218036",
+      "title": "Song",
+      "length": 4000,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    }
+   ]
+  },
+  {
+   "format": "Hybrid SACD (CD layer)",
+   "format-id": "00218040-0000-4000-8000-000000218040",
+   "position": 4,
+   "title": "",
+   "track-count": 4,
+   "track-offset": 0,
+   "tracks": [
+    {
+     "id": "00218038-0000-4000-8000-000000218038",
+     "position": 1,
+     "number": "1",
+     "title": "Reprise One",
+     "length": 5200,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218039-0000-4000-8000-000000218039",
+      "title": "Reprise One",
+      "length": 5200,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021803a-0000-4000-8000-00000021803a",
+     "position": 2,
+     "number": "2",
+     "title": "Reprise Two",
+     "length": 5400,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021803b-0000-4000-8000-00000021803b",
+      "title": "Reprise Two",
+      "length": 5400,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021803c-0000-4000-8000-00000021803c",
+     "position": 3,
+     "number": "3",
+     "title": "Reprise Three",
+     "length": 5000,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021803d-0000-4000-8000-00000021803d",
+      "title": "Reprise Three",
+      "length": 5000,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021803e-0000-4000-8000-00000021803e",
+     "position": 4,
+     "number": "4",
+     "title": "Reprise Four",
+     "length": 5600,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021803f-0000-4000-8000-00000021803f",
+      "title": "Reprise Four",
+      "length": 5600,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    }
+   ]
+  },
+  {
+   "format": "Hybrid SACD (SACD layer, 2 channels)",
+   "format-id": "00218049-0000-4000-8000-000000218049",
+   "position": 5,
+   "title": "",
+   "track-count": 4,
+   "track-offset": 0,
+   "tracks": [
+    {
+     "id": "00218041-0000-4000-8000-000000218041",
+     "position": 1,
+     "number": "1",
+     "title": "Reprise One",
+     "length": 5200,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218042-0000-4000-8000-000000218042",
+      "title": "Reprise One",
+      "length": 5200,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218043-0000-4000-8000-000000218043",
+     "position": 2,
+     "number": "2",
+     "title": "Reprise Two",
+     "length": 5400,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218044-0000-4000-8000-000000218044",
+      "title": "Reprise Two",
+      "length": 5400,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218045-0000-4000-8000-000000218045",
+     "position": 3,
+     "number": "3",
+     "title": "Reprise Three",
+     "length": 5000,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218046-0000-4000-8000-000000218046",
+      "title": "Reprise Three",
+      "length": 5000,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218047-0000-4000-8000-000000218047",
+     "position": 4,
+     "number": "4",
+     "title": "Reprise Four",
+     "length": 5600,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218048-0000-4000-8000-000000218048",
+      "title": "Reprise Four",
+      "length": 5600,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    }
+   ]
+  },
+  {
+   "format": "Hybrid SACD (SACD layer, multichannel)",
+   "format-id": "00218052-0000-4000-8000-000000218052",
+   "position": 6,
+   "title": "",
+   "track-count": 4,
+   "track-offset": 0,
+   "tracks": [
+    {
+     "id": "0021804a-0000-4000-8000-00000021804a",
+     "position": 1,
+     "number": "1",
+     "title": "Reprise One",
+     "length": 5200,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021804b-0000-4000-8000-00000021804b",
+      "title": "Reprise One",
+      "length": 5200,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021804c-0000-4000-8000-00000021804c",
+     "position": 2,
+     "number": "2",
+     "title": "Reprise Two",
+     "length": 5400,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021804d-0000-4000-8000-00000021804d",
+      "title": "Reprise Two",
+      "length": 5400,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "0021804e-0000-4000-8000-00000021804e",
+     "position": 3,
+     "number": "3",
+     "title": "Reprise Three",
+     "length": 5000,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "0021804f-0000-4000-8000-00000021804f",
+      "title": "Reprise Three",
+      "length": 5000,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    },
+    {
+     "id": "00218050-0000-4000-8000-000000218050",
+     "position": 4,
+     "number": "4",
+     "title": "Reprise Four",
+     "length": 5600,
+     "artist-credit": [
+      {
+       "name": "Test Ensemble",
+       "joinphrase": "",
+       "artist": {
+        "id": "0f0f0f0f-1111-4222-8333-444444444444",
+        "name": "Test Ensemble",
+        "sort-name": "Test Ensemble",
+        "disambiguation": ""
+       }
+      }
+     ],
+     "recording": {
+      "id": "00218051-0000-4000-8000-000000218051",
+      "title": "Reprise Four",
+      "length": 5600,
+      "video": false,
+      "isrcs": [],
+      "artist-credit": [
+       {
+        "name": "Test Ensemble",
+        "joinphrase": "",
+        "artist": {
+         "id": "0f0f0f0f-1111-4222-8333-444444444444",
+         "name": "Test Ensemble",
+         "sort-name": "Test Ensemble",
+         "disambiguation": ""
+        }
+       }
+      ],
+      "disambiguation": "",
+      "first-release-date": "2004-05-01"
+     }
+    }
+   ]
+  }
+ ],
+ "cover-art-archive": {
+  "artwork": false,
+  "count": 0,
+  "front": false,
+  "back": false,
+  "darkened": false
+ }
+}

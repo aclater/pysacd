@@ -10,6 +10,40 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Added
+- `tools/docs_commands.py` runs every command block of README.md and `docs/` against a release on
+  generated discs, with an explicit list of what can't run there and why
+  ([development](docs/development.md#docs-commands-against-a-release)) (#215).
+
+### Changed
+- docs/security.md: the container example builds a local image named `pysacd` and reads
+  `album.iso` from the current folder, with no placeholders, as tested (#216).
+- docs/sacd_extract.md: the migration creates `~/bin` first; on a new account the link failed
+  without it (found by `tools/docs_commands.py`, #215).
+- docs/logging.md: the `PYSACD_LOG` example writes `~/pysacd.log`, not a fixed `/tmp` name that
+  another user's file can block (found by `tools/docs_commands.py`, #215).
+- The engine links scarletbook 1.0.2 (was 0.7.0): the same C ABI and the same output; scarletbook's
+  interface is now stable (1.0).
+
+### Fixed
+- The progress count no longer ends above the total ("frames processed: 13 / total frames: 12"):
+  the engine counted the PCM warm-up frames before a range and the frame after it. `run_area`'s
+  result now carries the final count (`frames_done`, `frames_total`) (#205).
+- A multichannel area whose track lengths miss MusicBrainz's by more than 3 s on average (often,
+  because MusicBrainz lists the stereo lengths for the multichannel medium) now matches the release
+  its disc's stereo area matches, if that release has a multichannel SACD medium on the same disc
+  with the same track count. The match carries a warning, and ISRCs are not submitted for it
+  ([converting](docs/converting.md)) (#218).
+- A one-track area no longer matches any one-track medium whatever its length: an ISRC match now
+  needs at least one ISRC (#218).
+- A cancelled run (Ctrl-C during `pysacd convert` or `pysacd-extract`, or `sacdconv_cancel()`) no
+  longer hangs now and then: the cancel now wakes the engine's threads that wait for a batch, so
+  the run ends within a batch, as documented.
+
+### Security
+- The private-names check (`scripts/check-private-names.sh`) now fails when it cannot run,
+  and refuses a name list that would match every line.
+
 ## [0.5.5] - 2026-11-23
 
 `pysacd-extract -z` now splits a gapless chain where `sacd_extract` does, so those files are

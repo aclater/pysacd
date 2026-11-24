@@ -38,6 +38,6 @@ jobs:
             --exclude '^https://musicbrainz\.org/account/'
             --exclude '^https://api\.scorecard\.dev/'
             --exclude '^https://img\.shields\.io/'
-            --exclude '^https://raw\.githubusercontent\.com/aclater/pysacd/master/docs/assets/'
+            --exclude '^https://raw\.githubusercontent\.com/dsd-toolbox/pysacd/master/docs/assets/'
             README.md 'docs/**/*.md'
           fail: true

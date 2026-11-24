@@ -10,6 +10,7 @@ from __future__ import annotations
 import http.client
 import ipaddress
 import json
+import logging
 import re
 import threading
 import time
@@ -28,6 +29,8 @@ RELEASE_INC = "artist-credits+labels+recordings+release-groups+isrcs"
 # artist ids are kept only in this form, because they go into request paths, cover URLs, tags and
 # the terminal; anything else a server sends in their place is dropped.
 MBID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+log = logging.getLogger("pysacd.musicbrainz")
 
 _lock = threading.Lock()
 _last_request = 0.0
@@ -307,6 +310,9 @@ class Match:
     isrc_hits: int
     method: str                  # "barcode", "catno", "text", "release-id"
     warnings: list[str] = field(default_factory=list)
+    # True when a multichannel area matched through the disc's stereo area, not its own track
+    # lengths (#218): the release is the stereo area's, the medium its multichannel layer
+    via_stereo: bool = False
 
     @property
     def release_id(self) -> str:
@@ -495,13 +501,11 @@ def score_medium(release: dict, medium: dict, disc: Disc, area: Area) -> tuple[f
     return score, isrc_hits
 
 
-def find_release(disc: Disc, area: Area, contact: str | None, release_id: str | None = None,
-                 text_search: bool = False, max_mean_diff: float = 3.0) -> Match | None:
-    cands = [(release_id_arg(release_id), "release-id")] if release_id else candidate_ids(disc, contact, text_search)
+def _best_medium(releases: list[tuple[dict, str]], disc: Disc, area: Area) -> Match | None:
+    """The best-ranked medium for `area` among the releases, whatever its score."""
     best: Match | None = None
     best_rank = 0.0
-    for rid, method in cands:
-        rel = lookup_release(rid, contact)
+    for rel, method in releases:
         for medium in rel.get("media", []):
             s = score_medium(rel, medium, disc, area)
             if s is None:
@@ -522,9 +526,73 @@ def find_release(disc: Disc, area: Area, contact: str | None, release_id: str | 
                     rank -= 1
             if best is None or rank < best_rank:
                 best, best_rank = Match(rel, medium, score, hits, method), rank
-    if best is None:
+    return best
+
+
+def _confident(m: Match, area: Area, max_mean_diff: float) -> bool:
+    """Durations within the limit, ISRCs on at least half the tracks (and at least one), or a
+    release the user named. Without "at least one", any one-track medium matched a one-track
+    area whatever its length."""
+    return m.score <= max_mean_diff or m.isrc_hits >= max(1, len(area.tracks) // 2) or m.method == "release-id"
+
+
+def _via_stereo(releases: list[tuple[dict, str]], disc: Disc, area: Area, max_mean_diff: float) -> Match | None:
+    """A match for a multichannel `area` whose own track lengths miss the limit, through the
+    stereo area of the same disc (#218).
+
+    MusicBrainz often gives a hybrid disc's "SACD layer, multichannel" medium the stereo (or CD)
+    track lengths, and a multichannel mix can differ from them by several seconds a track. When
+    the disc's stereo area matches a release on its own terms (the normal limit, or ISRCs), that
+    release is the disc; its multichannel SACD medium on the same physical disc is then this
+    area's medium, provided it has exactly as many tracks. Nothing else is loosened."""
+    stereo = getattr(disc, "stereo", None)
+    if stereo is None or stereo is area:
         return None
-    if best.score > max_mean_diff and best.isrc_hits < len(area.tracks) // 2 and best.method != "release-id":
+    sm = _best_medium(releases, disc, stereo)
+    # The stereo area must match on its own terms (a named release never gets here: its
+    # multichannel area is accepted directly)
+    if sm is None or not _confident(sm, stereo, max_mean_diff):
+        return None
+    rel = sm.release
+    fmt = sm.medium.get("format") or ""
+    if "SACD" not in fmt or "(CD layer" in fmt or "multichannel" in fmt:
+        return None                     # the stereo area must sit on the release's SACD stereo layer
+    media = rel["media"]
+    discs = physical_discs(media)
+    discno = next(n for m, n in zip(media, discs) if m is sm.medium)
+    mc = [m for m, n in zip(media, discs) if n == discno and "SACD" in (m.get("format") or "")
+          and "multichannel" in (m.get("format") or "") and len(m.get("tracks") or []) == len(area.tracks)]
+    if len(mc) != 1:
+        return None
+    s = score_medium(rel, mc[0], disc, area)
+    if s is None:
+        return None
+    score, hits = s
+    log.debug("multichannel area: release %s by %s, stereo area mean diff %.2f s, multichannel %.2f s "
+              "(limit %.1f s)", rel.get("id"), sm.method, sm.score, score, max_mean_diff)
+    warning = (f"multichannel track lengths differ from MusicBrainz's by {score:.1f} s on average "
+               f"(limit {max_mean_diff:.1f} s); matched through the disc's stereo area, which matches "
+               f"this release by {sm.score:.1f} s")
+    return Match(rel, mc[0], score, hits, sm.method, via_stereo=True, warnings=[warning])
+
+
+def find_release(disc: Disc, area: Area, contact: str | None, release_id: str | None = None,
+                 text_search: bool = False, max_mean_diff: float = 3.0) -> Match | None:
+    """The MusicBrainz release and medium for `area`, or None without a confident match.
+
+    A match is confident when the medium has the area's track count and its track lengths are
+    within `max_mean_diff` seconds of the area's on average, or ISRCs match on at least half the
+    tracks, or the release was named (`release_id`). A multichannel area that misses this can
+    still match through the disc's stereo area (see _via_stereo); its Match then has
+    via_stereo set and a warning."""
+    cands = [(release_id_arg(release_id), "release-id")] if release_id else candidate_ids(disc, contact, text_search)
+    releases = [(lookup_release(rid, contact), method) for rid, method in cands]
+    best = _best_medium(releases, disc, area)
+    if best is not None and not _confident(best, area, max_mean_diff):
+        best = None
+    if best is None and area.is_multichannel:
+        best = _via_stereo(releases, disc, area, max_mean_diff)
+    if best is None:
         return None
     if "SACD" not in (best.medium.get("format") or "") or "(CD layer" in best.medium.get("format", ""):
         best.warnings.append(f"matched medium format is {best.medium.get('format')!r}, not SACD")

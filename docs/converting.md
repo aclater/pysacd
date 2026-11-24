@@ -112,7 +112,17 @@ How it works:
   catalogue number) or by catalogue number. The match is checked against track
   count, durations and ISRCs, and picks the medium for the right layer:
   MusicBrainz lists "Hybrid SACD (SACD layer, 2 channels)" and "…multichannel"
-  as separate media. If there's no confident match, the disc's own text is used.
+  as separate media. A match is confident when the medium has the area's track
+  count and its track lengths are within 3 s of the area's on average, or the
+  ISRCs agree on at least half the tracks (and at least one).
+  MusicBrainz often gives the multichannel medium the stereo track lengths, and a
+  multichannel mix can differ from them by several seconds a track. A
+  multichannel area that misses the limit therefore still matches when the
+  disc's stereo area matches a release on its own and that release has a
+  multichannel SACD medium on the same disc with exactly as many tracks as the
+  area. The log then says so in a warning. A disc with no stereo area gets no
+  such help.
+  If there's no confident match, the disc's own text is used.
   Use `--mb-release ID` to force a release, and `--mb-text-search` to allow a
   fallback search by title and artist. FLAC gets Vorbis comments; DSF and WAV
   get ID3 tags (v2.3 by default). Both follow Picard's field names, including
@@ -136,7 +146,8 @@ Replace `CLIENT_ID` with the client ID of your own MusicBrainz application: regi
 "installed" at <https://musicbrainz.org/account/applications> (see "Signing in" below).
 
 - **Which release:** only one matched by barcode or catalogue number, or named
-  with `--mb-release`, never one found by title search. Track N of the area
+  with `--mb-release`, never one found by title search, nor a multichannel area
+  matched only through the stereo area (see "Tags" above). Track N of the area
   maps to track N of the matched medium (stereo and multichannel separately).
 - **What's skipped:** malformed or all-zero ISRCs, the same ISRC on two
   tracks, ISRCs the recording already has, and ISRCs MusicBrainz already lists
@@ -159,4 +170,4 @@ Replace `CLIENT_ID` with the client ID of your own MusicBrainz application: regi
 - [pysacd-extract](sacd_extract.md): `sacd_extract`-compatible output
 - [Security](security.md#musicbrainz-credentials): MusicBrainz credentials
 
-Part of the [DSD Toolbox](https://github.com/aclater/dsd-toolbox).
+Part of the [DSD Toolbox](https://github.com/dsd-toolbox/dsd-toolbox).

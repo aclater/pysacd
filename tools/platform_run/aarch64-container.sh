@@ -77,6 +77,7 @@ fi
 dnf -y -q install shadow-utils util-linux git-core gcc make pkgconf-pkg-config findutils binutils \
     diffutils file which python3.13 python3.13-devel $pkgs >/dev/null
 useradd -m -d /build ci && cp -a /src /build/pysacd && chown -R ci /build
+rc=0
 runuser -u ci -- env MODE="$MODE" VERSION="$VERSION" CPUS="$CPUS" EMUL="$EMUL" HOME=/build bash -euc "
 cd ~/pysacd && mkdir -p ~/tmp && export TMPDIR=~/tmp LANG=C.UTF-8 MAKEFLAGS=-j\$CPUS
 python3.13 -m venv ~/venv && . ~/venv/bin/activate
@@ -95,13 +96,15 @@ pip list 2>/dev/null | grep -i pysacd
 fails=0
 PYSACD_TEST_MEMORY_MB=4096 PYSACD_TEST_REPORT=report.json PYTHONPATH=\$pp \
     python -m pytest -q -p no:cacheprovider --junitxml=junit.xml -rfEs \$desel \$EMUL tests || fails=\$((fails + 1))
-cp report.json junit.xml /out/ || true
 if [ \"\$MODE\" = source ]; then
     python3 -I tools/check_skips.py --job tests report.json || fails=\$((fails + 1))
 fi
 python -I tests/wheel_smoke.py >/dev/null && echo wheel_smoke: passed || fails=\$((fails + 1))
 exit \$fails
-"' || status=$?
+" || rc=$?
+# as root: the unprivileged user cannot write the mounted output folder
+cp /build/pysacd/report.json /build/pysacd/junit.xml /out/ 2>/dev/null || true
+exit $rc' || status=$?
 echo "== run time $(( $(date +%s) - start )) s"
 echo "== status $status (0: every step passed)"
 exit "$status"

@@ -3,6 +3,7 @@
 import csv
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -21,6 +22,10 @@ sys.modules[spec.name] = bench  # dataclasses look the module up here (Python <=
 spec.loader.exec_module(bench)
 
 
+LINUX_ONLY = unittest.skipUnless(hasattr(os, "sched_getaffinity"),
+                                 "bench_release is Linux-only (taskset, systemd-run, /sys)")
+
+
 class Logic(unittest.TestCase):
     def test_order_rotates_each_round(self):
         self.assertEqual([bench.order(["a", "b", "c"], r) for r in range(4)],
@@ -35,6 +40,7 @@ class Logic(unittest.TestCase):
         self.assertEqual(bench.check(prev, prev, [100], [109]), "ok")
         self.assertEqual(bench.check(prev[:2], [20.0, 20.0], [100], [200]), "not checked: under 3 runs")
 
+    @LINUX_ONLY
     def test_cpus_are_distinct_cores(self):
         fast, many, low, _ = bench.pick_cpus(2, None)
         self.assertIn(fast, many)
@@ -42,6 +48,7 @@ class Logic(unittest.TestCase):
         self.assertEqual(len(set(many)), len(many))
 
 
+@LINUX_ONLY
 class TinyRun(unittest.TestCase):
     def test_two_trees_one_round(self):
         if not list((ROOT / "src/pysacd").glob("_sacdconv.*")):

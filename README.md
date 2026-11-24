@@ -31,11 +31,13 @@ Blu-ray player running SACD Ripper ([reading from a PS3](docs/ps3-protocol.md#re
 
 ## Quick start
 
-You need Python <!-- facts:python-min -->3.10<!-- /facts --> or later on Linux or macOS, and an SACD image. The commands use
-`album.iso` in the current folder; type your image's name instead. On Windows, follow
-[install on Windows](docs/install/windows.md): the same commands, in PowerShell.
+You need Python <!-- facts:python-min -->3.10<!-- /facts --> or later and an SACD image. The commands use
+`album.iso` in the current folder; type your image's name instead. On Windows, get Python from the
+[python.org](https://www.python.org/downloads/windows/) installer and tick **Add python.exe to PATH**
+on its first screen; the Windows commands are in the box after step 1, and
+[install on Windows](docs/install/windows.md) has the details.
 
-1. Install pysacd in a virtual environment of its own:
+1. Install pysacd in a virtual environment of its own (Linux and macOS):
 
    <!-- docs-run: packages=python3 -->
    ```sh
@@ -44,6 +46,15 @@ You need Python <!-- facts:python-min -->3.10<!-- /facts --> or later on Linux o
    # facts:install kind=pip name=pysacd
    pip install pysacd
    # /facts
+   ```
+
+   On Windows, open PowerShell and run this instead; the rest of the steps work unchanged, with
+   your image's path in place of `album.iso`:
+
+   <!-- docs-run: skip="Windows: PowerShell and the py launcher; the same pip install runs on Linux above" -->
+   ```powershell
+   py -m pip install pysacd
+   pysacd --version
    ```
 
 2. Read the disc's table of contents: album, areas and tracks.

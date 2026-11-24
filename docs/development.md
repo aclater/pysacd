@@ -223,7 +223,7 @@ writer thread fills the whole file from it, in order, with the decoded frames ea
 4096-byte blocks, the zero padding and a `-z` chain's carried and left-over bytes. pysacd's
 own DSF block layout (bit reversal, planar copy, block buffers) is deleted. For `-z` across a
 pause left out, the previous file's last frame stands in for the position before the file
-(`OutputSpec.head_frame`), which gives the carry `sacd_extract` writes. The owner's rule for offloading is to adopt scarletbook where
+(`OutputSpec.head_frame`), which gives the carry `sacd_extract` writes. The project's rule for offloading is to adopt scarletbook where
 the output is byte-identical and no more than 15 % slower, and then delete pysacd's own code;
 both hold (see [performance](performance.md)).
 

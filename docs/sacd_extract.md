@@ -11,15 +11,35 @@ with the same names and the same bytes.
 
 ## Migrating
 
-<!-- docs-run: group=discs -->
-<!-- docs-lint: ignore placeholder -- where pip put pysacd-extract depends on how it was installed (a virtual environment, pipx or pip --user) -->
+On Linux and macOS, link `pysacd-extract` under the old name. Where pip put it depends on how you
+installed pysacd. In a virtual environment named `pysacd-env` in your home folder, it is
+`~/pysacd-env/bin/pysacd-extract`; with `pipx install pysacd` or `pip install --user pysacd` it is
+`~/.local/bin/pysacd-extract`. For the virtual environment:
+
+<!-- docs-run: skip="the path depends on where pip put pysacd-extract (virtual environment, pipx or --user), so this block cannot be run as written" -->
 ```sh
 mkdir -p ~/bin
-ln -s "$(command -v pysacd-extract)" ~/bin/sacd_extract    # that's the whole migration
+ln -s ~/pysacd-env/bin/pysacd-extract ~/bin/sacd_extract    # that's the whole migration
 ```
 
 `~/bin` must be on your `PATH`: Fedora and Ubuntu add it in new login shells once the folder
 exists.
+
+On Windows, `pysacd-extract.exe` is in the `Scripts` folder of the Python or virtual environment
+you installed pysacd into (for a virtual environment named `pysacd-env` in your user folder,
+`pysacd-env\Scripts`). Either run it from there, or put that folder on your `PATH` (Start menu,
+"Edit environment variables for your account", `Path`, New). With `pipx install pysacd` it is
+already on your `PATH`. A script that calls `sacd_extract.exe` can be pointed at
+`pysacd-extract.exe`, or you can copy `pysacd-extract.exe` to a folder on your `PATH` under the
+name `sacd_extract.exe`:
+
+<!-- docs-run: skip="Windows: PowerShell and Windows paths" -->
+```powershell
+mkdir ~\bin
+copy ~\pysacd-env\Scripts\pysacd-extract.exe ~\bin\sacd_extract.exe
+```
+
+Then add `%USERPROFILE%\bin` to `Path` as above.
 
 Scripts, `sacd_extract.cfg` (including `logging=1`) and muscle memory keep
 working:

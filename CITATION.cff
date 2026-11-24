@@ -9,8 +9,7 @@ abstract: >-
   replacement for sacd_extract: the same options, the same file names, the
   same bytes.
 authors:
-  - alias: aclater
-    website: "https://github.com/aclater"
+  - name: "The pysacd authors"
 version: 0.5.5
 date-released: "2026-11-23"
 repository-code: "https://github.com/dsd-toolbox/pysacd"

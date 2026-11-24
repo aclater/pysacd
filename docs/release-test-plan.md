@@ -349,10 +349,17 @@ find github -name '*.whl' -o -name '*.tar.gz' | xargs -I FILE gh attestation ver
 *Expected:* every file `OK`, the two counts equal (7 for 0.5.5), every verification passes.
 *Validated:* 2026-11-23 on 0.5.5.
 
+**First release from `dsd-toolbox` (0.6.0).** The two verify lines above, with `--repo dsd-toolbox/pysacd`
+and without `--bundle`, then with it, have not yet been run on a release signed from that
+repository: 0.5.5 and earlier verify only as `aclater/pysacd` and only with `--bundle`
+([install](install/README.md#checking-a-download)). Run them on the 0.6.0 files, and if either
+fails, correct that section of the install guide before announcing the release. Record which of
+the two forms passed here.
+
 ## 10. Fresh-eyes review for first releases
 
 For a new minor or major line (0.6.0, 1.0.0) and for a release that adds a component (a new
-command, output format or platform), a reviewer agent that did not write or review the changes, and
+command, output format or platform), a reviewer who did not write or review the changes, and
 gets none of the author's notes, reads the release as a newcomer would. It gets the tag diff from
 the previous minor line, the README and `docs/`, and the changelog section, and checks:
 

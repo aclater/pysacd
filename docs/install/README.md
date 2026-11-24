@@ -43,8 +43,11 @@ library loads.
 
 The same files are on each [GitHub release](https://github.com/dsd-toolbox/pysacd/releases), each
 with its build provenance attestation beside it as the wheel's file name plus `.intoto.jsonl`.
-Check a wheel with the GitHub CLI against that bundle; no GitHub sign-in is needed. For 0.5.5's
-Linux x86-64 wheel:
+Check a wheel with the GitHub CLI (`gh`) against that bundle; no GitHub sign-in is needed. Which
+account to name depends on the release.
+
+**Releases up to 0.5.5** were signed before the repository moved to the DSD Toolbox organisation,
+so their attestation names `aclater/pysacd`. For 0.5.5's Linux x86-64 wheel:
 
 <!-- docs-run: group=attestation packages=gh -->
 <!-- docs-lint: ignore old-owner -- 0.5.5 was signed before the repository moved, so its attestation names aclater/pysacd -->
@@ -57,13 +60,25 @@ gh attestation verify pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl --repo acl
     --bundle pysacd-0.5.5-py3-none-manylinux_2_28_x86_64.whl.intoto.jsonl
 ```
 
-The command prints nothing and exits 0 when the wheel matches.
+The command prints nothing and exits 0 when the wheel matches. Tested on the 0.5.5 wheel
+(2026-11-24):
 
-<!-- docs-lint: ignore old-owner -- names the account that signed 0.5.5 and earlier -->
-Releases up to 0.5.5 were signed before the repository moved, so they verify with `--repo aclater/pysacd`,
-and only against their bundle: without `--bundle`, `gh` looks the attestation up on GitHub, and for these
-releases that lookup fails since the move (HTTP 404, checked 2026-11-24). Later releases are
-signed by the release workflow of dsd-toolbox/pysacd, so they verify with `--repo dsd-toolbox/pysacd`.
+<!-- docs-lint: ignore old-owner -- the table lists what each name gives for the 0.5.5 and earlier releases signed as aclater/pysacd -->
+| Command | Result |
+|---|---|
+| `--repo aclater/pysacd --bundle` | passes, no sign-in needed |
+| `--repo dsd-toolbox/pysacd --bundle` | fails: `verifying with issuer "sigstore.dev"` |
+| `--repo aclater/pysacd` (online) | fails: HTTP 404 |
+| `--repo dsd-toolbox/pysacd` (online) | fails: HTTP 404 |
+| `--owner aclater` (online, signed in with `gh auth login`) | passes |
+
+So for these releases use the bundle form above; the online form works only with
+`--owner aclater`, not with `--repo`.
+
+**Releases from 0.6.0** are published and signed from `dsd-toolbox/pysacd`, so they verify with
+`--repo dsd-toolbox/pysacd`, with the bundle (as above, names changed to the release's wheel) or
+online with `gh auth login` and no `--bundle`. The
+[release test plan](../release-test-plan.md) checks both forms on each release.
 
 ## From source
 

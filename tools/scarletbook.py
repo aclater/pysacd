@@ -34,7 +34,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / "scarletbook.lock"
@@ -188,6 +188,16 @@ def fetch(dest: Path, target: str, archive: Path | None) -> Path:
             raise FetchError(f"{dest}: the archive has no {need}")
     stamp.write_text(want + "\n", encoding="utf-8")
     return dest
+
+
+def make_path(path: str | os.PathLike, windows: bool | None = None) -> str:
+    """path with forward slashes, as setup.py passes it to make (#225). On Windows, make's recipes
+    run under MSYS's sh, which takes a backslash as an escape: a SCARLETBOOK_DIR such as
+    C:\\lib\\scarletbook reached sed as C:libscarletbook, and the engine was built without
+    scarletbook's functions. Elsewhere a backslash is an ordinary character and is kept."""
+    if windows is None:
+        windows = sys.platform == "win32"
+    return (PureWindowsPath(path) if windows else Path(path)).as_posix()
 
 
 def attest(work: Path) -> int:

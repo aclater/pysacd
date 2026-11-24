@@ -12,6 +12,7 @@ SHA-256 first. SCARLETBOOK_DIR=DIR uses a library unpacked there instead, and
 PYSACD_SCARLETBOOK_CACHE=DIR keeps the downloaded archives for the next build.
 """
 
+import importlib.util
 import os
 import subprocess
 import sys
@@ -27,6 +28,11 @@ except ImportError:     # setuptools < 70
     from wheel.bdist_wheel import bdist_wheel
 
 ROOT = Path(__file__).resolve().parent
+# tools/scarletbook.py's make_path(): paths for make, with forward slashes (#225)
+_spec = importlib.util.spec_from_file_location("_pysacd_sbtool", ROOT / "tools" / "scarletbook.py")
+_sbtool = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_sbtool)
+make_path = _sbtool.make_path
 LIB = {"win32": "_sacdconv.dll", "darwin": "_sacdconv.dylib"}.get(sys.platform, "_sacdconv.so")
 
 
@@ -39,7 +45,9 @@ class BuildEngine(build_py):
         # A private build directory: never touch the developer's build/ or src/pysacd/ library
         with tempfile.TemporaryDirectory() as tmp:
             sb_dir = os.environ.get("SCARLETBOOK_DIR")
-            if not sb_dir:
+            if sb_dir:
+                sb_dir = make_path(sb_dir)
+            else:
                 # Fetched here rather than by make: on Windows, make runs under MSYS, which may
                 # have no Python of its own
                 sb_dir = (Path(tmp) / "scarletbook").as_posix()
@@ -51,15 +59,16 @@ class BuildEngine(build_py):
                              "SCARLETBOOK_DIR to an unpacked copy; see docs/development.md.")
             try:
                 # forward slashes: MSYS make on Windows mangles backslashes
-                subprocess.run(["make", "-C", ROOT.as_posix(), f"BUILD={Path(tmp).as_posix()}",
-                                f"LIB={(dest / LIB).as_posix()}", f"SCARLETBOOK_DIR={sb_dir}",
+                subprocess.run(["make", "-C", make_path(ROOT), f"BUILD={make_path(tmp)}",
+                                f"LIB={make_path(dest / LIB)}", f"SCARLETBOOK_DIR={sb_dir}",
                                 *([] if native else ["PORTABLE=1"])], check=True)
             except FileNotFoundError:
                 sys.exit("pysacd: building from source needs `make` and a C compiler (gcc or clang; MinGW-w64 "
                          "on Windows). Install them, or use a prebuilt wheel. See docs/install/README.md.")
             except subprocess.CalledProcessError as e:
                 sys.exit(f"pysacd: building the native engine failed (make exited {e.returncode}). It needs a "
-                         "C compiler, and libFLAC (flac-devel) for FLAC output. See docs/install/README.md.")
+                         "C compiler, the scarletbook library, and libFLAC (flac-devel) for FLAC output. See "
+                         "the error above and docs/install/README.md.")
 
 
 class PlatformWheel(bdist_wheel):

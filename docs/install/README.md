@@ -73,6 +73,9 @@ make                                         # optional: rebuild it for this CPU
 
 ## Windows from source
 
+To link a scarletbook library unpacked elsewhere, set `SCARLETBOOK_DIR` to its folder, with
+forward slashes or backslashes. The build stops with an error if the engine would lack it.
+
 Build the engine with MSYS2's UCRT64 toolchain. It links statically, so the DLL needs nothing
 beside it, and works with the normal python.org Python:
 

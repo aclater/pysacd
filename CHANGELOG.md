@@ -22,6 +22,8 @@ behaviour, and a patch version only adds or fixes. Each release on
   without it (found by `tools/docs_commands.py`, #215).
 - docs/logging.md: the `PYSACD_LOG` example writes `~/pysacd.log`, not a fixed `/tmp` name that
   another user's file can block (found by `tools/docs_commands.py`, #215).
+- The engine links scarletbook 1.0.2 (was 0.7.0): the same C ABI and the same output; scarletbook's
+  interface is now stable (1.0).
 
 ### Fixed
 - The progress count no longer ends above the total ("frames processed: 13 / total frames: 12"):

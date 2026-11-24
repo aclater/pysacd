@@ -24,8 +24,8 @@ behaviour, and a patch version only adds or fixes. Each release on
   another user's file can block (found by `tools/docs_commands.py`, #215).
 - The engine links scarletbook 1.0.2 (was 0.7.0): the same C ABI and the same output; scarletbook's
   interface is now stable (1.0).
-- Documentation and published measurement data are now licensed CC BY 4.0; the code licence is
-  unchanged (GPL-2.0-or-later, with the DSD-to-PCM filter MIT OR Apache-2.0). The exceptions are
+- Documentation (the README's text and the icons included) and published measurement data are
+  now licensed CC BY 4.0; the code licence is unchanged (GPL-2.0-or-later, with the DSD-to-PCM filter MIT OR Apache-2.0). The exceptions are
   listed in the README's "Licence and credits". A `CITATION.cff` describes how to cite pysacd.
 
 ### Fixed

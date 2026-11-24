@@ -88,15 +88,12 @@ pysacd's code is free software under the [GNU General Public License](COPYING), 
 your option) any later version (`GPL-2.0-or-later`). Its DSD-to-PCM filter, `csrc/dsp.c` and
 `csrc/dsp.h`, is MIT OR Apache-2.0 ([licences](licenses/README.md)).
 
-The documentation in `docs/`, including the PCM quality pages in `docs/quality/`, and the
-measurement data published in it are licensed under
-[CC BY 4.0](licenses/CC-BY-4.0.txt) (`CC-BY-4.0`). Two parts keep their own terms:
-
-- the protobuf message definitions under "Messages" in the
-  [PS3 protocol page](docs/ps3-protocol.md#messages) are adapted from sacd-ripper's
-  `libs/libsacd/sacd_ripper.proto`, and stay under sacd-ripper's licence, GPL-2.0-or-later;
-- the icon files in `docs/assets/` are GPL-2.0-or-later, as [their page](docs/assets/README.md)
-  says.
+The text of this README, the documentation in `docs/` (the PCM quality pages in `docs/quality/`
+and the icon files in `docs/assets/` included) and the measurement data published in it are
+licensed under [CC BY 4.0](licenses/CC-BY-4.0.txt) (`CC-BY-4.0`). One part keeps its own terms:
+the protobuf message definitions under "Messages" in the
+[PS3 protocol page](docs/ps3-protocol.md#messages) are adapted from sacd-ripper's
+`libs/libsacd/sacd_ripper.proto`, and stay under sacd-ripper's licence, GPL-2.0-or-later.
 
 To cite pysacd, use [CITATION.cff](CITATION.cff).
 

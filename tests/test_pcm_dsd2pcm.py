@@ -855,18 +855,25 @@ class FlacEqualsWav(unittest.TestCase):
     def test_flac_samples_are_the_wav_samples(self):
         if not _native.has_flac():
             self.skipTest("engine built without libFLAC")
-        cc = os.environ.get("CC") or shutil.which("cc") or shutil.which("gcc") or "cc"
-        flags = subprocess.run(["pkg-config", "--cflags", "--libs", "flac"], capture_output=True, text=True,
-                               check=False) if shutil.which("pkg-config") else None
-        if flags is None or flags.returncode:
+        # the tools by their resolved paths: a bare name may not be found where only a .bat or .cmd shim exists
+        cc = shutil.which(os.environ.get("CC") or "cc") or shutil.which("gcc") or shutil.which("clang")
+        pkg_config = shutil.which("pkg-config") or shutil.which("pkgconf")
+        if not cc:
+            self.skipTest("no C compiler (cc, gcc or clang) for the FLAC dump tool")
+        if not pkg_config:
+            self.skipTest("libFLAC development files not found (no pkg-config or pkgconf)")
+        flags = subprocess.run([pkg_config, "--cflags", "--libs", "flac"], capture_output=True, text=True,
+                               check=False)
+        if flags.returncode:
             self.skipTest("libFLAC development files not found (pkg-config flac)")
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             (d / "dump.c").write_text(FLAC_DUMP)
-            cmd = [cc, "-O1", "-o", str(d / "dump"), str(d / "dump.c"), *flags.stdout.split()]
+            dump = d / ("dump.exe" if sys.platform == "win32" else "dump")
+            cmd = [cc, "-O1", "-o", str(dump), str(d / "dump.c"), *flags.stdout.split()]
             if subprocess.run(cmd, check=False, capture_output=True).returncode:
                 # a static libFLAC (the wheel builds') needs its private libraries too
-                static = subprocess.run(["pkg-config", "--static", "--libs", "flac"], capture_output=True, text=True,
+                static = subprocess.run([pkg_config, "--static", "--libs", "flac"], capture_output=True, text=True,
                                         check=True)
                 subprocess.run([*cmd, *static.stdout.split(), "-lm"], check=True)
             for channels in (2, 6):
@@ -882,7 +889,7 @@ class FlacEqualsWav(unittest.TestCase):
                         specs = [_native.OutputSpec("wav", wav, 0, 45), _native.OutputSpec("flac", flac, 0, 45)]
                         with SACDImage(iso) as img:
                             _native.run_area(img, iso, area, specs, rate, 0.0, pcm_filter=filt)
-                        subprocess.run([str(d / "dump"), str(flac), str(d / "x.i32")], check=True)
+                        subprocess.run([str(dump), str(flac), str(d / "x.i32")], check=True)
                         raw = (d / "x.i32").read_bytes()
                         self.assertTrue(i32_as_s24(raw) == wav_data(wav), "FLAC samples differ from WAV samples")
                         self.assertEqual(len(raw) // 4, 45 * OPF[rate] * channels)

@@ -4,10 +4,10 @@ import os
 import random
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
+import fsutil
 import sacdgen
 import test_dst_full as dst
 
@@ -26,7 +26,7 @@ def dsd_data(path: Path) -> bytes:
 @unittest.skipUnless(dst.HAVE_NATIVE, "native helper not built (make)")
 class ConvertPauses(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.dir = Path(self.tmp.name)
         rng = random.Random(62)
         frames = [bytes(rng.getrandbits(8) for _ in range(FRAME)) for _ in range(90)]
@@ -47,13 +47,13 @@ class ConvertPauses(unittest.TestCase):
         out = self.dir / name
         self.run_py("-m", "pysacd", "convert", "--config", os.devnull, "--no-musicbrainz", "--no-cover",
                     "-o", str(out), *flags, str(self.iso))
-        return [dsd_data(p) for p in sorted(out.rglob("*.dsf"))]
+        return [dsd_data(p) for p in sorted(fsutil.lp(out).rglob("*.dsf"))]
 
     def extract(self, name: str, *flags: str) -> list[bytes]:
         out = self.dir / name
         out.mkdir()
         self.run_py("-m", "pysacd.extract", "--no-cfg", "-2", "-s", *flags, "-i", str(self.iso), cwd=out)
-        return [dsd_data(p) for p in sorted(out.rglob("*.dsf"))]
+        return [dsd_data(p) for p in sorted(fsutil.lp(out).rglob("*.dsf"))]
 
     def test_pauses_match_extract_b(self):
         with_pauses = self.convert("conv-b", "--pauses")

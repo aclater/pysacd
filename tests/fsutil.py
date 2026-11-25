@@ -8,6 +8,7 @@ the extended-length name. Elsewhere they are the standard calls.
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 from pysacd import safeio
 
@@ -43,3 +44,13 @@ def try_symlink(link, target) -> bool:
             return False
         raise
     return True
+
+
+def lp(path) -> Path:
+    """`path` as a Path through the extended-length form on Windows (unchanged elsewhere).
+
+    Tests inspect pysacd's output trees through this: a plain name past 260 characters fails
+    with WinError 3 on a stock Windows. Compare names shown to users in plain form
+    (safeio.display_path); relative_to() against another lp() path stays valid.
+    """
+    return Path(safeio.long_path(path))

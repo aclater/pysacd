@@ -28,11 +28,11 @@ import os
 import signal
 import struct
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
+import fsutil
 import sacdgen
 
 from pysacd import extract
@@ -111,7 +111,7 @@ class HostileImages(unittest.TestCase):
         logging.getLogger("pysacd").setLevel(logging.NOTSET)
 
     def _run(self, h: sacdgen.Hostile, label: str, fn) -> None:
-        with tempfile.TemporaryDirectory(prefix="pysacd-hostile") as tmp:
+        with fsutil.TempDir(prefix="pysacd-hostile") as tmp:
             root = Path(tmp)
             iso = root / "in.iso"
             iso.write_bytes(h.image)
@@ -137,8 +137,8 @@ class HostileImages(unittest.TestCase):
         sectors = len(h.image) // 2048 + 1
         limit = sectors * MAX_FRAMES_PER_SECTOR * MAX_FRAME_BYTES + SLACK
         total = 0
-        for p in out.rglob("*"):
-            rel = p.relative_to(out)
+        for p in fsutil.lp(out).rglob("*"):
+            rel = p.relative_to(fsutil.lp(out))
             self.assertFalse(p.name.endswith(".partial"), f"{h.name} {label}: left {rel}")
             if p.is_file():
                 size = p.stat().st_size
@@ -183,14 +183,14 @@ class Expectations(unittest.TestCase):
 
     def _disc(self, name: str):
         # a directory, not NamedTemporaryFile: Windows can't reopen a file that's still open
-        with tempfile.TemporaryDirectory(prefix="pysacd-hostile") as tmp:
+        with fsutil.TempDir(prefix="pysacd-hostile") as tmp:
             iso = Path(tmp) / "in.iso"
             iso.write_bytes(self.images[name])
             return read_toc(str(iso))
 
     def _extract(self, name: str, *args: str) -> tuple[int, dict[str, bytes]]:
         """Run pysacd-extract on an image; returns the exit status and {relative path: bytes}."""
-        with tempfile.TemporaryDirectory(prefix="pysacd-hostile") as tmp:
+        with fsutil.TempDir(prefix="pysacd-hostile") as tmp:
             iso = Path(tmp) / "in.iso"
             iso.write_bytes(self.images[name])
             out = Path(tmp) / "out"
@@ -198,7 +198,7 @@ class Expectations(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
                     _deadline(TIMEOUT):
                 rc = extract.main([*args, "--no-cfg", "--threads", "2", "-o", str(out), "-i", str(iso)])
-            return rc, {str(p.relative_to(out)): p.read_bytes() for p in sorted(out.rglob("*")) if p.is_file()}
+            return rc, {str(p.relative_to(fsutil.lp(out))): p.read_bytes() for p in sorted(fsutil.lp(out).rglob("*")) if p.is_file()}
 
     def test_raw_layouts_read_like_the_plain_image(self):
         plain = self._disc("valid")
@@ -268,7 +268,7 @@ class Expectations(unittest.TestCase):
     @unittest.skipUnless(_native_ok(), "native engine not built")
     def test_convert_skips_a_zero_length_track(self):
         from pysacd.convert import Options, convert
-        with tempfile.TemporaryDirectory(prefix="pysacd-hostile") as tmp:
+        with fsutil.TempDir(prefix="pysacd-hostile") as tmp:
             iso = Path(tmp) / "in.iso"
             iso.write_bytes(self.images["track-duration-one-zero"])
             err = io.StringIO()
@@ -276,7 +276,7 @@ class Expectations(unittest.TestCase):
                 rc = convert(str(iso), Options(output_dir=str(Path(tmp) / "out"), format="dsf", musicbrainz=False,
                                                cover=False, cover_file="", jobs=2))
             self.assertEqual(rc, 0)
-            self.assertEqual(len(list((Path(tmp) / "out").rglob("*.dsf"))), 2)
+            self.assertEqual(len(list(fsutil.lp(Path(tmp) / "out").rglob("*.dsf"))), 2)
             self.assertIn("2 has no audio", err.getvalue())
 
     @unittest.skipUnless(_native_ok(), "native engine not built")
@@ -336,7 +336,7 @@ class RunBound(unittest.TestCase):
         """Run pysacd-extract; the image is extended sparsely to `sectors`. Returns the exit
         status, {relative path: size} of what is left in the output directory, and what it said
         (stdout and stderr)."""
-        with tempfile.TemporaryDirectory(prefix="pysacd-runbound") as tmp:
+        with fsutil.TempDir(prefix="pysacd-runbound") as tmp:
             iso = Path(tmp) / "in.iso"
             with open(iso, "wb") as f:
                 f.write(image)
@@ -347,7 +347,8 @@ class RunBound(unittest.TestCase):
             say = io.StringIO()
             with contextlib.redirect_stdout(say), contextlib.redirect_stderr(say), _deadline(TIMEOUT):
                 rc = extract.main([*args, "--no-cfg", "--threads", "2", "-o", str(out), "-i", str(iso)])
-            return rc, {str(p.relative_to(out)): p.stat().st_size for p in out.rglob("*") if p.is_file()}, \
+            root = fsutil.lp(out)
+            return rc, {str(p.relative_to(root)): p.stat().st_size for p in root.rglob("*") if p.is_file()}, \
                 say.getvalue()
 
     def test_overlapping_tracks_are_bounded_per_run(self):
@@ -360,14 +361,14 @@ class RunBound(unittest.TestCase):
 
     def test_convert_refuses_overlapping_tracks(self):
         from pysacd.convert import Options, convert
-        with tempfile.TemporaryDirectory(prefix="pysacd-runbound") as tmp:
+        with fsutil.TempDir(prefix="pysacd-runbound") as tmp:
             iso = Path(tmp) / "in.iso"
             iso.write_bytes(sacdgen.overlapping_tracks(1000, 3))
             out = Path(tmp) / "out"
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 convert(str(iso), Options(output_dir=str(out), format="dsf", musicbrainz=False, cover=False,
                                           cover_file="", jobs=2))
-            self.assertEqual(list(out.rglob("*.dsf")), [])
+            self.assertEqual(list(fsutil.lp(out).rglob("*.dsf")), [])
 
     def test_a_sparse_image_cannot_become_silence(self):
         # 1.4 MB of data in a 2.4 MB sparse file: room for the track's 3000 frames, of which the

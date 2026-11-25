@@ -16,7 +16,6 @@ import random
 import shutil
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -24,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))     # also what test_sbcompat imports from
 
 import extract_compare as cmp
+import fsutil
 import sacdgen
 import test_dst_full as dst
 
@@ -75,7 +75,7 @@ class Trees(unittest.TestCase):
         modes = [m for m, (kind, _) in cmp.MODES.items() if kind == "extract"]
         self.assertGreaterEqual(len(modes), 20)
         compared = {}
-        with tempfile.TemporaryDirectory(prefix="pysacd-tree") as tmp:
+        with fsutil.TempDir(prefix="pysacd-tree") as tmp:
             for disc, iso in discs(Path(tmp)).items():
                 for mode in modes:
                     has_mch = disc != "plain"
@@ -120,7 +120,7 @@ class BlankIsrcs(unittest.TestCase):
         return se, py, a, b
 
     def test_isrc_forms(self):
-        with tempfile.TemporaryDirectory(prefix="pysacd-isrc") as tmp:
+        with fsutil.TempDir(prefix="pysacd-isrc") as tmp:
             root = Path(tmp)
             iso = sacdgen.isrc_forms_iso(root / "isrcs.iso")
             compared = 0
@@ -188,7 +188,7 @@ def edit_master(cmd: list[str], iso: Path, cwd: Path, env: dict | None = None) -
     r = subprocess.run([*cmd, "-m", "-e", "-i", str(iso)], cwd=cwd, capture_output=True, text=True,
                        errors="replace", check=False, env=env)
     assert r.returncode == 0, r.stdout + r.stderr
-    found = sorted(cwd.rglob("*.dff"))
+    found = sorted(fsutil.lp(cwd).rglob("*.dff"))
     assert len(found) == 1, found
     return found[0]
 
@@ -201,7 +201,7 @@ class TrackStopFlags(unittest.TestCase):
     """pysacd's edited master keeps TrackFlags zero on TrackStop markers (#179)."""
 
     def test_stop_markers_carry_no_flags(self):
-        with tempfile.TemporaryDirectory(prefix="pysacd-stops") as tmp:
+        with fsutil.TempDir(prefix="pysacd-stops") as tmp:
             root = Path(tmp)
             iso = gapped_iso(root / "gap.iso", [bytes([i]) * (6 * 4704) for i in range(9)], dst_area=False)
             dff = edit_master(PYSACD, iso, root / "out", {**os.environ, "PYTHONPATH": SRC})
@@ -218,7 +218,7 @@ class TrackStopFlagsAgainstSacdExtract(unittest.TestCase):
     sacd_extract's file differs only in its TrackStop markers' flags, which come from the TOC."""
 
     def test_mch_edit_master(self):
-        with tempfile.TemporaryDirectory(prefix="pysacd-stops") as tmp:
+        with fsutil.TempDir(prefix="pysacd-stops") as tmp:
             root = Path(tmp)
             iso = gapped_iso(root / "gap.iso", [f for _, _, f in dst.encoded(6)], dst_area=True)
             for _ in range(3):      # sacd_extract now and then leaves out a file (see Trees)
@@ -299,7 +299,7 @@ def dsf_sizes(root: Path) -> list[int]:
     """Bytes per channel of the audio of each DSF file under root, in name order; also checks that
     the header's sample count covers them (an unpadded file) or less (the padded last one)."""
     out = []
-    for f in sorted(root.rglob("*.dsf")):
+    for f in sorted(fsutil.lp(root).rglob("*.dsf")):
         head = f.read_bytes()[:92]
         ch = int.from_bytes(head[52:56], "little")
         per = (int.from_bytes(head[84:92], "little") - 12) // ch
@@ -325,7 +325,7 @@ class ChainBoundary(unittest.TestCase):
     def test_sizes(self):
         # in this process, so the coverage run sees the chain plan
         from pysacd import extract
-        with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
+        with fsutil.TempDir(prefix="pysacd-chain") as tmp:
             root = Path(tmp)
             for name, frames, pauses, args, *_theirs, ours in CHAIN_CASES + KEPT_BLOCK_CASES + AREA_END_CASES:
                 with self.subTest(name):
@@ -366,7 +366,7 @@ class ChainBoundaryAgainstSacdExtract(unittest.TestCase):
             self.assertEqual((vs["identical"], vs["different"]), (len(theirs), []))
 
     def test_stereo_plain_dsd(self):
-        with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
+        with fsutil.TempDir(prefix="pysacd-chain") as tmp:
             root = Path(tmp)
             for name, frames, pauses, args, *sizes in CHAIN_CASES + AREA_END_CASES:
                 with self.subTest(name):
@@ -376,7 +376,7 @@ class ChainBoundaryAgainstSacdExtract(unittest.TestCase):
                     self.check(chain_iso(root / "c.iso", frames, pauses), root, args, theirs, ours, kept=True)
 
     def test_multichannel_dst(self):
-        with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
+        with fsutil.TempDir(prefix="pysacd-chain") as tmp:
             root = Path(tmp)
             pick = ("first track", "two in a row", "middle track", "before a pause left out",
                     "a block carried across two pauses")
@@ -393,7 +393,7 @@ class ChainBoundaryAgainstSacdExtract(unittest.TestCase):
         """The -z modes of the release comparison, and -b, on a disc with a first track of 128
         frames: every file is sacd_extract's, but for the block pysacd keeps before a track not
         selected (-t 1,3), which is documented."""
-        with tempfile.TemporaryDirectory(prefix="pysacd-chain") as tmp:
+        with fsutil.TempDir(prefix="pysacd-chain") as tmp:
             iso = chain_iso(Path(tmp) / "c.iso", [128, 50, 60, 40], [])
             for mode in ("dsf-nopad", "dsf-nopad-pauses", "dsf-nopad-tracks", "dsf-nopad-gap",
                          "dsf-nopad-concat", "dsf-pauses"):
@@ -443,7 +443,7 @@ class HarnessDetects(unittest.TestCase):
             chunks = b"DSD " + len(audio).to_bytes(8, "big") + audio + b"COMT" + len(comt).to_bytes(8, "big") + comt
             return b"FRM8" + (len(chunks) + 4).to_bytes(8, "big") + b"DSD " + chunks
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with fsutil.TempDir() as tmp:
             root = Path(tmp)
             a, b = root / "a.dff", root / "b.dff"
             a.write_bytes(dff(b"sacd-ripper", b"\1\2"))
@@ -521,7 +521,7 @@ class HarnessDetects(unittest.TestCase):
         a, b = [row() for _ in range(3)], [row() for _ in range(2)]
         ours = [self.dsf(a, 3 * 4096), self.dsf(b, 2 * 4096)]
         theirs = [self.dsf(a[:2], 2 * 4096), self.dsf([a[2], *b], 3 * 4096)]
-        with tempfile.TemporaryDirectory(prefix="pysacd-carry") as tmp:
+        with fsutil.TempDir(prefix="pysacd-carry") as tmp:
             se, py = self.trees(Path(tmp), ours, theirs)
             vs = cmp.against_sacd_extract(py, se, cmp.tree(py), cmp.tree(se), False, True)["dsf"]
             self.assertEqual((vs["identical"], vs["documented"], len(vs["different"])), (0, 1, 1))
@@ -532,7 +532,7 @@ class HarnessDetects(unittest.TestCase):
         rnd = random.Random(182)
         rows = [rnd.randbytes(2 * 4096) for _ in range(3)]
         ours = self.dsf(rows, 3 * 4096)
-        with tempfile.TemporaryDirectory(prefix="pysacd-drop") as tmp:
+        with fsutil.TempDir(prefix="pysacd-drop") as tmp:
             root = Path(tmp)
 
             def vs(theirs: bytes, nopad: bool = True) -> dict:

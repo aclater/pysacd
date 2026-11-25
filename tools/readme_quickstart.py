@@ -37,6 +37,18 @@ SWAPS = {"pip install pysacd": "pip install {wheel}"}
 MARK = "@@readme-quickstart-step"
 
 
+SH = ("sh", "bash", "shell", "console")
+SKIP_MARK = re.compile(r"<!--\s*docs-run:[^>]*\bskip=\"[^\"]+\"")
+
+
+def marked_skip(prose: list[str]) -> bool:
+    """True when the nearest non-blank line before a block is a `docs-run: skip="reason"` marker:
+    the block is for another platform (the Windows PowerShell commands, tested on Windows). Only
+    non-sh blocks are skipped: an sh block is always a step, whatever docs-run does with it."""
+    last = next((ln for ln in reversed(prose) if ln.strip()), "")
+    return bool(SKIP_MARK.search(last))
+
+
 class Step:
     def __init__(self, lines: list[str], expect: list[str]):
         self.lines, self.expect = lines, expect
@@ -63,17 +75,22 @@ def steps(text: str) -> list[Step]:
             prose.append(lines[i])
             i += 1
             continue
-        if out:
-            out[-1].expect = should_see(prose)
-        prose = []
         indent, lang = len(m.group(1)), m.group(2)
+        skip = lang not in SH and marked_skip(prose)
+        if not skip:
+            if out:
+                out[-1].expect = should_see(prose)
+            prose = []
         body = []
         i += 1
         while i < len(lines) and not re.match(r"\s*```\s*$", lines[i]):
             body.append(lines[i][indent:] if lines[i][:indent].strip() == "" else lines[i])
             i += 1
         i += 1
-        if lang not in ("sh", "bash", "shell", "console"):
+        if skip:
+            print(f"Quick start: skipping a ```{lang} block marked docs-run skip (tested elsewhere)")
+            continue
+        if lang not in SH:
             sys.exit(f"Quick start: a ```{lang} block; this tool runs only sh blocks")
         out.append(Step(body, []))
     if out:

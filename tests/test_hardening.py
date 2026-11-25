@@ -18,6 +18,8 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
+import fsutil
+
 from pysacd import _native, musicbrainz, safeio
 
 
@@ -71,15 +73,26 @@ class SafeIO(unittest.TestCase):
         self.assertEqual(len(names), 100)
         self.assertTrue(all(len(n) < 40 and n.startswith(".") for n in names))
 
+    def bases(self):
+        # pysacd writes on Windows through extended-length paths (safeio.long_path, #217): the
+        # protections must hold in that form too (elsewhere long_path() changes nothing)
+        yield "plain", self.dir
+        if safeio.WINDOWS:
+            yield "extended-length", Path(safeio.long_path(self.dir))
+
     def test_create_refuses_existing_and_symlinks(self):
-        target = self.dir / "target"
-        target.write_bytes(b"keep")
-        link = self.dir / "link"
-        link.symlink_to(target)
-        for p in (target, link):
-            with self.subTest(p=p.name), self.assertRaises(FileExistsError):
-                safeio.create(p)
-        self.assertEqual(target.read_bytes(), b"keep")
+        linked = True
+        for form, base in self.bases():
+            target = base / f"target-{form}"
+            target.write_bytes(b"keep")
+            link = base / f"link-{form}"
+            linked = fsutil.try_symlink(link, target) and linked
+            for p in (target, link) if linked else (target,):
+                with self.subTest(form=form, p=p.name), self.assertRaises(FileExistsError):
+                    safeio.create(p)
+            self.assertEqual(target.read_bytes(), b"keep")
+        if not linked:
+            self.skipTest(fsutil.NO_SYMLINK)
 
     def test_open_new_closes_fd_if_wrapping_fails(self):
         target = self.dir / "x"
@@ -93,21 +106,27 @@ class SafeIO(unittest.TestCase):
         self.assertFalse(target.exists())
 
     def test_write_file_mode_and_symlink_replace(self):
-        outside = self.dir / "outside"
-        outside.write_bytes(b"canary")
-        final = self.dir / "out.cue"
-        final.symlink_to(outside)
-        old = os.umask(0)
-        try:
-            safeio.write_file(final, b"data")
-        finally:
-            os.umask(old)
-        self.assertEqual(outside.read_bytes(), b"canary")      # the symlink was replaced, not followed
-        self.assertFalse(final.is_symlink())
-        self.assertEqual(final.read_bytes(), b"data")
-        if os.name != "nt":             # Windows has no POSIX mode bits
-            self.assertEqual(stat.S_IMODE(final.stat().st_mode), 0o666)     # umask 0: nothing executable
+        linked = True
+        for form, base in self.bases():
+            with self.subTest(form=form):
+                outside = base / f"outside-{form}"
+                outside.write_bytes(b"canary")
+                final = base / f"out-{form}.cue"
+                this_linked = fsutil.try_symlink(final, outside)
+                linked = linked and this_linked
+                old = os.umask(0)
+                try:
+                    safeio.write_file(final, b"data")
+                finally:
+                    os.umask(old)
+                self.assertEqual(outside.read_bytes(), b"canary")      # the symlink was replaced, not followed
+                self.assertFalse(final.is_symlink())
+                self.assertEqual(final.read_bytes(), b"data")
+                if os.name != "nt":             # Windows has no POSIX mode bits
+                    self.assertEqual(stat.S_IMODE(final.stat().st_mode), 0o666)     # umask 0: nothing executable
         self.assertEqual([p.name for p in self.dir.iterdir() if p.name.endswith(".partial")], [])
+        if not linked:      # the plain-file half above ran; only the symlink replacement did not
+            self.skipTest(fsutil.NO_SYMLINK)
 
 
 class ConfigDir(unittest.TestCase):

@@ -41,3 +41,8 @@ other projects can reuse the filter. Earlier versions of the two files remain av
 GPL-2.0-or-later as well. The byte-wise lookup-table technique in its first stage is credited to
 Sebastian Gesemann's dsd2pcm (BSD-3-Clause), as the file says. Inside pysacd,
 the files are combined with the rest of the program under GPL-2.0-or-later.
+
+**Documentation.** The README's text, the documentation in `docs/` (icons included) and the
+measurement data published in it are CC BY 4.0 ([CC-BY-4.0.txt](CC-BY-4.0.txt)), except for the parts the README lists under
+[Licence and credits](../README.md#licence-and-credits). The licence covers the text and data,
+not the code; the code's licences are the ones above.

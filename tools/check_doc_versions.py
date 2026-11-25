@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Check that the version claims in README.md and docs/ match pyproject.toml and scarletbook.lock.
 
+The minimum Python in prose is not checked here: it is a facts region (docs_facts.py of the shared
+docs tools).
+
     python3 -I tools/check_doc_versions.py      # Python 3.11 or later (tomllib)
 
 A short list of known sentences, not a scan for every number: each pattern below is matched
@@ -36,8 +39,11 @@ def truth() -> dict[str, str]:
 
 # (what, pattern, expected value from truth(), required): a pattern's groups, joined with " to ",
 # are compared with the expected value.
+# The minimum Python in prose is a facts region in the Markdown, checked by the shared docs tools
+# (dsd-toolbox tools/docs/docs_facts.py, the docs-facts workflow). What they can't check stays
+# here: the README badge (a facts region can't start a badge line), the tested range
+# (classifiers), the scarletbook pin and the pinned release.
 CHECKS = [
-    ("minimum Python", r"Python (3\.\d+) or later", "{python_min}", True),
     ("minimum Python (badge)", r"python-(3\.\d+)%2B", "{python_min}", True),
     ("minimum Python (badge text)", r"Python (3\.\d+)\+", "{python_min}", True),
     ("tested Python range", r"Python (3\.\d+) to (3\.\d+)", "{python_min} to {python_max}", True),

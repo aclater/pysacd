@@ -21,6 +21,7 @@ name = "stereo FLAC 88.2 kHz"
 adapter = "cli"
 class = "A"
 output_ext = "wav"
+version_command = "pysacd --version"
 command = "python3 -I tools/quality_device.py --format flac --rate 88200 --area stereo {input} {output}"
 
 [[device]]
@@ -28,6 +29,7 @@ name = "stereo FLAC 176.4 kHz"
 adapter = "cli"
 class = "A"
 output_ext = "wav"
+version_command = "pysacd --version"
 command = "python3 -I tools/quality_device.py --format flac --rate 176400 --area stereo {input} {output}"
 
 # Multichannel: a 5.1 area whose channels carry the input pair in turn (L R L R L R); the surround
@@ -37,6 +39,7 @@ name = "5.1 WAV 88.2 kHz"
 adapter = "cli"
 class = "A"
 output_ext = "wav"
+version_command = "pysacd --version"
 command = "python3 -I tools/quality_device.py --format wav --rate 88200 --area multichannel --channels 5,6 {input} {output}"
 
 [[device]]
@@ -44,36 +47,53 @@ name = "5.1 WAV 176.4 kHz"
 adapter = "cli"
 class = "A"
 output_ext = "wav"
+version_command = "pysacd --version"
 command = "python3 -I tools/quality_device.py --format wav --rate 176400 --area multichannel --channels 5,6 {input} {output}"
 
 [pysacd_quality]
-# dsd-measure version pin. TO BE RE-PINNED AT 0.1.2: 0.1.2 (output word-length detection) is not
-# tagged yet, so this pins 0.1.1 (tag v0.1.1, the head of its main branch on 2026-11-24). A
-# comparison made with this pin is a draft, never a published verdict (owner rule).
-dsd_measure_version = "0.1.1"
-dsd_measure_commit = "d234b7a8233ccfe391776e7c6425cbf8643c47e3"
+# tools/quality_compare.py hands dsd-measure the tables above this one only, so editing anything
+# from here on (a bound, a note) leaves the measured suite, and the reuse of reports, unchanged.
+# dsd-measure version pin: 0.1.2 (tag v0.1.2). It records each device's version and executable hash,
+# reads the word length of every output file, marks a comparison that is not like for like, and
+# reports THD apart from SINAD. final stays false until the first published comparison (pysacd
+# 0.6.0 against 0.5.x, with dsd2pcm 0.2.0 as the PCM path): until then a page is a draft.
+dsd_measure_version = "0.1.2"
+dsd_measure_commit = "3eaec2df13634f3bfc3968326a1dd7604ddfaf08"
 dsd_measure_repository = "https://github.com/dsd-toolbox/dsd-measure"
 final = false
+
+# The output every device must write, read by dsd-measure from each file's header
+# (metrics.output_format). Both versions must match it and each other, so that a comparison is
+# 24-bit against 24-bit at the same rate; anything else voids the page.
+[pysacd_quality.output]
+kind = "int"
+bits = 24
 
 # The figures compared, each from every device's results.json. "better" says which way is an
 # improvement. "bound" is the repeatability in dB: the spread of the figure over three dither draws
 # of one build (the same signal shifted by 0, 1 and 2 idle frames, see [pysacd_quality.repeatability]),
 # doubled and rounded up. A change within the bound is noise; a change beyond it is flagged, and a
-# worse one is a regression. Derived on 2026-11-24 from 0.6.0's draft run (largest spreads: SINAD and
-# THD+N 0.10 dB, noise 0.02 dB, alias 0.11 dB); re-derive when dsd-measure is re-pinned.
+# worse one is a regression. "floor_flag" names dsd-measure's flag for a figure within 6 dB of its
+# reference floor (dsd_measure.floor.flags); such a figure is marked "floor" on the page.
+# Re-derived on 2026-11-24 with dsd-measure 0.1.2 from master's draft run (the old C filter);
+# largest spreads: SINAD 0.06 dB, THD 0.80 dB, noise 0.01 dB, alias 0.14 dB. With 0.1.1 (0.6.0's
+# draft) they were SINAD and THD+N 0.10 dB, noise 0.02 dB, alias 0.11 dB; THD was not compared.
+# THD at about -146 dB reads harmonics close to the dither noise, hence its wider bound.
 [[pysacd_quality.metric]]
 key = "sinad"
-label = "SINAD, 1 kHz at 0 dB SACD (dB)"
+label = "SINAD (= -THD+N), 1 kHz at 0 dB SACD (dB)"
 path = "metrics.tone_0dbsacd.sinad_db"
 better = "higher"
 bound = 0.2
+floor_flag = "sinad"
 
 [[pysacd_quality.metric]]
-key = "thdn"
-label = "THD+N, 1 kHz at 0 dB SACD (dB)"
-path = "metrics.tone_0dbsacd.thdn_db"
+key = "thd"
+label = "THD (harmonics 2 to 9), 1 kHz at 0 dB SACD (dB)"
+path = "metrics.tone_0dbsacd.thd_db"
 better = "lower"
-bound = 0.2
+bound = 1.7
+floor_flag = "thd"
 
 [[pysacd_quality.metric]]
 key = "noise"
@@ -81,6 +101,7 @@ label = "Noise floor, 20 Hz to 20 kHz (dBFS)"
 path = "metrics.noise.unweighted_dbfs"
 better = "lower"
 bound = 0.1
+floor_flag = "noise"
 
 [[pysacd_quality.metric]]
 key = "alias"
@@ -94,11 +115,12 @@ bound = 0.3
 # with the tool's reference modulator, its SHA-256 checked). Null depth = the source's level minus
 # the difference's level, 20 Hz to 20 kHz. The bound is the depth of two dither draws of the
 # candidate against each other: a release that differs from its predecessor by no more than the
-# dither does reaches it (0.6.0's draft: within 0.3 dB on every output; bound set at 1 dB).
+# dither does reaches it (0.6.0's draft: within 0.3 dB on every output; bound set at 1 dB). With
+# dsd-measure 0.1.2 both depths are limited by the 24-bit word length, which the page notes.
 [pysacd_quality.null]
 seconds = 20
 seed = 20261124
-# made with dsd-measure 0.1.1 (d234b7a); re-pin with dsd-measure
+# re-derived with dsd-measure 0.1.2 (3eaec2d): the same as with 0.1.1 (d234b7a)
 source_sha256 = "128f6ecb97a4060a38637bf9be746912d3f613f681a76093e04a0a54cbd4d24b"
 bound = 1.0
 

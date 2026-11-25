@@ -3,10 +3,10 @@
 import os
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
+import fsutil
 import sacdgen
 import test_dst_full as dst
 
@@ -20,7 +20,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 @unittest.skipUnless(dst.HAVE_ENCODER, "test DST encoder unavailable (make test-tools)")
 class DiscCollisions(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.dir = Path(self.tmp.name)
         self.out = self.dir / "out"
         self.frames = [f for _, _, f in dst.encoded(2)][:6]
@@ -40,7 +40,7 @@ class DiscCollisions(unittest.TestCase):
                               env=dict(os.environ, PYTHONPATH=str(SRC)), capture_output=True, text=True, check=False)
 
     def files(self) -> list[str]:
-        return sorted(p.relative_to(self.out).as_posix() for p in self.out.rglob("*.dsf"))
+        return sorted(p.relative_to(fsutil.lp(self.out)).as_posix() for p in fsutil.lp(self.out).rglob("*.dsf"))
 
     def test_mastered_as_one_disc_sets_are_separated_with_hint(self):
         a = self.iso("d1", disc_catalog="CS065232")
@@ -60,7 +60,7 @@ class DiscCollisions(unittest.TestCase):
         self.assertEqual(self.convert("-f", "flac", str(a)).returncode, 0)
         r = self.convert("-f", "flac", str(b))
         self.assertIn("already holds a different disc (CS065232)", r.stderr)
-        self.assertEqual(len(list(self.out.rglob("*.flac"))), 4)
+        self.assertEqual(len(list(fsutil.lp(self.out).rglob("*.flac"))), 4)
 
     def test_disc_override_joins_the_set(self):
         a = self.iso("d1", disc_catalog="CS065232")
@@ -123,7 +123,7 @@ class ExtractDiscCollisions(DiscCollisions):
         self.out.mkdir()
 
     def tree(self, root: Path) -> dict[str, bytes]:
-        return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+        return {str(p.relative_to(fsutil.lp(root))): p.read_bytes() for p in sorted(fsutil.lp(root).rglob("*")) if p.is_file()}
 
     def test_mastered_as_one_disc_sets_are_separated_with_hint(self):
         # As on the real Live-Evil: same album title, different track titles
@@ -219,7 +219,7 @@ class NoSilentReplacement(unittest.TestCase):
     album and track names are the same (docs/security.md, "Hostile images")."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
         self.out = self.dir / "out"
@@ -235,8 +235,8 @@ class NoSilentReplacement(unittest.TestCase):
 
     def hashes(self) -> dict[str, str]:
         import hashlib
-        return {p.relative_to(self.out).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
-                for p in sorted(self.out.rglob("*.dsf"))}
+        return {p.relative_to(fsutil.lp(self.out)).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in sorted(fsutil.lp(self.out).rglob("*.dsf"))}
 
     def convert(self, iso: Path) -> subprocess.CompletedProcess:
         return subprocess.run([sys.executable, "-m", "pysacd", "convert", "--config", os.devnull, "--no-musicbrainz",
@@ -251,8 +251,8 @@ class NoSilentReplacement(unittest.TestCase):
         # 250 bytes of title: the folder name is cut, and the cut must not take the label
         for title in ("A" * 250, "\u00e9" * 120):
             with self.subTest(title=title[:3]):
-                for p in self.out.iterdir():
-                    __import__("shutil").rmtree(p)
+                for p in fsutil.lp(self.out).iterdir():
+                    fsutil.rmtree(p)
                 a = self.iso("a", 0, title=title, album_catalog="CAT-A", disc_catalog="DISC-A")
                 b = self.iso("b", 50, title=title, album_catalog="CAT-B", disc_catalog="DISC-B")
                 r = self.convert(a)
@@ -335,7 +335,7 @@ class NoSilentReplacement(unittest.TestCase):
             cv.convert(str(a), cv.Options(output_dir=str(self.out), format="dsf", musicbrainz=False, cover=False,
                                           cover_file=""))
         self.assertIn("outside the output folder", str(e.exception))
-        self.assertEqual(list(self.dir.rglob("*.dsf")), [])
+        self.assertEqual(list(fsutil.lp(self.dir).rglob("*.dsf")), [])
 
     def test_check_own_file(self):
         from pysacd import safeio
@@ -382,7 +382,7 @@ class DeviceNames(unittest.TestCase):
     def test_names_on_this_platform(self):
         from pysacd import sbcompat as sb
         win = sys.platform == "win32"
-        self.assertEqual(sb.make_filename("out", "CON", "cue"), "out/_CON.cue" if win else "out/CON.cue")
+        self.assertEqual(sb.make_filename("out", "CON", "cue"), "out\\_CON.cue" if win else "out/CON.cue")
         self.assertEqual(sb.make_filename(None, "nul", "dff"), "_nul.dff" if win else "nul.dff")
         self.assertEqual(sb.make_filename(None, "01 - CON", "dsf"), "01 - CON.dsf")
 
@@ -397,7 +397,7 @@ class PortableExtractNames(unittest.TestCase):
             "sys.exit(extract.main())")
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.dir = Path(self.tmp.name)
 
     def tearDown(self):
@@ -412,7 +412,7 @@ class PortableExtractNames(unittest.TestCase):
 
     @staticmethod
     def tree(root: Path) -> dict[str, bytes]:
-        return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+        return {p.relative_to(fsutil.lp(root)).as_posix(): p.read_bytes() for p in sorted(fsutil.lp(root).rglob("*")) if p.is_file()}
 
     def device_iso(self) -> Path:
         path = self.dir / "con.iso"
@@ -439,7 +439,7 @@ class PortableExtractNames(unittest.TestCase):
             ours = self.dir / f"ours{i}"
             self.extract(ours, *args, "-i", str(iso))
             self.assertEqual(sorted(self.tree(ours)), sorted(f"{album}/{n}" for n in names))
-        self.assertIn(f'FILE "{album}.dff"', (self.dir / "ours1" / album / f"{album}.cue").read_text(encoding="utf-8"))
+        self.assertIn(f'FILE "{album}.dff"', fsutil.lp(self.dir / "ours1" / album / f"{album}.cue").read_text(encoding="utf-8"))
 
     def test_the_filesystem_is_asked_once_per_name_not_per_pair(self):
         # 60 names that differ only in case: one scratch folder, and no more files than names
@@ -467,7 +467,7 @@ class PortableExtractNames(unittest.TestCase):
             got = extract._distinct_names(folder, names, "dsf", [])
         self.assertEqual(len(made), 1)
         self.assertLessEqual(len(touched), len(names))
-        self.assertEqual(list(folder.iterdir()), [])                 # the scratch folder is gone
+        self.assertEqual(list(fsutil.lp(folder).iterdir()), [])                 # the scratch folder is gone
         self.assertEqual(len({g.casefold() for g in got}) if _case_insensitive(folder) else len(set(got)), 60)
         if not _case_insensitive(folder):
             self.assertEqual(got, names)
@@ -569,7 +569,7 @@ class OwnFilesAcrossModes(unittest.TestCase):
     disc's (#165); another disc's files in the same mode combinations still keep it out (#4)."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
         self.a = _plain_disc(self.dir / "a.iso", ["One", "Two"], "CAT-A")
@@ -588,21 +588,21 @@ class OwnFilesAcrossModes(unittest.TestCase):
 
     @staticmethod
     def tree(root: Path) -> dict[str, bytes]:
-        return {p.relative_to(root).as_posix(): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+        return {p.relative_to(fsutil.lp(root)).as_posix(): p.read_bytes() for p in sorted(fsutil.lp(root).rglob("*")) if p.is_file()}
 
     def test_files_without_readable_tags_are_matched_by_name(self):
         # A damaged file of this disc is replaced in place, with a warning; files written
         # without tags (--id3tag 0) are this disc's too, and say nothing
         out = self.out("damaged")
         self.pysacd(out, self.a, ["-s"])
-        dsf = sorted(out.rglob("*.dsf"))
+        dsf = sorted(fsutil.lp(out).rglob("*.dsf"))
         self.assertEqual(len(dsf), 2)
         good = dsf[0].read_bytes()
         dsf[0].write_bytes(b"not a DSF file")
         r = self.pysacd(out, self.a, ["-s"])
         self.assertIn("its tags could not be read", r.stdout + r.stderr)
         self.assertIn("matched by name only", r.stdout + r.stderr)
-        self.assertEqual(sorted(out.rglob("*.dsf")), dsf)        # same folder, nothing diverted
+        self.assertEqual(sorted(fsutil.lp(out).rglob("*.dsf")), dsf)        # same folder, nothing diverted
         self.assertEqual(dsf[0].read_bytes(), good)
 
         out = self.out("untagged")
@@ -719,7 +719,7 @@ class IsrcEditions(unittest.TestCase):
     tree = staticmethod(OwnFilesAcrossModes.tree)
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
         self.env = dict(os.environ, PYTHONPATH=str(SRC))

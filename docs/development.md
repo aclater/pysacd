@@ -12,6 +12,7 @@ the test suite and CI, and the release steps. Contributor rules are in
 
 ## Building
 
+<!-- docs-run: skip="builds from a source checkout; CI's tests and portability jobs build the same way" -->
 ```sh
 make                 # src/pysacd/_sacdconv.so, tuned for this CPU
 make PORTABLE=1      # generic x86-64; the PCM filters still use AVX2/AVX-512 when the CPU has them
@@ -222,7 +223,7 @@ writer thread fills the whole file from it, in order, with the decoded frames ea
 4096-byte blocks, the zero padding and a `-z` chain's carried and left-over bytes. pysacd's
 own DSF block layout (bit reversal, planar copy, block buffers) is deleted. For `-z` across a
 pause left out, the previous file's last frame stands in for the position before the file
-(`OutputSpec.head_frame`), which gives the carry `sacd_extract` writes. The owner's rule for offloading is to adopt scarletbook where
+(`OutputSpec.head_frame`), which gives the carry `sacd_extract` writes. The project's rule for offloading is to adopt scarletbook where
 the output is byte-identical and no more than 15 % slower, and then delete pysacd's own code;
 both hold (see [performance](performance.md)).
 
@@ -326,10 +327,17 @@ non-executable stack. See [performance](performance.md#hardening).
 
 ## Tests
 
+<!-- docs-run: skip="the test suite on a source checkout; CI's tests job runs it" -->
 ```sh
 make && PYTHONPATH=src python3 -m unittest discover -s tests
 PYSACD_TEST_ISO=/path/to/disc.iso PYTHONPATH=src python3 -m unittest discover -s tests
 ```
+
+The tests load the engine from `src/pysacd` (`PYTHONPATH=src`), not from an installed wheel, so
+`make` must have built it there first: `src/pysacd/_sacdconv.dll` on Windows (in the MSYS2 UCRT64
+shell, [Windows](install/windows.md#build-from-source-developers)), `_sacdconv.so` on Linux, `_sacdconv.dylib` on macOS.
+Without it most tests fail at once. A standard Windows user can't create symlinks, so the two
+symlink checks of `tests/test_hardening.py` skip that part there.
 
 With `SACD_EXTRACT=/path/to/sacd_extract` and `PYSACD_TEST_ISO` set, the tests also
 copy the ISO through `ps3sim` with the real `sacd_extract -I` and check that the copy
@@ -364,6 +372,7 @@ scarletbook before running `sacdconv_area_run()` on each area, in one of two way
 
 scarletbook's own parsing is fuzzed in its repository; this covers pysacd's code around it.
 
+<!-- docs-run: skip="10 minutes of fuzzing on a source checkout; CI's fuzz job and release test plan step 3 run it" -->
 ```sh
 make fuzz test-tools
 PYTHONPATH=src:tests python3 fuzz/make_seeds.py build/fuzz-seeds
@@ -465,6 +474,8 @@ Every pull request runs:
   in sacdfs, whose `benchmark` job has the same design through the mount (sacdfs's #162); only
   `scripts/bench_workload.py` differs. To run it by hand on two built trees:
 
+  <!-- docs-run: skip="compares two built source trees; CI's benchmark job runs it" -->
+  <!-- docs-lint: ignore placeholder -- BENCH_DISCS must be an absolute path, and the checkout can be anywhere -->
   ```sh
   python3 -I scripts/bench_workload.py generate build/bench-discs   # needs numpy and make test-tools
   BENCH_DISCS=$PWD/build/bench-discs python3 -I scripts/bench_compare.py --base OLD_TREE --head NEW_TREE \
@@ -488,11 +499,11 @@ Every pull request runs:
 - **Coverage**: the Python 3.13 leg runs the suite under coverage.py (settings in
   `pyproject.toml`) and shows the report in the job summary, with the HTML and XML
   reports as the `coverage` artifact. The XML report also goes to
-  [Codecov](https://codecov.io/gh/aclater/pysacd) for the README badge, authenticated
+  [Codecov](https://codecov.io/gh/dsd-toolbox/pysacd) for the README badge, authenticated
   with the job's GitHub OIDC token (no stored secret); pull requests from forks skip
   the upload, and a failed upload fails CI only on `master`.
-- **A link check** (lychee) of README.md and `docs/` when they change, `#fragment` links to
-  headings included; weekly too.
+- **A link check** (the shared `docs-links`) of every Markdown file when one changes: relative
+  links and `#anchor` links to headings offline, and every external URL weekly.
 - **The README's Quick start, as written** (`tools/readme_quickstart.py`, the `quickstart`
   workflow; weekly too): an sdist and a wheel from it, built as the release's sdist job does, then
   the README's own `sh` blocks under "Quick start" run in order in one shell, as a normal user, on
@@ -543,6 +554,7 @@ Contributor rules (clean room, byte-identity, benchmarks, privacy) are in [CLAUD
 client (and `sacd_extract -i`) can be tested without a PS3. It can throttle,
 add latency, drop connections and fail reads on demand:
 
+<!-- docs-run: skip="starts a server that runs until Ctrl-C" -->
 ```console
 $ pysacd ps3sim album.iso --port 2002 --rate 6 --drop-after 500
 serving album.iso as a SACD Ripper server on 127.0.0.1:2002 (Ctrl-C to stop)
@@ -599,6 +611,7 @@ Its steps include:
    the commit pinned in `.github/workflows/ci.yml`, and discs covering plain DSD, DST, hybrid and
    multichannel; raw-sector images need `pysacd-extract -I` first, since `sacd_extract` refuses them:
 
+   <!-- docs-run: skip="a release step on real discs and two source trees (release test plan step 2)" -->
    ```sh
    python3 tools/extract_compare.py --old PREVIOUS_RELEASE/src --new src --sacd-extract BIN \
        --no-values --require-sacd-extract IMAGE...
@@ -613,9 +626,10 @@ Its steps include:
    - creates build provenance attestations for every wheel and the sdist;
    - attaches the files to a GitHub release, each with its attestation bundle beside it
      (the file's name plus `.intoto.jsonl`, verified in the job first). Check a download with
-     `gh attestation verify` on the file, with `--repo dsd-toolbox/pysacd` (`aclater/pysacd` for
-     0.5.5 and earlier, signed before the repository moved), adding
-     `--bundle` and the bundle's name to check against the attached bundle. OpenSSF
+     `gh attestation verify` on the file, with `--repo dsd-toolbox/pysacd`, adding
+     `--bundle` and the bundle's name to check against the attached bundle. Files of 0.5.5 and
+     earlier were signed before the repository moved: [install](install/README.md#checking-a-download)
+     shows how to check them. OpenSSF
      Scorecard counts only these assets as provenance;
    - publishes to TestPyPI, if the repository variable `TESTPYPI_PUBLISH` is
      `true` (trusted publishing, environment `testpypi`);
@@ -632,9 +646,10 @@ Its steps include:
 Every release from 0.6.0 measures its PCM output against the previous release and publishes the
 result as `docs/quality/VERSION.md` ([PCM quality by release](quality/README.md)), linked from the
 release notes. The suite, [suites/pysacd.toml](../suites/pysacd.toml), pins the
-[dsd-measure](https://github.com/dsd-toolbox/dsd-measure) commit, the outputs (`pysacd convert` to
-stereo FLAC and 5.1 WAV at 88.2 and 176.4 kHz), the figures (SINAD, THD+N, noise floor, alias
-rejection, null depth) and each figure's repeatability bound. `tools/quality_device.py` makes
+[dsd-measure](https://github.com/dsd-toolbox/dsd-measure) release and commit (0.1.2), the outputs
+(`pysacd convert` to stereo FLAC and 5.1 WAV at 88.2 and 176.4 kHz, 24-bit), the figures (SINAD,
+which is THD+N with the sign turned; THD, the harmonics alone; noise floor; alias rejection; null
+depth) and each figure's repeatability bound. `tools/quality_device.py` makes
 pysacd look like any DSD-to-PCM converter to dsd-measure: it wraps each synthetic DSD test signal in
 a one-track SACD image with `tests/sacdgen.py` and runs `pysacd convert` on it.
 
@@ -644,34 +659,63 @@ or later (as dsd-measure does), Rust, a C compiler, `flac-devel`, `ffmpeg` and g
 build, and takes about an hour on 6 cores.
 From the release commit, in the Fedora container of the [release test plan](release-test-plan.md):
 
+<!-- docs-run: skip="a release step: builds and measures two releases for about an hour (release test plan step 11)" -->
 ```sh
 python3 tools/quality_compare.py --previous 0.5.5 --candidate . --work /var/tmp/pysacd-quality --out docs/quality/0.6.0.md
 ```
 
+The previous release is its PyPI wheel; give the candidate as a wheel too (`--candidate
+dist/pysacd-VERSION-....whl`) to compare like builds. A local source build is compiled differently
+from the release wheels, and on 2026-11-24 that alone changed the last bit of some samples: 0.5.5
+built from its tag gave master's bytes, not the 0.5.5 wheel's (null depth about 135 dB at 88.2 kHz,
+deeper than two dither draws of one build at about 124 dB, and no figure beyond its bound).
+
 A second run with the same `--work` reuses only reports made from the same builds (wheel
 SHA-256, or tree commit and content hash), dsd-measure commit, suite file and inputs; each report
-folder records them in `quality-meta.json`. It exits 1 if a figure is worse than the previous release's by more than its bound, or if the two
-versions were not fed identical inputs. Such a regression blocks the release unless DECISIONS.md in
-dsd-toolbox/dsd-toolbox explains and accepts it. A suite whose `final` is `false` (a dsd-measure pin
-before its release) writes a page marked draft.
+folder records them in `quality-meta.json`, beside dsd-measure's own provenance, which must name the
+same dsd-measure version and the same `pysacd --version`. dsd-measure reads the word length and rate
+of every file pysacd writes; both versions must have written the suite's format (24-bit integer) at
+the same rate, so the comparison is like for like. The page marks a figure within 6 dB of
+dsd-measure's reference floor (`floor`) and a SINAD that the 24-bit word length may limit
+(`word length`). It exits 1 if a figure is worse than the previous release's by more than its
+bound, if the two versions were not fed identical inputs, or if their outputs were not like for
+like. Such a regression blocks the release unless DECISIONS.md in
+dsd-toolbox/dsd-toolbox explains and accepts it. A suite whose `final` is `false` writes a page
+marked draft; it stays `false` until the first published comparison (0.6.0, whose PCM path is
+dsd2pcm). A CI job that runs dsd-measure's fast gate profile against the previous release on every
+pull request is not here yet: it waits for the dsd-measure release that ships that profile.
 
 ### Docs commands against a release
 
-`tools/docs_commands.py` runs every `sh`, `console` and `python` block of README.md and `docs/`
-against a published release, each block in a fresh folder that is also its HOME, on generated discs
-named as the docs name them (`album.iso`, `disc.iso`, `other.iso`). A PS3 address is served by the
-release's own `pysacd ps3sim`, and `pip install pysacd` installs the release under test. Commands
-that can't run there (development, Windows, a MusicBrainz account, `sacd_extract`, release steps
-and the whole [release test plan](release-test-plan.md)) are listed in the tool with the reason; a list entry that no longer matches the docs fails, and so does any block
-that runs and exits non-zero. From a checkout with `make test-tools` built and numpy installed:
+Every `sh`, `bash` and `console` block in the Markdown carries a marker of the DSD Toolbox docs
+tools ([docs tooling](https://github.com/dsd-toolbox/dsd-toolbox/blob/main/docs/docs-tooling.md)) on
+the line before its fence: `<!-- docs-run: ... -->` runs it, `<!-- docs-run: skip="reason" -->`
+says why it can't run. The markers are the only list of what runs. Two tools read them:
 
+- The `docs-run` workflow (the shared `docs_run.py`) runs the marked blocks in a fresh Fedora
+  container against the release on PyPI. The blocks that name a disc share the group `discs`,
+  which starts in a copy of the checkout (`checkout=1`, the committed files only). Its `setup=`
+  installs pysacd from PyPI and runs `tools/docs_fixtures.py` from that copy: it writes
+  `album.iso`, `disc.iso` and `other.iso` (generated with `tests/sacdgen.py` and
+  `tests/dstenc.py`) and turns MusicBrainz lookups off. The blocks still run the release from
+  PyPI; only the test discs come from the checkout.
+- `tools/docs_commands.py` runs the same blocks, and the Python blocks, against any wheel or
+  pip requirement, each block in a fresh folder that is also its HOME, with the same generated
+  discs. A PS3 address is served by the release's own `pysacd ps3sim`, and `pip install pysacd`
+  installs the release under test. A block skipped because it "needs a PS3" runs here too, and
+  so does one that "needs an ordinary user" (docs-run's containers run as root, which
+  `pysacd convert` refuses), and one that "needs sacd_extract" or "needs podman" when
+  `--sacd-extract` or `--podman` is given. A block without a marker fails, and so does any block that runs and exits non-zero or
+  misses its `expect=`. From a checkout with numpy and a C compiler:
+
+<!-- docs-run: skip="runs this check itself, from a source checkout" -->
 ```sh
 python3 -I tools/docs_commands.py list
 python3 -I tools/docs_commands.py run --spec pysacd==VERSION --workdir build/docs-commands
 ```
 
-VERSION is the release under test. `--wheel` takes a wheel file instead; `--musicbrainz`,
-`--podman` and `--sacd-extract` also run the commands that need them.
+VERSION is the release under test. `--wheel` takes a wheel file instead, and `--musicbrainz` lets
+`pysacd convert` look the generated discs up on MusicBrainz.
 
 ### Release timings
 
@@ -683,6 +727,7 @@ has it, pinned with `taskset`. It records wall time, peak RSS, bytes written, an
 and throttle counters around each run, and fails (exit 2) when the newest tree is more than 5 %
 slower or uses more than 10 % more peak memory than the previous one.
 
+<!-- docs-run: skip="a release step on real discs, timed on a quiet machine (release test plan step 8)" -->
 ```sh
 python3 tools/bench_release.py setup --work ../bench v0.5.4 v0.5.5 new=master   # worktree, venv, make
 python3 tools/bench_release.py run --tree 0.5.4=../bench/trees/0.5.4 --tree 0.5.5=../bench/trees/0.5.5 \

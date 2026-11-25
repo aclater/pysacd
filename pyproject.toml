@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=64"]
+# certifi: on Windows, the root certificates for fetching the scarletbook library (#222; setup.py)
+requires = ["setuptools>=64", "certifi; sys_platform == 'win32'"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -36,6 +37,13 @@ dependencies = ["mutagen>=1.45", "tomli>=1.1; python_version < '3.11'"]
 convert = []        # kept so `pip install pysacd[convert]` still works; mutagen is a dependency now
 # ruff and mypy are pinned: an unpinned upgrade can change the rule set on unchanged code.
 dev = ["mutagen>=1.45", "numpy", "pytest==9.2.0", "ruff==0.17.4", "mypy==2.4.1", "coverage==7.16.2"]
+
+[project.urls]
+Homepage = "https://github.com/dsd-toolbox/pysacd"
+Source = "https://github.com/dsd-toolbox/pysacd"
+Issues = "https://github.com/dsd-toolbox/pysacd/issues"
+Changelog = "https://github.com/dsd-toolbox/pysacd/blob/master/CHANGELOG.md"
+Documentation = "https://github.com/dsd-toolbox/pysacd/blob/master/docs/README.md"
 
 [project.scripts]
 pysacd = "pysacd.__main__:main"

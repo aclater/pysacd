@@ -12,10 +12,13 @@
 #   TART_HOST    ssh destination of the Mac (key login, no prompts)
 #   SSH          the ssh command to reach TART_HOST (default: ssh), e.g. with -F CONFIG
 #   TART         command that runs tart there (default: tart), e.g. with TART_HOME set
-#   BASE_VM      a tart macOS VM with Remote Login on, never changed: the run uses a clone
+#   BASE_VM      a tart macOS VM with Remote Login on, never run itself:
+#                each run clones it, and the clone (named vm-<random hex>) is stopped and deleted at the end
 #   VM_KEY       path, on the Mac, of the private key the VM's user accepts
-#   VM_USER      the VM's admin user (default: admin); VM_PASSWORD its sudo password (default:
-#                admin, as in tart's published images), used only to install Python
+#   VM_USER      the VM's admin user (default: admin)
+#   VM_PASSWORD  optional, from the environment only (no default): the sudo password, used only
+#                when the VM has no Python 3.10 or later and python.org's installer must run.
+#                Without it, the install uses passwordless sudo and fails clearly if that is off.
 #   the VM       network access to pypi.org and python.org; about 2 GB free
 # Python: the VM's own 3.10 or later, else python.org's (version and SHA-256 in lib.sh).
 #
@@ -31,9 +34,9 @@ VERSION=${1:?usage: macos-vm.sh VERSION}
 : "${VM_KEY:?path on the Mac of the key the VM accepts}"
 TART=${TART:-tart}
 VM_USER=${VM_USER:-admin}
-VM_PASSWORD=${VM_PASSWORD:-admin}
+VM_PASSWORD=${VM_PASSWORD:-}
 OUT=$(realpath -m "${OUT:-platform-run-macos-$VERSION}")
-CLONE=pysacd-run-$$
+CLONE=vm-$(od -An -N4 -tx1 /dev/urandom | tr -d " \n")  # neutral: nothing on the Mac names the project
 SSH=${SSH:-ssh}
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/lib.sh"
@@ -75,7 +78,13 @@ if [ -z "$py" ]; then
     echo "== no Python 3.10 or later: installing python.org's $PYV"
     curl -fsSLO "https://www.python.org/ftp/python/$PYV/python-$PYV-macos11.pkg"
     echo "$SHA  python-$PYV-macos11.pkg" | shasum -a 256 -c - || exit 1
-    echo "$PW" | sudo -S -p '' installer -pkg "python-$PYV-macos11.pkg" -target / >/dev/null || exit 1
+    if [ -n "$PW" ]; then
+        printf '%s\n' "$PW" | sudo -S -p '' installer -pkg "python-$PYV-macos11.pkg" -target / >/dev/null || exit 1
+    else
+        sudo -n installer -pkg "python-$PYV-macos11.pkg" -target / >/dev/null || {
+            echo "installing Python needs root: set VM_PASSWORD in the environment, or allow passwordless sudo in the VM" >&2
+            exit 1; }
+    fi
     py=/Library/Frameworks/Python.framework/Versions/${PYV%.*}/bin/python3
 fi
 echo "== $("$py" -V)"

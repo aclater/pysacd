@@ -21,6 +21,7 @@ Blu-ray player running SACD Ripper or AutoScript are especially useful (#10).
    while yours waits, merge it into your branch (no force-push) and let the checks run again.
 3. **Run the checks before you push:**
 
+   <!-- docs-run: skip="the checks before a pull request, on a source checkout; CI runs each of them" -->
    ```sh
    ruff check .
    mypy src
@@ -68,7 +69,7 @@ Contributions are accepted under the project's licence,
 ## Issues: milestones, labels and claiming
 
 Every open issue says which release it is for, how important it is, where it stands, and
-what kind of agent should work on it. The issue list then shows what's up without opening
+what kind of contributor should work on it. The issue list then shows what's up without opening
 each issue.
 
 - **Milestone:** the release it is planned for (`0.2.0`, `0.3.0`, ...) or `Later`. Umbrella
@@ -82,7 +83,7 @@ each issue.
   - `status: in review`: a PR is open;
   - `status: fixed on main`: merged. The issue stays open until the release ships and has
     been verified, then it is closed.
-  - `status: needs decision`: waiting on the owner.
+  - `status: needs decision`: waiting on a maintainer.
 - **Type:** `bug`, `enhancement`, `performance`, `documentation`, `plan`, or `tracking`
   (umbrella and design issues that track other work).
 - **Model:**
@@ -90,7 +91,7 @@ each issue.
   - `model: sonnet` for routine work: well-specified features, tests, docs, CI.
 
 **Claiming.** Before starting on an issue, check that nobody has claimed it. Then:
-1. Comment `Claimed by <agent> (<model>)`, and add `status: in progress`.
+1. Comment `I am working on this`, and add `status: in progress`.
 2. If you stop without a PR, comment that you're releasing it, and remove the label.
 3. When you open a PR, switch the label to `status: in review`. The PR says
    `Closes #N` only if it fully resolves the issue, else `Part of #N`.

@@ -7,10 +7,12 @@
 Why pysacd exists, in the author's words, as written in October 2026, with an update for
 0.3.0 at the end.
 
+<!-- docs-lint: ignore terminology -- the author's note keeps the author's own words -->
 Back in 2024 I was using beets to catalogue, and eventually normalise, my collection of 90.000+ audio files. Then I hit a wall: beets can't read SACD ISOs. The usual answer is sacd_extract, but driving it from a beets plugin means forking a process for every disc and scraping its text output. Slow and fragile.
 
 So I tried to re-implement the SACD reading in Python, working with ChatGPT. After a few days of banging my head against it I got nowhere. Scarletbook is a niche format, DST decoding is genuinely hard, and I shelved it.
 
+<!-- docs-lint: ignore terminology -- the author's note keeps the author's own words -->
 In October 2026 I threw Claude at the problem. It worked. After a few days of building and testing I now have pysacd, a Python module (pip install pysacd) that natively reads the full content of a SACD ISO. Anyone wanting to write a tool for SACD ISOs can now access those contents programmatically from within their Python application: structured objects instead of text to parse, exceptions instead of exit codes. The beets plugin is already published.
 
 This does not replace AutoScript or your PS3 and is not intended to. It works with them exactly like sacd_extract does. Point it at the player's IP and port and get an ISO, DSF or FLAC straight off the disc. The difference is on the client side. Most tools act as a wrapper or front end to sacd_extract - they run it for you and attempt to scrape its output as a text stream. pysacd does the work itself.

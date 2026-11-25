@@ -22,7 +22,8 @@ treat as newlines).
   (lone surrogates excepted, see below); nothing else changes, so ordinary discs keep
   byte-identical names.
 - for_terminal(): text for stdout/stderr and logs. Invisible characters become visible escapes
-  (\\x1b, \\u202e), so they can't drive the terminal or disguise what is shown.
+  (\\x1b, \\u202e), so they can't drive the terminal or disguise what is shown. On Windows it
+  also drops the extended-length prefix of output paths (safeio.long_path()).
 - format_exception(): a traceback whose exception messages are escaped like for_terminal().
 
 Ordinary names are unchanged: everything here only touches characters that real titles
@@ -50,6 +51,22 @@ _NAME_UNSAFE_RE = re.compile("[" + re.escape(NAME_UNSAFE) + "]")
 # "Naming Files, Paths, and Namespaces" lists COM1-9, LPT1-9 and the superscripts ¹²³; COM0 and LPT0,
 # which older versions of that page listed, are included to be safe.
 WINDOWS_DEVICE = re.compile(r"(?i)^(CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])[ .]*(\..*)?$")
+
+
+# safeio.long_path()'s prefix, as a path shows it (\\?\ and \\?\UNC\) and as its repr() in an
+# OSError message does (doubled backslashes); the repr form first, as it contains the other
+_LONG_PREFIX = re.compile(r"\\\\\\\\\?\\\\(UNC\\\\)?|\\\\\?\\(UNC\\)?")
+_WINDOWS = sys.platform == "win32"
+
+
+def _without_long_prefix(s: str) -> str:
+    """Windows paths as users write them: "\\\\?\\C:\\x" shows as "C:\\x", and
+    "\\\\?\\UNC\\server\\share" as "\\\\server\\share" (in either form)."""
+    def unc(m: re.Match) -> str:
+        if m.group(1):
+            return "\\\\\\\\"       # repr form of \\
+        return "\\\\" if m.group(2) else ""
+    return _LONG_PREFIX.sub(unc, s)
 
 
 _BREAKS = frozenset({"Cc", "Zl", "Zp"})     # these separate words: they become a space
@@ -122,8 +139,13 @@ def for_terminal(s: object, keep_tab_newline: bool = False) -> str:
     """Make every invisible character visible (\\x1b, \\u202e, \\U000e0041) so text can't drive a
     terminal or disguise itself (Trojan Source).
 
-    Accepts any object (paths, numbers) and formats it with str() first."""
-    return _map_invisible(str(s), _escape, keep_tab_newline)
+    Accepts any object (paths, numbers) and formats it with str() first. On Windows, the
+    extended-length prefix pysacd gives output paths (safeio.long_path()) is left out: users
+    see their paths as they wrote them."""
+    text = str(s)
+    if _WINDOWS:
+        text = _without_long_prefix(text)
+    return _map_invisible(text, _escape, keep_tab_newline)
 
 
 def format_exception(exc: BaseException) -> str:

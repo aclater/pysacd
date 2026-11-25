@@ -17,6 +17,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(__file__))
+from buildenv import build_env
+
 ROOT = Path(__file__).resolve().parents[1]
 CC = os.environ.get("CC", "cc")
 
@@ -30,7 +33,8 @@ class FuzzReplay(unittest.TestCase):
         cls.dir = Path(cls.tmp.name)
         flags = os.environ.get("PYSACD_FUZZ_CFLAGS", "-O1 -g")
         cls.harness = cls.dir / "replay_engine"
-        subprocess.run(["make", "-s", "-C", str(ROOT), f"REPLAY_FLAGS={flags}", "build/replay_engine"], check=True)
+        subprocess.run(["make", "-s", "-C", str(ROOT), f"REPLAY_FLAGS={flags}", "build/replay_engine"], check=True,
+                       env=build_env())
         shutil.copy(ROOT / "build" / "replay_engine", cls.harness)
         cls.seeds = cls.dir / "seeds"
         subprocess.run([sys.executable, str(ROOT / "fuzz" / "make_seeds.py"), str(cls.seeds)], check=True,

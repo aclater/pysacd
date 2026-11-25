@@ -8,6 +8,8 @@ import io
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -17,7 +19,9 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 import scarletbook as sbtool
+from buildenv import build_env
 
 from pysacd import _native
 
@@ -34,6 +38,21 @@ def _tarball(path: Path, top: str, extra: list[tarfile.TarInfo] | None = None) -
         for info in extra or []:
             tar.addfile(info, io.BytesIO(b"x" * info.size) if info.isfile() else None)
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def bdist_wheel_stub() -> dict:
+    """sys.modules entries that let setup.py be loaded without building: it imports bdist_wheel
+    from setuptools 70.1+ or from wheel, and a test venv may have neither (Python 3.11's venv
+    ships setuptools 65, and a stock Windows venv has no wheel). Empty when either is there."""
+    import importlib.util
+    import types
+    if importlib.util.find_spec("wheel") is not None:
+        return {}
+    try:
+        import setuptools.command.bdist_wheel  # noqa: F401
+    except ImportError:
+        return {"setuptools.command.bdist_wheel": types.SimpleNamespace(bdist_wheel=type("bdist_wheel", (), {}))}
+    return {}
 
 
 class Lock(unittest.TestCase):
@@ -149,6 +168,72 @@ class Fetch(unittest.TestCase):
 
 
 
+class WindowsRoots(unittest.TestCase):
+    """A fresh Windows may lack the root GitHub chains to: the fetch also trusts certifi's roots
+    there, unless the user set SSL_CERT_FILE (#222)."""
+
+    def env(self, **kv):
+        env = {k: v for k, v in os.environ.items() if k != "SSL_CERT_FILE"}
+        return mock.patch.dict(os.environ, {**env, **kv}, clear=True)
+
+    def certifi(self):
+        fake = type(sys)("certifi")
+        fake.where = lambda: "/certifi/cacert.pem"
+        return mock.patch.dict(sys.modules, {"certifi": fake})
+
+    def contexts(self, platform: str, **env):
+        with self.env(**env), self.certifi(), mock.patch.object(sbtool.sys, "platform", platform), \
+                mock.patch.object(sbtool.ssl, "create_default_context") as make:
+            ctx = sbtool.tls_context()
+        self.assertIs(ctx, make.return_value)
+        return ctx.load_verify_locations.call_args_list
+
+    def test_tool_adds_certifi_on_windows_only(self):
+        self.assertEqual(self.contexts("win32"), [mock.call(cafile="/certifi/cacert.pem")])
+        self.assertEqual(self.contexts("linux"), [])
+        self.assertEqual(self.contexts("darwin"), [])
+
+    def test_tool_leaves_ssl_cert_file_alone(self):
+        self.assertEqual(self.contexts("win32", SSL_CERT_FILE="/mine.pem"), [])
+
+    def test_tool_without_certifi_is_as_before(self):
+        with self.env(), mock.patch.dict(sys.modules, {"certifi": None}), \
+                mock.patch.object(sbtool.sys, "platform", "win32"), \
+                mock.patch.object(sbtool.ssl, "create_default_context") as make:
+            sbtool.tls_context()
+        make.return_value.load_verify_locations.assert_not_called()
+
+    def fetch_env(self):
+        """setup.py's fetch_env(), loaded with setuptools' setup() stubbed out."""
+        import importlib.util
+        try:
+            import setuptools
+        except ImportError:
+            self.skipTest("setuptools not installed")
+        spec = importlib.util.spec_from_file_location("pysacd_setup", ROOT / "setup.py")
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.dict(sys.modules, bdist_wheel_stub()), mock.patch.object(setuptools, "setup"):
+            spec.loader.exec_module(module)
+        return module.fetch_env
+
+    def test_setup_passes_certifi_to_the_fetch_on_windows(self):
+        fetch_env = self.fetch_env()
+        with self.env(), self.certifi(), mock.patch.object(sys, "platform", "win32"):
+            env = fetch_env()
+        self.assertEqual(env["SSL_CERT_FILE"], "/certifi/cacert.pem")
+        self.assertEqual(env["PATH"], os.environ["PATH"])        # the rest is inherited
+        with self.env(SSL_CERT_FILE="/mine.pem"), self.certifi(), mock.patch.object(sys, "platform", "win32"):
+            self.assertIsNone(fetch_env())
+        with self.env(), self.certifi(), mock.patch.object(sys, "platform", "linux"):
+            self.assertIsNone(fetch_env())
+        with self.env(), mock.patch.dict(sys.modules, {"certifi": None}), mock.patch.object(sys, "platform", "win32"):
+            self.assertIsNone(fetch_env())
+
+    def test_certifi_is_a_windows_build_requirement(self):
+        text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('"certifi; sys_platform == \'win32\'"', text)
+
+
 class StaleEngine(unittest.TestCase):
     """An engine built before sacdconv_cancel existed (ABI 5) is refused with a message that says
     to rebuild it, not with an AttributeError for the first symbol it lacks (found 2026-11-06,
@@ -243,6 +328,147 @@ class Engine(unittest.TestCase):
             _native._check_scarletbook(Lib(2, b"0.5.3"), "lib")
         _native._check_scarletbook(Lib(2, b"0.5.4"), "lib")
 
+
+class MakePath(unittest.TestCase):
+    """setup.py passes make paths with forward slashes: under MSYS's sh, a backslash
+    SCARLETBOOK_DIR lost its backslashes and the engine was built without scarletbook (#225)."""
+
+    def test_backslashes_become_slashes_on_windows(self):
+        self.assertEqual(sbtool.make_path(r"C:\lib\scarletbook", windows=True), "C:/lib/scarletbook")
+        self.assertEqual(sbtool.make_path(r"C:\lib/mixed\sb", windows=True), "C:/lib/mixed/sb")
+        self.assertEqual(sbtool.make_path("C:/lib/scarletbook", windows=True), "C:/lib/scarletbook")
+        self.assertEqual(sbtool.make_path(r"\\server\share\sb", windows=True), "//server/share/sb")
+        with mock.patch.object(sbtool.sys, "platform", "win32"):
+            self.assertEqual(sbtool.make_path(r"D:\a\b"), "D:/a/b")
+
+    def test_backslash_is_kept_elsewhere(self):
+        # an ordinary character in a POSIX file name
+        self.assertEqual(sbtool.make_path("/tmp/a\\b", windows=False), "/tmp/a\\b")
+
+    def test_setup_py_gives_make_forward_slashes(self):
+        import runpy
+        with mock.patch.dict(sys.modules, bdist_wheel_stub()), mock.patch("setuptools.setup"):
+            setup_py = runpy.run_path(str(ROOT / "setup.py"))
+        engine = setup_py["BuildEngine"]
+        cmd = object.__new__(engine)
+        cmd.build_lib = tempfile.mkdtemp()
+        self.addCleanup(lambda: shutil.rmtree(cmd.build_lib, ignore_errors=True))
+        with mock.patch.object(engine.__mro__[1], "run"), mock.patch.object(subprocess, "run") as run, \
+                mock.patch.dict(os.environ, {"SCARLETBOOK_DIR": r"C:\lib\scarletbook"}), \
+                mock.patch.object(sys, "platform", "win32"):
+            engine.run(cmd)
+        make = run.call_args.args[0]
+        self.assertEqual(make[0], "make")
+        self.assertIn("SCARLETBOOK_DIR=C:/lib/scarletbook", make)
+        self.assertFalse([a for a in make if "\\" in a], make)
+
+
+
+class WheelSmoke(unittest.TestCase):
+    """tests/wheel_smoke.py fails a wheel whose engine has no scarletbook library (#225)."""
+
+    def test_engine_without_scarletbook_fails_the_smoke_test(self):
+        import importlib.util
+        from contextlib import redirect_stderr, redirect_stdout
+        spec = importlib.util.spec_from_file_location("wheel_smoke", ROOT / "tests" / "wheel_smoke.py")
+        smoke = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(smoke)
+        missing = _native.NativeError("_sacdconv.dll has no scarletbook library linked in; rebuild it")
+        for patch in (mock.patch.object(_native, "build_info", side_effect=missing),
+                      mock.patch.multiple(_native, build_info=mock.Mock(return_value="gcc 15, flac"),
+                                          scarletbook_version=mock.Mock(return_value="1.0.2"))):
+            err = io.StringIO()
+            with self.subTest(patch=patch), patch, redirect_stdout(io.StringIO()), redirect_stderr(err):
+                self.assertEqual(smoke.main(), 1)
+            self.assertIn("scarletbook", err.getvalue())
+
+@unittest.skipUnless(sys.platform != "win32" and shutil.which("make"), "make, outside Windows")
+class BuildRefusesNoScarletbook(unittest.TestCase):
+    """The build stops, with a message, when the engine would lack scarletbook's functions: the
+    export list is checked before linking and the engine's export table after it (#225)."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(self.tmp, ignore_errors=True))
+        text = (ROOT / "Makefile").read_text(encoding="utf-8")
+        self.required = re.search(r"^SB_REQUIRED := (.+)$", text, re.MULTILINE).group(1).split()
+
+    def make(self, *args: str):
+        return subprocess.run(["make", "-s", "-C", str(ROOT), *args], capture_output=True, text=True, check=False,
+                              env=build_env())
+
+    def library(self, folder: str, header: str) -> Path:
+        sb = self.tmp / folder
+        (sb / "include").mkdir(parents=True)
+        (sb / "include" / "scarletbook.h").write_text(header, encoding="utf-8")
+        return sb
+
+    def exports_def(self, sb: Path):
+        out = self.tmp / "build"
+        return self.make(f"BUILD={out}", f"SCARLETBOOK_DIR={sb}", f"{out}/exports.def"), out / "exports.def"
+
+    def test_header_in_a_folder_with_a_backslash(self):
+        # what MSYS's sh did to C:\...\scarletbook: before #225 sed couldn't read the header, the
+        # export list had no sb_ function, and make still exited 0
+        header = "".join(f"const char *{name}(void);\n" for name in self.required)
+        done, exports = self.exports_def(self.library("lib\\scarletbook", header))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        listed = exports.read_text(encoding="utf-8").split()
+        for name in self.required:
+            self.assertIn(name, listed)
+
+    def test_export_list_without_sb_functions_is_refused(self):
+        for header in ("", "/* not scarletbook's header */\nint other(void);\n",
+                       "const char *sb_version(void);\n"):    # some, not all
+            with self.subTest(header=header):
+                shutil.rmtree(self.tmp / "sb", ignore_errors=True)
+                done, exports = self.exports_def(self.library("sb", header))
+                self.assertNotEqual(done.returncode, 0)
+                self.assertIn("without the scarletbook library", done.stderr)
+                self.assertFalse(exports.exists())
+
+    def test_unreadable_header_is_refused(self):
+        # sed fails to read it (a directory, so the test holds as root too): the build stops
+        sb = self.tmp / "sb"
+        (sb / "include" / "scarletbook.h").mkdir(parents=True)
+        done, exports = self.exports_def(sb)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertFalse(exports.exists())
+
+    def test_platform_export_list(self):
+        self.assertEqual(self.make("check-export-list", f"SB_EXPORT_LIST={ROOT / 'csrc' / 'exports.map'}"
+                                   if sys.platform != "darwin" else
+                                   f"SB_EXPORT_LIST={ROOT / 'csrc' / 'exports.darwin'}").returncode, 0)
+        empty = self.tmp / "empty.map"
+        empty.write_text("{\n  global:\n    sacdconv_*;\n  local:\n    *;\n};\n", encoding="utf-8")
+        done = self.make("check-export-list", f"SB_EXPORT_LIST={empty}")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("would be built without them", done.stderr)
+
+    @unittest.skipUnless(sys.platform.startswith("linux") and shutil.which("nm"), "Linux, with nm")
+    def test_engine_without_sb_functions_is_refused(self):
+        # a real shared library that isn't the engine: one of Python's own extension modules
+        import _ctypes
+        foreign = self.tmp / "_sacdconv.so"
+        shutil.copyfile(_ctypes.__file__, foreign)
+        done = self.make("check-engine", f"LIB={foreign}")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("does not export sb_", done.stderr)
+        self.assertFalse(foreign.exists(), "the incomplete engine is removed")
+        junk = self.tmp / "junk.so"
+        junk.write_bytes(b"not a library")
+        self.assertNotEqual(self.make("check-engine", f"LIB={junk}").returncode, 0)
+
+    @unittest.skipUnless(sys.platform.startswith("linux") and shutil.which("nm"), "Linux, with nm")
+    def test_built_engine_passes(self):
+        try:
+            _native._load()
+        except (OSError, _native.NativeError) as e:
+            self.skipTest(f"engine not built: {e}")
+        engine = self.tmp / "_sacdconv.so"      # a copy: a failed check removes the file it checks
+        shutil.copyfile(_native.library_path(), engine)
+        done = self.make("check-engine", f"LIB={engine}")
+        self.assertEqual(done.returncode, 0, done.stderr)
 
 if __name__ == "__main__":
     unittest.main()

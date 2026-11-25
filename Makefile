@@ -30,6 +30,8 @@ OS_DEFS  := -D__USE_MINGW_ANSI_STDIO=1
 SB_WHOLE = -Wl,--whole-archive $(1) -Wl,--no-whole-archive
 SB_EXPORTS = $(BUILD)/exports.def -Wl,--gc-sections
 SB_EXPORTS_DEP = $(BUILD)/exports.def
+SB_SYMTOOL := objdump
+SB_SYMS = -p $(1)
 else ifeq ($(UNAME_S),Darwin)
 # macOS: clang, a .dylib, and -mcpu=native on Apple silicon (#8)
 CC      ?= cc
@@ -40,6 +42,9 @@ SB_WHOLE = -Wl,-force_load,$(1)
 # export the engine's functions and scarletbook's C ABI only, not Rust's internals; drop the rest
 SB_EXPORTS := -Wl,-exported_symbols_list,csrc/exports.darwin -Wl,-dead_strip
 SB_EXPORTS_DEP := csrc/exports.darwin
+SB_EXPORTS_HAS := ^_sb_\*$$
+SB_SYMTOOL := nm
+SB_SYMS = -gU $(1)
 else
 CC      ?= gcc
 LIBEXT  := so
@@ -49,6 +54,9 @@ SB_WHOLE = -Wl,--whole-archive $(1) -Wl,--no-whole-archive
 # export the engine's functions and scarletbook's C ABI only, not Rust's internals; drop the rest
 SB_EXPORTS := -Wl,--version-script=csrc/exports.map -Wl,--gc-sections
 SB_EXPORTS_DEP := csrc/exports.map
+SB_EXPORTS_HAS := ^ *sb_\*;$$
+SB_SYMTOOL := nm
+SB_SYMS = -D --defined-only $(1)
 endif
 ifdef PORTABLE
 # generic x86-64, with the PCM filters picked at load time for the CPU (see csrc/dsp.c)
@@ -101,6 +109,10 @@ SB_READY := $(SCARLETBOOK_DIR)/.pysacd-scarletbook
 $(SB_READY): scarletbook.lock tools/scarletbook.py
 	$(PYTHON) tools/scarletbook.py fetch --cc "$(CC)" --dest $(SCARLETBOOK_DIR)
 else
+ifeq ($(OS),Windows_NT)
+# forward slashes: the recipes run under MSYS's sh, which takes a backslash as an escape (#225)
+override SCARLETBOOK_DIR := $(subst \,/,$(SCARLETBOOK_DIR))
+endif
 SB_READY := $(SCARLETBOOK_DIR)/include/scarletbook.h
 endif
 SB_LIB  := $(SCARLETBOOK_DIR)/lib/libscarletbook_ffi.a
@@ -121,17 +133,69 @@ ifeq ($(FLAC_LIBS),)
 	@echo "note: libFLAC not found; built without FLAC output (install flac-devel and 'make clean all')"
 endif
 
+# An engine without scarletbook's functions must not be built quietly (#225): the export list
+# is checked before linking, and the linked engine's export table after it. Either check
+# failing stops the build. SB_REQUIRED: the calls pysacd makes first when it loads the engine.
+SB_REQUIRED := sb_abi_version sb_version sb_build_info sb_last_error_message sb_disc_toc
+ifeq ($(origin NM),undefined)
+NM := $(shell $(CC) -print-prog-name=nm 2>/dev/null || echo nm)
+endif
+ifeq ($(origin OBJDUMP),undefined)
+OBJDUMP := $(shell $(CC) -print-prog-name=objdump 2>/dev/null || echo objdump)
+endif
+ifeq ($(OS),Windows_NT)
+override OBJDUMP := $(subst \,/,$(OBJDUMP))
+endif
+SB_SYMCMD = $(if $(filter objdump,$(SB_SYMTOOL)),$(OBJDUMP),$(NM)) $(call SB_SYMS,$(1))
+# $(call SB_CHECK_DEF,FILE): a Windows exports.def (generated from the header) names every
+# SB_REQUIRED function. $(call SB_CHECK_LIST,FILE): the platform's export list does; Linux and
+# macOS export scarletbook's functions by one wildcard line in a fixed file
+define SB_CHECK_DEF
+@for s in $(SB_REQUIRED); do grep -qx "    $$s" "$(1)" || { \
+	  echo "error: the export list $(1) lacks $$s: the engine would be built without the" \
+	       "scarletbook library. Check SCARLETBOOK_DIR=$(SCARLETBOOK_DIR) (#225)" >&2; exit 1; }; done
+endef
+define SB_CHECK_MAP
+@grep -q '$(SB_EXPORTS_HAS)' "$(1)" || { echo "error: the export list $(1) has no line" \
+	  "for scarletbook's functions; the engine would be built without them (#225)" >&2; exit 1; }
+endef
+SB_CHECK_LIST = $(if $(SB_EXPORTS_HAS),$(SB_CHECK_MAP),$(SB_CHECK_DEF))
+# $(call SB_CHECK_ENGINE,LIB): the built engine exports every SB_REQUIRED function; removed if not
+define SB_CHECK_ENGINE
+@syms=$$($(call SB_SYMCMD,$(1))) || { echo "error: can't list the symbols of $(1) with $(SB_SYMTOOL)" \
+	"(set NM= or OBJDUMP= to the tool for this compiler)" >&2; rm -f "$(1)"; exit 1; }; \
+	for s in $(SB_REQUIRED); do \
+	  printf '%s\n' "$$syms" | grep -Eq "(^|[^A-Za-z0-9_])_?$$s([^A-Za-z0-9_]|$$)" || { \
+	    echo "error: $(1) does not export $$s: it was built without the scarletbook library." \
+	         "Check SCARLETBOOK_DIR=$(SCARLETBOOK_DIR) (#225)" >&2; rm -f "$(1)"; exit 1; }; \
+	done
+endef
+
 $(LIB): $(OBJ) $(SB_READY) $(SB_EXPORTS_DEP)
+	$(call SB_CHECK_LIST,$(SB_EXPORTS_DEP))
 	$(CC) $(SHARED) $(CFLAGS) $(LDFLAGS) $(SB_EXPORTS) $(SB_STRIP) -o $@ $(OBJ) \
 	    $(call SB_WHOLE,$(SB_LIB)) $(SB_LIBS) $(LDLIBS)
+	$(call SB_CHECK_ENGINE,$@)
+
+# The two checks on their own, for tests/test_scarletbook.py:
+#   make check-export-list SB_EXPORT_LIST=FILE      make check-engine LIB=FILE
+check-export-list:
+	$(call SB_CHECK_LIST,$(SB_EXPORT_LIST))
+
+check-engine:
+	$(call SB_CHECK_ENGINE,$(LIB))
 
 # Windows: every function declared in scarletbook.h and every sacdconv_* function defined in
 # csrc/sacdconv.c (each declaration starts its line: `type name(` or `type *name(`)
+# (a sed that can't read the header must stop the build, not leave scarletbook out: #225)
 $(BUILD)/exports.def: $(SB_READY) csrc/sacdconv.c
 	@mkdir -p $(dir $@)
-	{ echo EXPORTS; \
-	  sed -n 's/^[A-Za-z][A-Za-z0-9_ ]*[ *]\(sb_[a-z0-9_]*\)(.*/    \1/p' $(SCARLETBOOK_DIR)/include/scarletbook.h; \
-	  sed -n 's/^[A-Za-z][A-Za-z0-9_ ]*[ *]\(sacdconv_[a-z0-9_]*\)(.*/    \1/p' csrc/sacdconv.c; } > $@
+	{ echo EXPORTS && \
+	  sed -n 's/^[A-Za-z][A-Za-z0-9_ ]*[ *]\(sb_[a-z0-9_]*\)(.*/    \1/p' "$(SCARLETBOOK_DIR)/include/scarletbook.h" && \
+	  sed -n 's/^[A-Za-z][A-Za-z0-9_ ]*[ *]\(sacdconv_[a-z0-9_]*\)(.*/    \1/p' csrc/sacdconv.c; } > $@.tmp \
+	  || { rm -f $@.tmp; exit 1; }
+	$(call SB_CHECK_DEF,$@.tmp)
+	mv $@.tmp $@
 
 $(BUILD)/%.o: csrc/%.c $(wildcard csrc/*.h) $(SB_READY)
 	@mkdir -p $(dir $@)
@@ -211,4 +275,4 @@ clean:
 distclean: clean
 	rm -rf build
 
-.PHONY: all clean distclean test-tools fuzz fuzz-replay cancel-wakeup leak-driver
+.PHONY: all clean distclean test-tools fuzz fuzz-replay cancel-wakeup leak-driver check-export-list check-engine

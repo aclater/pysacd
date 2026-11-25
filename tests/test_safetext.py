@@ -306,6 +306,16 @@ class Terminal(unittest.TestCase):
             self.assertEqual(safetext.for_terminal(t), want)
         self.assertEqual(safetext.for_terminal("tab\there\n", keep_tab_newline=True), "tab\there\n")
 
+    def test_long_path_prefix_dropped_on_windows_only(self):
+        # Output paths carry Windows' extended-length prefix (safeio.long_path(), #217): users
+        # see their paths without it, and an escape after it is still made visible
+        from unittest import mock
+        text = "\\\\?\\C:\\out\\a\u202eb.dsf"
+        with mock.patch.object(safetext, "_WINDOWS", True):
+            self.assertEqual(safetext.for_terminal(text), "C:\\out\\a\\u202eb.dsf")
+        with mock.patch.object(safetext, "_WINDOWS", False):
+            self.assertEqual(safetext.for_terminal(text), "\\\\?\\C:\\out\\a\\u202eb.dsf")
+
 
 class ErrorPaths(unittest.TestCase):
     """Failures quote paths and exception messages, which can carry hostile names (#47)."""

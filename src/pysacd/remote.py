@@ -438,6 +438,7 @@ def fetch(host: str, port: int, path: str | os.PathLike, ranges: list[tuple[int,
             log.error("copy too slow: %d of %d sectors in %.0f s (%.1f kB/s; at least %.0f kB/s needed)",
                       done, todo, elapsed, done * SECTOR_SIZE / elapsed / 1e3, min_rate / 1e3)
             raise RemoteError(f"{host}:{port}: copy too slow ({done} of {todo} sectors in {elapsed:.0f} s)")
+    path = safeio.long_path(path)   # Windows: no 260-character limit (#217)
     tmp = safeio.temp_name(path)    # written under a new, unpredictable name; moved into place at the end
     try:
         with safeio.open_new(tmp) as out:
@@ -492,6 +493,7 @@ def fetch_temp(host: str, port: int, workdir: str | os.PathLike, want_area, prog
     sparse ISO in `workdir`. Returns (path, Disc); the caller deletes the file."""
     disc, total = read_remote_toc(host, port)
     areas = [a for a in disc.areas if want_area(a)]
+    workdir = safeio.long_path(workdir)     # Windows: no 260-character limit (#217)
     os.makedirs(workdir, exist_ok=True)
     tmp = str(safeio.temp_name(Path(workdir) / "remote.iso"))
     fetch(host, port, tmp, needed_ranges(disc, total, areas), progress=progress)    # removes it on failure

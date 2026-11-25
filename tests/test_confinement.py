@@ -16,12 +16,12 @@ import io
 import os
 import stat
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+import fsutil
 import sacdgen
 import test_safetext as hs
 
@@ -52,7 +52,7 @@ def umask(mask: int):
 class Confinement(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory()
+        cls.tmp = fsutil.TempDir()
         cls.root = Path(cls.tmp.name)
         frame = bytes([0x69]) * (4704 * 2)
         n = len(hs.DISC_TITLES)
@@ -85,6 +85,7 @@ class Confinement(unittest.TestCase):
         return [m for m in EXTRACT_MODES] + [["convert", f] for f in CONVERT_FORMATS]
 
     def check_tree(self, out: Path) -> list[Path]:
+        out = fsutil.lp(out)
         made = sorted(out.rglob("*"))
         self.assertTrue(made)
         for p in made:
@@ -118,15 +119,15 @@ class Confinement(unittest.TestCase):
                     target = outside / f"canary{i}"
                     target.write_bytes(b"canary")
                     canaries[target] = b"canary"
-                    link = out2 / f.relative_to(out)
+                    link = fsutil.lp(out2) / f.relative_to(fsutil.lp(out))
                     link.parent.mkdir(parents=True, exist_ok=True)
                     link.symlink_to(target)
                 self.run_mode(out2, mode)
                 for target, data in canaries.items():
                     self.assertEqual(target.read_bytes(), data, f"{mode}: wrote through a symlink to {target.name}")
-                for p in out2.rglob("*"):
+                for p in fsutil.lp(out2).rglob("*"):
                     if not p.is_symlink():
-                        self.assertTrue(p.resolve().is_relative_to(out2.resolve()))
+                        self.assertTrue(p.resolve().is_relative_to(fsutil.lp(out2).resolve()))
 
 
 if __name__ == "__main__":

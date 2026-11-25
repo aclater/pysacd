@@ -11,22 +11,53 @@ with the same names and the same bytes.
 
 ## Migrating
 
+On Linux and macOS, link `pysacd-extract` under the old name. Where pip put it depends on how you
+installed pysacd. In a virtual environment named `pysacd-env` in your home folder, it is
+`~/pysacd-env/bin/pysacd-extract`; with `pipx install pysacd` or `pip install --user pysacd` it is
+`~/.local/bin/pysacd-extract`. For the virtual environment:
+
+<!-- docs-run: skip="the path depends on where pip put pysacd-extract (virtual environment, pipx or --user), so this block cannot be run as written" -->
 ```sh
 mkdir -p ~/bin
-ln -s "$(command -v pysacd-extract)" ~/bin/sacd_extract    # that's the whole migration
+ln -s ~/pysacd-env/bin/pysacd-extract ~/bin/sacd_extract    # that's the whole migration
 ```
 
 `~/bin` must be on your `PATH`: Fedora and Ubuntu add it in new login shells once the folder
 exists.
 
+On Windows, `pysacd-extract.exe` is in the `Scripts` folder of the Python or virtual environment
+you installed pysacd into (for a virtual environment named `pysacd-env` in your user folder,
+`pysacd-env\Scripts`). Either run it from there, or put that folder on your `PATH` (Start menu,
+"Edit environment variables for your account", `Path`, New). With `pipx install pysacd` it is
+already on your `PATH`. A script that calls `sacd_extract.exe` can be pointed at
+`pysacd-extract.exe`, or you can copy `pysacd-extract.exe` to a folder on your `PATH` under the
+name `sacd_extract.exe`. The `copy` below finds the real file wherever pip or pipx put it, as
+long as `pysacd-extract` runs in that PowerShell window; for a virtual environment, activate it
+first:
+
+<!-- docs-run: skip="Windows: PowerShell and Windows paths" -->
+```powershell
+mkdir ~\bin
+copy (Get-Command pysacd-extract).Source ~\bin\sacd_extract.exe
+```
+
+Then add `%USERPROFILE%\bin` to `Path` as above.
+
 Scripts, `sacd_extract.cfg` (including `logging=1`) and muscle memory keep
 working:
 
+<!-- docs-run: group=discs -->
 ```console
 $ pysacd-extract -2 -m -s -i album.iso       # DSF, stereo + multichannel
 $ pysacd-extract -e -C -i album.iso          # DSDIFF edit master + cue + xml
 $ pysacd-extract -P -i album.iso             # disc information, as sacd_extract prints it
-$ pysacd-extract -I -s -i 192.0.2.10:2002    # copy a PS3 disc and extract it, one pass over the network
+```
+
+From a PS3, copy the disc and extract it in one pass over the network:
+
+<!-- docs-run: skip="needs a PS3 or a player running SACD Ripper; tools/docs_commands.py runs it against its own pysacd ps3sim" -->
+```console
+$ pysacd-extract -I -s -i 192.0.2.10:2002
 ```
 
 Front ends that run `sacd_extract`, such as
@@ -93,6 +124,7 @@ Run `pysacd-extract --help` for the full list.
 
 ## Don't take our word for it
 
+<!-- docs-run: skip="needs sacd_extract; tools/docs_commands.py runs it with --sacd-extract" -->
 ```sh
 mkdir a b
 (cd a && sacd_extract   -2 -m -s -i ../album.iso)

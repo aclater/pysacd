@@ -7,7 +7,7 @@
 # come from outside contributors and is untrusted.
 extract_issue_from_branch = false
 # Don't read AGENTS.md (the default) or other repo files from the PR head:
-# when the owner runs /review on an outside PR, that file is the outsider's.
+# when a maintainer runs /review on an outside PR, that file is the outsider's.
 repo_context_files = []
 
 [github_action_config]

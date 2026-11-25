@@ -3,7 +3,7 @@
 """Compare two builds' speed, for the informational CI benchmark. A coarse alarm, not a gate:
 shared runners are noisy, and the release timing table stays the real check.
 
-The same file is in aclater/pysacd and aclater/sacdfs; only scripts/bench_workload.py differs.
+The same file is in dsd-toolbox/pysacd and dsd-toolbox/sacdfs; only scripts/bench_workload.py differs.
 Each workload is measured ROUNDS times with each build, alternating the builds and swapping which
 goes first every round. The result is each build's median and their ratio (head / base). A ratio
 over THRESHOLD is flagged as a warning, and the exit status stays 0: only a measurement that

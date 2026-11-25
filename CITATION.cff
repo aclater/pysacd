@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use pysacd, please cite it using the metadata from this file."
+type: software
+title: pysacd
+abstract: >-
+  pysacd reads SACD (Scarletbook) images, and PS3 SACD Ripper servers, straight
+  from Python, and writes DSF, DFF (DSDIFF), WAV and FLAC in one pass with its
+  multithreaded C engine. It also ships pysacd-extract, a clean-room, drop-in
+  replacement for sacd_extract: the same options, the same file names, the
+  same bytes.
+authors:
+  - name: "The pysacd authors"
+version: 0.5.5
+date-released: "2026-11-23"
+repository-code: "https://github.com/dsd-toolbox/pysacd"
+url: "https://pypi.org/project/pysacd/"
+license: GPL-2.0-or-later
+keywords:
+  - SACD
+  - Scarletbook
+  - DSD
+  - DST
+  - DSF
+  - DSDIFF
+  - FLAC
+  - audio
+  - sacd_extract
+  - Python

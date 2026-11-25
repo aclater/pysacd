@@ -6,13 +6,22 @@
 
 Every document about pysacd, grouped by what it is for. Start with the [README](../README.md) for what pysacd is.
 
+The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for the parts listed under [Licence and credits](../README.md#licence-and-credits), which also gives the code's licences.
+
 ## Install
 
 - **[Install](install/README.md)**: wheels, checking a download, building from source.
   - [From PyPI](install/README.md#from-pypi)
   - [Checking a download](install/README.md#checking-a-download)
   - [From source](install/README.md#from-source)
-  - [Windows from source](install/README.md#windows-from-source)
+  - [Windows](install/README.md#windows)
+- **[Install on Windows](install/windows.md)**: Python and pysacd from PyPI in PowerShell, first commands, long paths, MSYS2.
+  - [Install Python](install/windows.md#install-python)
+  - [Install pysacd](install/windows.md#install-pysacd)
+  - [First commands](install/windows.md#first-commands)
+  - [Windows file names](install/windows.md#windows-file-names)
+  - [Long paths](install/windows.md#long-paths)
+  - [Build from source (developers)](install/windows.md#build-from-source-developers)
 
 ## Use
 
@@ -103,6 +112,7 @@ Every document about pysacd, grouped by what it is for. Start with the [README](
   - [10. Fresh-eyes review for first releases](release-test-plan.md#10-fresh-eyes-review-for-first-releases)
   - [11. PCM quality comparison](release-test-plan.md#11-pcm-quality-comparison)
   - [Sign-off](release-test-plan.md#sign-off)
+  - [After the release: run the docs audit](release-test-plan.md#after-the-release-run-the-docs-audit)
 
 ## Project
 
@@ -116,6 +126,7 @@ Every document about pysacd, grouped by what it is for. Start with the [README](
   - [sacd_extract only as a black box](clean-room.md#sacd_extract-only-as-a-black-box)
   - [Licences](clean-room.md#licences)
   - [Acknowledgements](clean-room.md#acknowledgements)
+- **[Icon](assets/README.md)**: the icon files and where each is used.
 
 ## Release
 

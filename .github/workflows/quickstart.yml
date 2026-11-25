@@ -44,6 +44,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # The wheel build compiles the dsd2pcm library from its pinned source: the same pinned Rust
+      # as the other workflows.
+      - name: Rust, pinned in dsd2pcm.lock (builds the dsd2pcm library)
+        run: python3 -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust" >> "$GITHUB_PATH"
+
       # As the release workflow's sdist job: build, the backend and pysacd's dependencies from the
       # hash-locked requirements-dev.txt (#14), an sdist, then a wheel from that sdist alone.
       - name: Build the wheel

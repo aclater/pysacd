@@ -227,7 +227,7 @@ def build_cli(work: Path) -> tuple[Path, dict]:
     import shutil
     t = d2p_tool()
     lock = t.load_lock()
-    cargo = os.environ.get("CARGO") or shutil.which("cargo")
+    cargo = shutil.which("cargo")    # an absolute path; the argument list below is all constants
     if not cargo:
         raise SystemExit("pcm_goldens: --with-cli needs cargo on PATH")
     try:

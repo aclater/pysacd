@@ -18,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(__file__))
 import sacdgen
+from buildenv import build_env
 
 ROOT = Path(__file__).resolve().parents[1]
 CC = os.environ.get("CC", "cc")
@@ -32,7 +33,8 @@ class CancelWakeup(unittest.TestCase):
         cls.dir = Path(cls.tmp.name)
         # the sanitizer CI jobs' flags, as for the fuzz harness's replay
         flags = os.environ.get("PYSACD_FUZZ_CFLAGS", "-O1 -g")
-        subprocess.run(["make", "-s", "-C", str(ROOT), f"REPLAY_FLAGS={flags}", "build/cancel_wakeup"], check=True)
+        subprocess.run(["make", "-s", "-C", str(ROOT), f"REPLAY_FLAGS={flags}", "build/cancel_wakeup"], check=True,
+                       env=build_env())
         cls.driver = cls.dir / "cancel_wakeup"
         shutil.copy(ROOT / "build" / "cancel_wakeup", cls.driver)
         # 300 frames: ten batches, more than the pool of a one-worker run holds

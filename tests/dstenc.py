@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+from buildenv import build_env
 
 NB = 588 * 64           # bits per channel per frame (DSD64)
 FL = NB // 8            # bytes per channel per frame
@@ -56,7 +57,7 @@ def load() -> ctypes.CDLL:
         _tmpdir = tempfile.TemporaryDirectory(prefix="dstenc", ignore_cleanup_errors=True)
         path = Path(_tmpdir.name) / "dstenc.so"
         r = subprocess.run([cc, "-O2", "-fPIC", "-shared", "-std=gnu17", "-o", str(path), str(_SRC), "-lm"],
-                           capture_output=True, text=True, check=False)
+                           capture_output=True, text=True, check=False, env=build_env())
         if r.returncode:
             raise EncoderUnavailable(f"cannot compile {_SRC}: {r.stderr[-500:]}")
     lib = ctypes.CDLL(str(path))

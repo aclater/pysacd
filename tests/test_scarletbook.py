@@ -19,7 +19,9 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "tests"))
 import scarletbook as sbtool
+from buildenv import build_env
 
 from pysacd import _native
 
@@ -392,7 +394,8 @@ class BuildRefusesNoScarletbook(unittest.TestCase):
         self.required = re.search(r"^SB_REQUIRED := (.+)$", text, re.MULTILINE).group(1).split()
 
     def make(self, *args: str):
-        return subprocess.run(["make", "-s", "-C", str(ROOT), *args], capture_output=True, text=True, check=False)
+        return subprocess.run(["make", "-s", "-C", str(ROOT), *args], capture_output=True, text=True, check=False,
+                              env=build_env())
 
     def library(self, folder: str, header: str) -> Path:
         sb = self.tmp / folder

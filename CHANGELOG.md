@@ -51,7 +51,8 @@ behaviour, and a patch version only adds or fixes. Each release on
   count ([install](docs/install/windows.md#build-from-source-developers)) (#222).
 - Windows: `pysacd convert` and `pysacd-extract` write outputs whose full path is longer than
   260 characters, such as a long album title in a deep folder, without long paths enabled for the
-  system; this failed with `[WinError 3]`. Every output folder is opened by its extended-length
+  system; before, `convert` failed with `[WinError 206] The filename or extension is too long` and
+  `pysacd-extract` exited 255 with a `.partial: No such file or directory` error. Every output folder is opened by its extended-length
   (`\\?\`) path, which messages and logs don't show
   ([long paths on Windows](docs/install/windows.md#long-paths)) (#217).
 - `pysacd-extract` no longer leaves a `.pysacd-….partial` file behind when an ISO copy or a track

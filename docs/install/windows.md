@@ -9,10 +9,12 @@
 How to install pysacd on Windows 11 from PyPI with no compiler, run its first commands, and,
 for developers, build it from source with MSYS2.
 
-**DRAFT.** The steps on this page have not yet been run on Windows 11 as written: installing
-Python from python.org, `py -m pip install pysacd`, pipx, and the PowerShell commands with
-Windows paths. CI builds and tests the wheel on Windows, and the same commands run on Linux. This
-note goes once a stock Windows 11 run of the page passes.
+**What was tested.** A stock Windows 11 Pro 25H2 (long paths off, standard user account) ran, on
+2026-11-25: installing Python from python.org, `py -m pip install pysacd` with the 0.5.5 wheel,
+pipx, `pysacd toc`, `pysacd-extract` and `pysacd convert` on a real disc image, and the source
+build below with the fix branches of 0.6.0. The Windows on Arm wheel gap and an
+organisation-managed PC (policies, redirected folders such as a OneDrive Music folder) were not
+tried.
 
 ## Install Python
 
@@ -106,9 +108,11 @@ pysacd writes files whose full path is longer than Windows' usual 260-character 
 long album title in a deep output folder, with no system setting. It opens every output (DSF,
 DFF, FLAC, WAV, cue, XML, ISO copies and their temporary files) by its extended-length path
 (`\\?\C:\...`), which has no such limit. Messages and logs never show that prefix. Releases
-before 0.6.0, which fixed [#217](https://github.com/dsd-toolbox/pysacd/issues/217), fail with
-`[WinError 3] The system cannot find the path specified` on such a path; there, write to a short
-folder, such as `C:\Music`.
+before 0.6.0, which fixed [#217](https://github.com/dsd-toolbox/pysacd/issues/217), fail on such a
+path. On a stock Windows 11, 0.5.5 gave, for an output folder of 215 characters, `pysacd convert`
+`[WinError 206] The filename or extension is too long` (exit 1, nothing written), and
+`pysacd-extract` exit 255 with an `ERROR: ... .partial: No such file or directory` line. With
+those releases, write to a short folder, such as `C:\Music`.
 
 Some other programs can't open files past that limit. Those built for long paths can, once long
 paths are enabled for the whole system. That is optional: Microsoft's
@@ -121,19 +125,36 @@ To work on pysacd, build the engine with MSYS2's UCRT64 toolchain. It links stat
 DLL needs nothing beside it and works with the normal python.org Python. You also need
 [Git for Windows](https://git-scm.com/download/win) and [MSYS2](https://www.msys2.org/).
 
+The steps use two shells, and each command runs in the one named. gcc is on the PATH of the
+MSYS2 UCRT64 shell only; PowerShell can't find it, and the editable install fails there with
+`can't ask the C compiler (gcc)`.
+
 <!-- docs-run: skip="Windows with MSYS2; CI's portability workflow builds it" -->
-```sh
-# with your Python, in PowerShell, in a clone of the repository: root certificates for the download (see below),
-# then the scarletbook library the engine links (pinned, checked)
+```powershell
+# 1. In PowerShell: get the source, root certificates for the download (see below), then the
+#    scarletbook library the engine links (pinned, checked)
+git clone https://github.com/dsd-toolbox/pysacd C:\src\pysacd
+cd C:\src\pysacd
 py -m pip install certifi
 py tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook
-# in an MSYS2 UCRT64 shell, in the same folder
+```
+
+Then open the **MSYS2 UCRT64** shell from the Start menu and run the rest there:
+
+<!-- docs-run: skip="Windows with MSYS2; CI's portability workflow builds it" -->
+```sh
+# 2. In the UCRT64 shell: the compiler, then the engine
+cd /c/src/pysacd
 pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-flac
 make                                          # builds src/pysacd/_sacdconv.dll
-# then, in PowerShell again: a fresh python.org Python has no setuptools, which --no-build-isolation needs
+# 3. Still in the UCRT64 shell, so that gcc is on the PATH: a fresh python.org Python has no
+#    setuptools, which --no-build-isolation needs
 py -m pip install setuptools==84.2.1
 py -m pip install -e '.[convert]' --no-build-isolation
 ```
+
+If `pacman` stops with HTTP 429 from a mirror, set `ParallelDownloads = 1` in
+`/etc/pacman.conf` and run it again.
 
 To link a scarletbook library unpacked elsewhere, set `SCARLETBOOK_DIR` to its folder, with
 forward slashes or backslashes. The build stops with an error if the engine would lack it.
@@ -147,7 +168,9 @@ source checkout or the sdist installs certifi for the build by itself, and
 `tools/scarletbook.py` uses it when it is installed. If you set `SSL_CERT_FILE`, pysacd uses
 that file instead of certifi's.
 
-[Development](../development.md) has the tests and CI.
+To run the tests from the source tree, `src/pysacd/_sacdconv.dll` must exist: `make` builds it
+there, and the tests load the engine from `src`, not from an installed wheel. [Development](../development.md)
+has the tests and CI.
 
 ## See also
 

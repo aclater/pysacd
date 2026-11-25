@@ -114,6 +114,7 @@ class BuildEngine(build_py):
                 # forward slashes: MSYS make on Windows mangles backslashes
                 subprocess.run(["make", "-C", make_path(ROOT), f"BUILD={make_path(tmp)}",
                                 f"LIB={make_path(dest / LIB)}", f"SCARLETBOOK_DIR={sb_dir}", f"DSD2PCM_DIR={d2p_dir}",
+                                f"PYTHON={make_path(sys.executable)}",
                                 *([] if native else ["PORTABLE=1"])], check=True, env=compiler_first_env())
             except FileNotFoundError:
                 sys.exit("pysacd: building from source needs `make` and a C compiler (gcc or clang; MinGW-w64 "

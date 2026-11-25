@@ -44,7 +44,7 @@ PINS = [
     ("pathspec", "1.1.1", "", "dev"),
     ("typing-extensions", "4.16.0", "", "test"),   # exceptiongroup (3.10) and mypy
     ("coverage", "7.16.2", "", "dev"),       # CI's coverage leg (ci.yml)
-    ("setuptools", "84.1.0", "", "dev"),     # build backend: CI installs pysacd with --no-build-isolation
+    ("setuptools", "84.2.1", "", "test"),    # build backend (--no-build-isolation); the setup.py tests import it, and Python 3.12+ venvs have none
     ("build", "1.6.1", "", "dev"),           # the release workflow's sdist, built with --no-isolation
     ("pyproject-hooks", "1.3.3", "", "dev"),
 ]

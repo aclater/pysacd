@@ -96,6 +96,10 @@ class _Area(ctypes.Structure):
         ("missing_first", ctypes.c_uint32),
         ("missing_last", ctypes.c_uint32),
         ("allow_filler", ctypes.c_int),
+        # PCM: the filter (PCM_FILTERS) and the cutoff (PCM_CUTOFFS)
+        ("pcm_filter", ctypes.c_int),
+        ("pcm_cutoff", ctypes.c_int),
+        ("pcm_clipped", ctypes.c_uint64),
     ]
 
 
@@ -132,7 +136,7 @@ def _load():
     return _lib
 
 
-ABI = 7    # SACDCONV_ABI in csrc/sacdconv.c
+ABI = 9    # SACDCONV_ABI in csrc/sacdconv.c
 
 
 def _layout(struct) -> list[int]:
@@ -212,14 +216,91 @@ def has_flac() -> bool:
     return bool(_load().sacdconv_has_flac())
 
 
+# The PCM gain the engine takes (dsd2pcm's range): the CLIs check it before anything runs
+GAIN_DB_MIN, GAIN_DB_MAX = -120.0, 24.0
+
+
+def check_gain_db(value: object) -> float:
+    """The PCM gain, checked: an int or float (not a bool), finite, from GAIN_DB_MIN to GAIN_DB_MAX.
+    The value may come from config.toml as any TOML type. Raises ValueError with a message for
+    the user."""
+    import math
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"PCM gain {value!r}: not a number of dB")  # noqa: TRY004  # callers report ValueError to the user
+    if not math.isfinite(value) or not GAIN_DB_MIN <= value <= GAIN_DB_MAX:
+        raise ValueError(f"PCM gain {value!r} dB is outside {GAIN_DB_MIN:g} to {GAIN_DB_MAX:+g} dB")
+    return float(value)
+
+
+def gain_db_arg(text: str) -> float:
+    """argparse type for --gain-db: a number from GAIN_DB_MIN to GAIN_DB_MAX."""
+    import argparse
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
+    try:
+        return check_gain_db(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text} is outside {GAIN_DB_MIN:g} to {GAIN_DB_MAX:+g} dB") from None
+
+
+# PCM filters and cutoffs, by name, as the engine numbers them (sc_area_t.pcm_filter, and
+# dsd2pcm's DSD2PCM_CUTOFF_*). None picks the default for the rate (pcm_settings).
+PCM_FILTERS = {"precise": 0, "pysacd": 1}
+PCM_CUTOFFS = {"standard": 0, "low": 1, "wide": 2}
+PCM_RATES = (88200, 176400)
+# The precise filter's cutoff each, in kHz (dsd2pcm's passband edge; -3 dB about 2.6 kHz above it).
+# The pysacd filter has "standard" only, and there it is its 0.5.x response, which depends on the
+# rate: -3 dB at about 43 kHz at 88.2 kHz and at about 72 kHz at 176.4 kHz (docs/converting.md).
+CUTOFF_KHZ = {"standard": 40, "low": 30, "wide": 80}
+PYSACD_MINUS_3DB_KHZ = {88200: 43, 176400: 72}
+
+
+def pcm_settings(rate: int, pcm_filter: str | None = None, pcm_cutoff: str | None = None) -> tuple[str, str]:
+    """The PCM filter and cutoff for a run at `rate`, checked: (filter, cutoff).
+
+    The default filter is precise, the best measured (docs/quality), with the standard cutoff
+    (40 kHz) at both rates: the wide one (80 kHz, 176.4 kHz only) measures within 0.2 dB of it in
+    band (docs/quality/0.6.0.md) and passes mostly DSD's ultrasonic noise. The pysacd filter
+    (pysacd's own design, dithered) has the standard cutoff only, which is its 0.5.x response:
+    -3 dB at about 43 kHz at 88.2 kHz (three stages) and at about 72 kHz at 176.4 kHz (two stages,
+    flat to about 60 kHz). The wide cutoff needs 176.4 kHz. Raises ValueError, with a message for the user, for anything else."""
+    # the values may come from config.toml as any TOML type: compare as given, never hash them
+    if not isinstance(rate, int) or isinstance(rate, bool) or rate not in PCM_RATES:
+        raise ValueError(f"PCM rate {rate!r}: pysacd writes {' or '.join(map(str, PCM_RATES))} Hz")
+    f = "precise" if pcm_filter is None else pcm_filter
+    if not isinstance(f, str) or f not in PCM_FILTERS:
+        raise ValueError(f"unknown PCM filter {pcm_filter!r}: {' or '.join(PCM_FILTERS)}")
+    if pcm_cutoff is None:
+        c = "standard"
+    else:
+        c = pcm_cutoff
+    if not isinstance(c, str) or c not in PCM_CUTOFFS:
+        raise ValueError(f"unknown PCM cutoff {pcm_cutoff!r}: {', '.join(PCM_CUTOFFS)}")
+    if f == "pysacd" and c != "standard":
+        raise ValueError(f"the pysacd PCM filter has the standard cutoff only (its 0.5.x response: about 43 kHz "
+                         f"at 88.2 kHz, about 72 kHz at 176.4 kHz), not {c}")
+    if c == "wide" and rate < 176400:
+        raise ValueError(f"the wide PCM cutoff (80 kHz) needs --pcm-rate 176400, not {rate}")
+    return f, c
+
+
 def library_path() -> str:
     return str(Path(__file__).with_name(LIBRARY))
 
 
+def default_filters() -> str:
+    """The PCM filter and cutoff used when none is chosen, per rate."""
+    return "; ".join(f"{f} with the {c} cutoff ({CUTOFF_KHZ[c]} kHz) at {r / 1000:g} kHz"
+                     for r, (f, c) in ((r, pcm_settings(r)) for r in PCM_RATES))
+
+
 def build_info() -> str:
-    """Compiler and features the engine was built with, and the scarletbook release linked into
-    it, for diagnostic logs."""
-    return f"{_load().sacdconv_build_info().decode()}, scarletbook {scarletbook_version()}"
+    """Compiler and features the engine was built with, the dsd2pcm and scarletbook releases
+    linked into it, and the default PCM filters, for diagnostic logs."""
+    return (f"{_load().sacdconv_build_info().decode()}, scarletbook {scarletbook_version()}; "
+            f"PCM by default: {default_filters()}")
 
 
 @dataclass
@@ -264,6 +345,8 @@ class RunInfo:
     # the run's progress count at the end: frames processed of the frames the outputs need (#205)
     frames_done: int = 0
     frames_total: int = 0
+    # PCM samples clamped to 24 bits in the frames the outputs cover (a gain above 0 dB can clip)
+    pcm_clipped: int = 0
 
 
 @dataclass
@@ -291,7 +374,8 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
              iso_out: str | os.PathLike | None = None,
              progress: Callable[[Progress], None] | None = None, interval: float = 0.5,
              source: SectorSource | None = None, exact: bool = False, allow_silence: bool = False,
-             seek_min_gap: int | None = None) -> RunInfo:
+             seek_min_gap: int | None = None, pcm_filter: str | None = None,
+             pcm_cutoff: str | None = None) -> RunInfo:
     """Produce all outputs from one area in a single pass. Blocking, multithreaded.
 
     `progress` is called from this thread every `interval` seconds while the
@@ -309,7 +393,19 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     A run stops once it has written more silence and filler (frames the image lacks, frames
     that don't decode) than audio, plus 10 seconds: an image of holes can't turn into gigabytes.
     `allow_silence` lifts that for a run, to rescue what a damaged rip still holds.
+
+    FLAC and WAV outputs use `pcm_filter` ("precise" or "pysacd") with `pcm_cutoff`
+    ("standard", "low" or "wide"); None picks the default for the rate (pcm_settings), and a
+    combination the filter doesn't have, or a gain_db that isn't a finite number from -120 to
+    +24 dB, raises NativeError before anything runs.
     """
+    filt, cut, gain = "precise", "standard", 0.0
+    if any(s.format in ("flac", "wav") for s in specs):
+        try:       # before anything runs: the filter, cutoff, rate and gain
+            filt, cut = pcm_settings(pcm_rate, pcm_filter, pcm_cutoff)
+            gain = check_gain_db(gain_db)
+        except ValueError as e:
+            raise NativeError(str(e)) from None
     lib = _load()
     outs = (_Output * max(1, len(specs)))()
     keep = []   # keep ctypes buffers alive
@@ -377,7 +473,9 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
     a.check_frame = area.total_playtime.total_frames - 2 if area is not None and \
         area.total_playtime.total_frames >= 2 else 0xFFFFFFFF
     a.pcm_rate = pcm_rate
-    a.gain_db = gain_db
+    if any(s.format in ("flac", "wav") for s in specs):
+        a.pcm_filter, a.pcm_cutoff = PCM_FILTERS[filt], PCM_CUTOFFS[cut]
+        a.gain_db = gain
     if threads <= 0 and area is not None and not area.is_dst and specs and all(
             s.format in ("dsf", "dff") for s in specs):
         # Plain DSD copied into DSD files: nothing to decode or filter, so a pool of workers
@@ -447,5 +545,5 @@ def run_area(image: SACDImage, iso_path: str | os.PathLike, area: Area | None, s
                    refuted_from=none(a.refuted_from), missing=a.missing_count,
                    missing_first=none(a.missing_first), missing_last=none(a.missing_last),
                    before_last_silent=None if a.check_silent < 0 else bool(a.check_silent),
-                   frames_done=a.frames_done, frames_total=a.frames_total)
+                   frames_done=a.frames_done, frames_total=a.frames_total, pcm_clipped=a.pcm_clipped)
     return info

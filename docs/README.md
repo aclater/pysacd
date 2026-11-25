@@ -37,6 +37,7 @@ The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for
   - [Extensions](sacd_extract.md#extensions)
   - [Don't take our word for it](sacd_extract.md#dont-take-our-word-for-it)
 - **[Converting with `pysacd convert`](converting.md)**: naming templates, tags, MusicBrainz, gapless PCM.
+  - [PCM filters and cutoffs](converting.md#pcm-filters-and-cutoffs)
   - [Submitting ISRCs to MusicBrainz](converting.md#submitting-isrcs-to-musicbrainz)
 - **[Diagnostic logging](logging.md)**: what to attach when something fails.
 
@@ -46,6 +47,7 @@ The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for
   - [The parser](api.md#the-parser)
   - [What's parsed](api.md#whats-parsed)
   - [Image formats](api.md#image-formats)
+  - [Converting (`run_area`)](api.md#converting-run_area)
 - **[SACD Ripper network protocol (PS3 server)](ps3-protocol.md)**: reading from a PS3: usage, the wire protocol and the PS3's quirks.
   - [Reading from a PS3](ps3-protocol.md#reading-from-a-ps3)
   - [Transport](ps3-protocol.md#transport)
@@ -87,12 +89,14 @@ The documentation is licensed [CC BY 4.0](../licenses/CC-BY-4.0.txt), except for
   - [scarletbook-rs 0.6.1](performance.md#scarletbook-rs-061)
   - [scarletbook-rs 0.6.2](performance.md#scarletbook-rs-062)
   - [scarletbook-rs 0.7.0](performance.md#scarletbook-rs-070)
+  - [dsd2pcm 0.2 for PCM](performance.md#dsd2pcm-02-for-pcm)
 
 ## Internals
 
 - **[Development](development.md)**: building, tests, CI, testing without a PS3, releases.
   - [Building](development.md#building)
   - [The scarletbook library](development.md#the-scarletbook-library)
+  - [The dsd2pcm library](development.md#the-dsd2pcm-library)
   - [Tests](development.md#tests)
   - [CI](development.md#ci)
   - [Testing without a PS3](development.md#testing-without-a-ps3)

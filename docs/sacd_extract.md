@@ -102,7 +102,9 @@ deliberate:
 Extensions are long options only, so they never collide with `sacd_extract`'s
 short ones:
 
-- `--flac`, `--wav`: PCM output, gapless, 24-bit;
+- `--flac`, `--wav`: PCM output, gapless, 24-bit; `--pcm-rate`, `--gain-db`, and `--pcm-filter`
+  and `--pcm-cutoff` to choose dsd2pcm's filter (precise by default, or pysacd) and its cutoff
+  ([converting](converting.md));
 - `--musicbrainz`: tags and cover art;
 - `--submit-isrcs` (with `--musicbrainz`): offer the disc's ISRCs to the
   matched release, asking first ([details](converting.md#submitting-isrcs-to-musicbrainz));

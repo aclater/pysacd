@@ -76,6 +76,8 @@ class Opts:
     pcm: str | None = None             # "flac" | "wav"
     pcm_rate: int = 88200
     gain_db: float = 0.0
+    pcm_filter: str | None = None      # None: precise
+    pcm_cutoff: str | None = None      # None: by filter and rate (_native.pcm_settings)
     flac_level: int = 5
     threads: int = 0
     exact: bool = False                 # --exact: no provisional range starts (#85)
@@ -136,7 +138,14 @@ def parse_args(argv: list[str]) -> Opts:
     x.add_argument("--flac", dest="pcm", action="store_const", const="flac", help="write FLAC (24-bit PCM)")
     x.add_argument("--wav", dest="pcm", action="store_const", const="wav", help="write WAV (24-bit PCM)")
     x.add_argument("--pcm-rate", type=int, choices=[88200, 176400], default=88200)
-    x.add_argument("--gain-db", type=float, default=0.0, help="PCM gain (default 0)")
+    x.add_argument("--gain-db", type=_native.gain_db_arg, default=0.0, metavar="DB",
+                   help="PCM gain in dB, -120 to +24 (default 0)")
+    x.add_argument("--pcm-filter", choices=list(_native.PCM_FILTERS),
+                   help="PCM filter: precise (default; linear phase, no dither) or pysacd (pysacd's own filter design, with TPDF dither)")
+    x.add_argument("--pcm-cutoff", choices=list(_native.PCM_CUTOFFS),
+                   help="PCM cutoff of the precise filter: standard (40 kHz), low (30 kHz) or wide (80 kHz, 176400 Hz "
+                        "only) (default standard). The pysacd filter has standard only, "
+                        "its 0.5.x response: -3 dB at about 43 kHz at 88200 Hz, 72 kHz at 176400 Hz")
     x.add_argument("--flac-level", type=int, choices=range(9), metavar="0-8", default=5)
     x.add_argument("--threads", type=int, default=0, help="worker threads (default: CPU count)")
     x.add_argument("--allow-silence", action="store_true",
@@ -175,10 +184,19 @@ def parse_args(argv: list[str]) -> Opts:
              performer_flag=a.performer, concatenate=a.concat,
              input=a.input.lstrip("=") if a.input else None,
              output_dir=_dirarg(a.output_dir), output_dir_conc=_dirarg(a.output_dir_conc),
-             pcm=a.pcm, pcm_rate=a.pcm_rate, gain_db=a.gain_db, flac_level=a.flac_level,
+             pcm=a.pcm, pcm_rate=a.pcm_rate, gain_db=a.gain_db, pcm_filter=a.pcm_filter,
+             pcm_cutoff=a.pcm_cutoff, flac_level=a.flac_level,
              threads=a.threads, exact=a.exact, allow_silence=a.allow_silence, musicbrainz=a.musicbrainz, mb_release=a.mb_release,
              mb_contact=a.mb_contact, submit_isrcs=a.submit_isrcs, cover=a.cover, templates=a.templates, overwrite=a.overwrite, config=a.config,
              use_cfg=not a.no_cfg, disc=_parse_disc(ap, a.disc), log_file=a.log_file, log_level=a.log_level)
+    try:       # before anything runs: the filter, cutoff and rate go together (checked without
+        # --flac/--wav too, so that a wrong pair is never silently accepted)
+        _native.pcm_settings(a.pcm_rate, a.pcm_filter, a.pcm_cutoff)
+    except ValueError as e:
+        ap.error(str(e))
+    if not a.pcm and (a.pcm_filter or a.pcm_cutoff):
+        print("pysacd-extract: --pcm-filter and --pcm-cutoff only apply to --flac and --wav; ignored",
+              file=sys.stderr)
     if a.tracks:
         # like sacd_extract, the last -t wins; 0 and junk are ignored
         for tok in a.tracks[-1].replace(" ", ",").split(","):
@@ -1173,7 +1191,8 @@ def _execute(img, disc, area, jobs: list[Job], o: Opts, iso_path) -> int:
                       j.spec.tc_start, j.spec.tc_end)
         run = _native.run_area(img, o.input, area, specs, o.pcm_rate, o.gain_db, o.threads,
                                iso_out=iso_tmp, progress=_progress, exact=o.exact,
-                               allow_silence=o.allow_silence)
+                               allow_silence=o.allow_silence, pcm_filter=o.pcm_filter,
+                               pcm_cutoff=o.pcm_cutoff)
         if iso_tmp:
             # inside the try: a copy that can't be moved into place is removed too (#217)
             os.replace(iso_tmp, iso_path)

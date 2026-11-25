@@ -170,6 +170,11 @@ def is_path(spec: str) -> bool:
     return spec.endswith(".whl") or "/" in spec or os.sep in spec
 
 
+# A null this deep between two runs of the candidate means they gave the same samples (24-bit
+# rounding alone is about 145 dB down): the re-run is the measurement's floor, not dither
+REPEAT_IDENTICAL_DB = 250.0
+
+
 def tree_hash(root: Path) -> str:
     """SHA-256 over a source tree's files (names and contents), build output and VCS data left out."""
     skip_dirs = {".git", "build", "dist", "__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache"}
@@ -465,8 +470,8 @@ def main(argv: list[str] | None = None) -> int:
         depth, floor = nulls[dev["name"]], null_floor[dev["name"]]
         mark = ""
         if depth < floor - ncfg["bound"]:
-            mark = " (beyond dither)"
-            flags.append(f"{dev['name']}, null depth {depth:.1f} dB against {floor:.1f} dB for two dither draws")
+            mark = " (beyond the re-run)"
+            flags.append(f"{dev['name']}, null depth {depth:.1f} dB against {floor:.1f} dB for the candidate's re-run")
         rows.append((dev["name"], "Null depth against the previous release, 20 Hz to 20 kHz (dB)", None, depth,
                      depth - floor, ncfg["bound"], mark))
 
@@ -479,7 +484,7 @@ def main(argv: list[str] | None = None) -> int:
                       "this blocks the release unless DECISIONS.md explains and accepts it.")
     elif flags:
         conclusion = (f"{cv} measures the same as or better than {pv}: the changes beyond repeatability are improvements "
-                      "or a null deeper than dither alone gives.")
+                      "or a null less deep than the candidate's re-run gives.")
     else:
         conclusion = f"{cv} measures the same as {pv} within the suite's repeatability on every figure."
     if not same_inputs:
@@ -501,12 +506,17 @@ def main(argv: list[str] | None = None) -> int:
         f"(commit {dm_ident['commit'][:7]}) on the same machine with the same inputs, from the "
         "[pinned suite](../../suites/pysacd.toml). A change larger than the bound is flagged."), "",
         "## Results", "",
-        f"| Output | Figure | {pv} | {label_c} | Change | Bound |",
+        f"| Output | Figure (unit) | {pv} | {label_c} | Change (dB) | Bound (dB) |",
         "|---|---|---:|---:|---:|---:|",
     ]
     for name, label, vp, vc, delta, bound, mark in rows:
         if vp is None and label.startswith("Null"):
-            lines.append(f"| {name} | {label} | | {fmt(vc)} | {delta:+.1f} vs dither{mark} | {bound:.1f} |")
+            # a re-run that nulls this deep gave the same samples (an undithered filter): the change
+            # against it is no figure of merit, only whether the null is shallower
+            ref = vc - delta
+            change = (f"re-run identical ({ref:.0f} dB){mark}" if ref >= REPEAT_IDENTICAL_DB
+                      else f"{delta:+.1f} vs re-run{mark}")
+            lines.append(f"| {name} | {label} | | {fmt(vc)} | {change} | {bound:.1f} |")
         else:
             lines.append(f"| {name} | {label} | {fmt(vp)} | {fmt(vc)} | "
                          f"{'n/a' if delta is None else f'{delta:+.2f}'}{mark} | {bound:.1f} |")
@@ -535,10 +545,14 @@ def main(argv: list[str] | None = None) -> int:
     if nl:
         lines += ["- Null depth against the previous release is set by the 24-bit rounding noise of the output, "
                   "not the converter, on: " + "; ".join(nl) + " (dsd-measure's format limit)."]
-    lines += ["- Repeatability: largest spread over three dither draws of the candidate, per figure: "
-              + ", ".join(f"{m['key']} {spread_text(worst_spread[m['key']])}" for m in metrics) + "."]
-    lines += ["- Null depth: " + "; ".join(f"{n} {nulls[n]:.1f} dB (two dither draws of the candidate: {null_floor[n]:.1f} dB)"
-                                         for n in nulls) + "."]
+    lines += ["- Repeatability: largest spread over three runs of the candidate with the signal shifted by idle "
+              "frames, per figure: " + ", ".join(f"{m['key']} {spread_text(worst_spread[m['key']])}" for m in metrics)
+              + ". For a dithered filter (pysacd) the runs are other dither draws; for an undithered one (precise) "
+              "they are deterministic re-runs, so the spread is the measurement's, not the converter's."]
+    lines += ["- Null depth: " + "; ".join(f"{n} {nulls[n]:.1f} dB (the candidate against its own re-run: {null_floor[n]:.1f} dB)"
+                                         for n in nulls) + ". The re-run reference is the measurement's floor for an "
+              "undithered filter (the same samples, shifted) and two dither draws for a dithered one; the null "
+              "against the previous release is judged against it."]
     lines += [f"- Builds: {pv} is `{prev_id.get('file', 'a source tree')}`"
               + (f" (SHA-256 `{prev_id['sha256']}`)" if "sha256" in prev_id else "")
               + f"; {cv} is " + (f"`{cand_id['file']}` (SHA-256 `{cand_id['sha256']}`)" if cand_id["kind"] == "wheel"

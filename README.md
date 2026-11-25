@@ -103,8 +103,7 @@ The [documentation index](docs/README.md) lists every document and its sections.
 ## Licence and credits
 
 pysacd's code is free software under the [GNU General Public License](COPYING), version 2 or (at
-your option) any later version (`GPL-2.0-or-later`). Its DSD-to-PCM filter, `csrc/dsp.c` and
-`csrc/dsp.h`, is MIT OR Apache-2.0 ([licences](licenses/README.md)).
+your option) any later version (`GPL-2.0-or-later`) ([licences](licenses/README.md)).
 
 The text of this README, the documentation in `docs/` (the PCM quality pages in `docs/quality/`
 and the icon files in `docs/assets/` included) and the measurement data published in it are
@@ -115,6 +114,10 @@ the protobuf message definitions under "Messages" in the
 
 To cite pysacd, use [CITATION.cff](CITATION.cff).
 
+- [dsd2pcm](https://github.com/dsd-toolbox/dsd2pcm-rs) (MIT OR Apache-2.0, used under MIT) 0.2 or
+  later converts DSD to PCM, with its `precise` filter by default or the `pysacd` filter that
+  pysacd contributed; it is linked into the engine with the Rust standard library.
+
 - [scarletbook-rs](https://github.com/aclater/scarletbook-rs) (MIT OR Apache-2.0, used under MIT)
   reads the images, decodes DST and lays out DSF and DSDIFF files; it is linked into the engine
   with the Rust standard library and its crates (MIT OR Apache-2.0, used under MIT).
@@ -124,7 +127,7 @@ To cite pysacd, use [CITATION.cff](CITATION.cff).
   musllinux wheel carries GCC's `libgcc_s` (GPL-3.0-or-later with the GCC Runtime Library
   Exception). [mutagen](https://github.com/quodlibet/mutagen) (GPL-2.0-or-later) writes tags.
 - The first DSD-to-PCM stage uses Sebastian Gesemann's byte-wise lookup-table technique
-  (BSD-3-Clause).
+  (BSD-3-Clause), credited by dsd2pcm.
 - [sacd-ripper](https://github.com/sacd-ripper/sacd-ripper): `sacd_extract`'s behaviour, which
   `pysacd-extract` reproduces, used only as a compiled binary. pysacd speaks the PS3 SACD Ripper
   homebrew's network protocol.

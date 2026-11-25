@@ -6,7 +6,8 @@ name: portability
 on:
   pull_request:
     paths: ["csrc/**", "Makefile", "setup.py", "src/**", "tests/**", "fuzz/**", "scarletbook.lock",
-            "tools/scarletbook.py", ".github/workflows/portability.yml"]
+            "tools/scarletbook.py", "dsd2pcm.lock", "tools/dsd2pcm.py", "tools/pcm_vectors/**",
+            ".github/workflows/portability.yml"]
   schedule:
     - cron: "41 4 * * 1"
   workflow_dispatch:
@@ -34,6 +35,9 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
           python-version: "3.13"
+
+      - name: Rust, pinned in dsd2pcm.lock (builds the dsd2pcm library)
+        run: python3 -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust" >> "$GITHUB_PATH"
 
       - name: Install
         run: |
@@ -66,6 +70,7 @@ jobs:
           python-version: "3.13"
 
       - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e  # v2.33.0
+        id: msys2
         with:
           msystem: UCRT64
           install: >-
@@ -80,13 +85,28 @@ jobs:
         shell: bash
         run: python -I tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook
 
+      # The same for the dsd2pcm library, built from its pinned source with the pinned Rust
+      # (windows-gnu), which links its build script with MSYS2's MinGW-w64 gcc
+      - name: Build the dsd2pcm library
+        shell: bash
+        env:
+          # through the environment, not expanded into the script (zizmor: template-injection)
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+        run: |
+          rust=$(python -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust")
+          # the pinned Rust for the later steps too: the tests build dsd2pcm again (CargoFlags), and the
+          # runner's own rustup has no x86_64-pc-windows-gnu standard library
+          cygpath -w "$rust" >> "$GITHUB_PATH"
+          export PATH="$rust:$(cygpath -u "$MSYS2_LOCATION")/ucrt64/bin:$PATH"
+          python -I tools/dsd2pcm.py fetch --target x86_64-pc-windows-gnu --dest build/dsd2pcm
+
       - name: Build the engine (warnings are errors)
         shell: msys2 {0}
         run: |
           make CFLAGS="-O2 -Werror"
           make test-tools
           objdump -p src/pysacd/_sacdconv.dll | grep "DLL Name"
-          # exports: the engine's functions and scarletbook's C ABI, nothing of Rust's runtime
+          # exports: the engine's functions and scarletbook's C ABI, nothing of Rust's runtime or dsd2pcm
           objdump -p src/pysacd/_sacdconv.dll | sed -n '/Ordinal\/Name Pointer/,/^$/p' | grep -E '^\s*\[ *[0-9]+\]' | awk '{print $NF}' > exports.txt
           grep -c '^sb_' exports.txt
           ! grep -v -e '^sb_' -e '^sacdconv_' exports.txt
@@ -96,7 +116,11 @@ jobs:
         env:
           PYTHONPATH: src
           PYTHONUTF8: "1"
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
+          # MinGW-w64's gcc, pkgconf and libFLAC, last on PATH so Python's own tools come first: the
+          # FLAC test (FlacEqualsWav) compiles a small reader against libFLAC
+          export PATH="$PATH:$(cygpath -u "$MSYS2_LOCATION")/ucrt64/bin"
           # the test dependencies, hash-locked (#14); `pip install -e .` would need make on PATH
           python -m pip install --require-hashes -r requirements-test.txt
           python -m pysacd --version

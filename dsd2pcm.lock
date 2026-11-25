@@ -1,0 +1,53 @@
+{
+  "comment": "dsd2pcm's C library, which pysacd links statically for PCM conversion (its precise and pysacd filters). pysacd requires dsd2pcm 0.2.0 or later ('min_version'; tools/dsd2pcm.py and the engine refuse older). tools/dsd2pcm.py builds it from the release's C library source archive ('source.archive': 'capi-src', libdsd2pcm-<version>-src.tar.gz, made from 'source.ref': a tag, or a commit before the release is tagged), checked against its SHA-256 and built offline, without the FLAC reader, so that nothing outside Rust's standard library is linked, with the pinned Rust toolchain. 'use_archives': true would take the release's C library archives instead where it has one for the target (digests in 'assets'); off until they ship without the FLAC reader and with CET marks. See docs/development.md, 'The dsd2pcm library'.",
+  "repository": "dsd-toolbox/dsd2pcm-rs",
+  "version": "0.2.0",
+  "min_version": "0.2.0",
+  "abi": 1,
+  "commit": "b7431119f17b86cc712e34ecf387935d161c9352",
+  "signer_workflow": ".github/workflows/release.yml",
+  "source": {
+    "ref": "v0.2.0",
+    "archive": "capi-src",
+    "sha256": "a842ca6e0dc35380aaf7fd15f0dd6ce7310e8ffa00a74e8a109a0a58bab39e2e"
+  },
+  "use_archives": false,
+  "assets": {},
+  "rust": {
+    "version": "1.99.0",
+    "date": "2026-10-01",
+    "hosts": {
+      "aarch64-apple-darwin": {
+        "rustc": "334a66714ca316d71bbe5efe44f71762d0b276cea73be2987374693a837f7450",
+        "cargo": "76abff0ad79a10a3152dff640ea0d8b3c37637d9300bf55da41b95c3ddc069c1",
+        "rust-std": "a7c6de8aa21e7c31163a7656295b321bb85f5dce55ed8ea95ac9ac561202bb5b"
+      },
+      "aarch64-unknown-linux-gnu": {
+        "rustc": "89c0f1a3a44df63c95e5d5f2ba093d0a12c5f5f57f8635f8a7a0ce50cf86600e",
+        "cargo": "113229fcc16cc1ba004923a4cc275fbf3281dafaaf8b97269f9c00189d497fd4",
+        "rust-std": "1cf7e2ef58ed1cfa6f1adea18e155cbf254c1951f39e5f5e3376879f55fd64a4"
+      },
+      "x86_64-apple-darwin": {
+        "rustc": "7460910254f059b49b99ee3ddbcf7197d16b9505b59c166e14a1465ee323a81d",
+        "cargo": "939b71952afd63ae73bc00f3517c19f0dd7ac54884b5fac16a813ee50985d14d",
+        "rust-std": "18ee81961a73c3ae966ecb1e8f6096438c90aeefece8856201a6ecc17f5bc850"
+      },
+      "x86_64-pc-windows-gnu": {
+        "rustc": "015f770c3ca0b3226a24fe159f30b03782a91679ba16159f7d83550f768fb795",
+        "cargo": "36dc7cba4be341c5a6cb3e10f660c4565b6f87f318d3cb87519b2cfe8c630bca",
+        "rust-std": "a2382bf189d5621e09db647da419a8e1d4c604d60941cb116da00ce34042b1dd",
+        "rust-mingw": "ad2b4b41362a99a86e20a8dbcec4be81b99f2d507f6408a72c7a139bc1919080"
+      },
+      "x86_64-unknown-linux-gnu": {
+        "rustc": "77171ba2a0345fdf2abc4fedda55d6de078dae7a68527c28be8c77dcc9604bd5",
+        "cargo": "d7674918d28093097614cd9728b6ca60db9ea3038f640f0bd1e9a4188c7568ce",
+        "rust-std": "3e58dff2d0b72196b5ea4e90536e174d400de88564a52694686b81e091169933"
+      },
+      "x86_64-unknown-linux-musl": {
+        "rustc": "fa4fa63f0bf10fad6665f40004d8848b19cf15c98c72668e49afb05bb11bba5a",
+        "cargo": "0f60a28de17fc24ac3a12e23a298cc3f9caf82c2fdd44e47232db6e2fcb421eb",
+        "rust-std": "b106b0aa4565cc3525fd3161c69203a9e39044e6e6b4d618f261c3eeda14ad50"
+      }
+    }
+  }
+}

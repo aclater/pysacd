@@ -25,6 +25,8 @@ make                                      # builds src/pysacd/_sacdconv.so
 That needs:
 
 - gcc and make;
+- Rust's `cargo`, 1.83 or later, which builds the pinned dsd2pcm library
+  ([development](development.md#the-dsd2pcm-library));
 - `flac-devel`, for FLAC output only. `make` builds without it, and DSF and
   WAV still work.
 
@@ -108,13 +110,30 @@ How it works:
 
   An ISO copy (`-I`) is written first, in one sequential pass, and the audio then read from
   that copy, so a PS3 is read only once. Even a single long DST track uses every core.
-- **PCM (FLAC/WAV):** a three-stage linear-phase FIR (2.8224 MHz → 352.8 →
-  176.4 → 88.2 kHz) with a stopband of about 105 dB and TPDF dither. The
-  default gain is 0 dB, which puts SACD's 0 dB reference at −6 dBFS, so
-  nothing clips; use `--gain-db 6` if you want louder files. Each batch is
-  filtered with two frames of context on either side and trimmed by the exact
-  filter delay. Track joins are therefore sample-exact (gapless), and the
-  output doesn't depend on the thread count.
+- **PCM (FLAC/WAV):** [dsd2pcm](https://github.com/dsd-toolbox/dsd2pcm-rs) 0.2 converts DSD to
+  24-bit PCM. Its `precise` filter is the default since 0.6.0: linear phase, with at least 150 dB
+  of stopband, rounded to 24 bits without dither, so DSD silence becomes exact digital silence. Its
+  cutoff is 40 kHz (`standard`) at both rates. `--pcm-filter pysacd` selects the filter pysacd used up to 0.5.x (2.8224 MHz →
+  352.8 → 176.4 kHz, and → 88.2 kHz as a third stage at 88.2 kHz; a stopband of about 105 dB, TPDF
+  dither), now computed in double precision. It has one cutoff, `standard`, which is its 0.5.x
+  response and differs by rate ([PCM filters and cutoffs](#pcm-filters-and-cutoffs)). At
+  176.4 kHz, 0.6.0's default therefore removes content above about 40 kHz that 0.5.x passed (flat
+  to about 60 kHz, 3 dB down at about 72 kHz); on an SACD that band holds mostly the DSD
+  modulator's shaped noise. To keep it, use `--pcm-cutoff wide` (to 80 kHz; FLAC files about 54 %
+  larger on a real track) or `--pcm-filter pysacd` (0.5.x's response). Precise output is centred on
+  the DSD timeline;
+  the pysacd filter's is offset by a fixed fraction of a sample, as in 0.5.x (late by 0.266
+  samples at 88.2 kHz, early by 0.469 at 176.4 kHz), so files made with different filters don't
+  align sample-exactly. `--pcm-cutoff standard|low|wide` sets the
+  precise filter's cutoff: 40, 30 or 80 kHz (`wide` at 176.4 kHz only). The same keys work in
+  `config.toml` (`pcm_filter`, `pcm_cutoff`). [Quality](quality/README.md) has the measurements
+  behind the default. The default gain is 0 dB, which puts SACD's 0 dB reference at −6 dBFS, so
+  nothing clips; use `--gain-db 6` if you want louder files (−120 to +24 dB). Each batch is
+  converted with the frames on either side as context; the pysacd filter's dither is seeded per
+  frame from its position in the area. Track joins are therefore sample-exact (gapless), and a
+  sample's bytes depend only on the disc, the settings and its position: not on the CPU, the
+  thread count or where a track or range starts. Between releases the bytes may change where
+  measured quality improves; each such change is in the [changelog](../CHANGELOG.md).
 - **Tags:** the MusicBrainz release is found by barcode (the SACD's album
   catalogue number) or by catalogue number. The match is checked against track
   count, durations and ISRCs, and picks the medium for the right layer:
@@ -134,6 +153,29 @@ How it works:
   fallback search by title and artist. FLAC gets Vorbis comments; DSF and WAV
   get ID3 tags (v2.3 by default). Both follow Picard's field names, including
   the MusicBrainz IDs.
+
+## PCM filters and cutoffs
+
+What each filter and cutoff keeps, measured on 0.6.0 with tones through the engine, each level
+relative to 1 kHz. The tones come from a second-order modulator whose own level falls by about
+0.2 dB at 80 kHz; the points below include that.
+
+| Filter, cutoff | Rate (kHz) | −1 dB at (kHz) | −3 dB at (kHz) | Default |
+|---|---:|---:|---:|---|
+| precise, standard | 88.2 | 41.8 | 42.6 | yes |
+| precise, low | 88.2 | 31.4 | 32.0 | |
+| pysacd (standard only) | 88.2 | 42.5 | 43.3 | |
+| precise, wide | 176.4 | 81.7 | 82.6 | |
+| precise, standard | 176.4 | 41.8 | 42.6 | yes |
+| precise, low | 176.4 | 31.4 | 32.0 | |
+| pysacd (standard only) | 176.4 | 68.8 | 71.7 | |
+
+The `pysacd` rows are 0.5.x's response, computed in double precision. Above the −3 dB point the
+precise filter falls to its stopband within about 3 kHz; the pysacd filter at 176.4 kHz is
+23.8 dB down at 80 kHz (measured) and, from its taps, about 112 dB down at 88.2 kHz. The default is 40 kHz at every rate:
+at 176.4 kHz `wide` measures within 0.3 dB of it on SINAD, THD and the 20 Hz to 20 kHz noise
+floor, and above 40 kHz passes mostly DSD's ultrasonic noise.
+[Quality](quality/0.6.0.md) has the ultrasonic band levels and FLAC file sizes for each.
 
 ## Submitting ISRCs to MusicBrainz
 

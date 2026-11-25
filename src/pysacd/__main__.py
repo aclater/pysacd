@@ -9,7 +9,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import safetext
+from . import _native, safetext
 from .toc import Disc, SACDError, read_toc
 
 
@@ -159,6 +159,19 @@ def _convert(args) -> int:
     for k, v in vars(args).items():
         if v is not None and hasattr(opts, k):
             setattr(opts, k, v)
+    try:       # before anything runs: the filter, cutoff and rate go together, and the gain is a number
+        # in range. Checked for DSF output too, so a bad config.toml value shows at once.
+        _native.pcm_settings(opts.pcm_rate, opts.pcm_filter, opts.pcm_cutoff)
+        opts.gain_db = _native.check_gain_db(opts.gain_db)
+    except ValueError as e:
+        print(f"pysacd convert: {e}", file=sys.stderr)
+        return 2
+    if opts.format not in ("flac", "wav"):
+        given = [f"--{k.replace('_', '-')}" for k in ("pcm_filter", "pcm_cutoff", "pcm_rate", "gain_db")
+                 if getattr(args, k, None) is not None]
+        if given:
+            print(f"pysacd convert: {', '.join(given)} only apply to FLAC and WAV; ignored for "
+                  f"{(opts.format or 'dsf').upper()}", file=sys.stderr)
     from . import remote
 
     rc = 0
@@ -253,7 +266,15 @@ def main(argv: list[str] | None = None) -> int:
                         "overriding the TOC and MusicBrainz (for sets mastered as 1/1, e.g. Live-Evil)")
     c.add_argument("-t", "--tracks", type=lambda s: [int(x) for x in s.split(",")], help="only these tracks, e.g. 1,4,5")
     c.add_argument("-r", "--pcm-rate", type=int, choices=[88200, 176400], help="FLAC/WAV sample rate (default 88200)")
-    c.add_argument("--gain-db", type=float, help="PCM gain in dB (default 0; SACD 0 dB = -6 dBFS)")
+    c.add_argument("--gain-db", type=_native.gain_db_arg, metavar="DB",
+                   help="PCM gain in dB, -120 to +24 (default 0; SACD 0 dB = -6 dBFS)")
+    c.add_argument("--pcm-filter", choices=list(_native.PCM_FILTERS),
+                   help="FLAC/WAV filter: precise (default; linear phase, no dither) or pysacd "
+                        "(pysacd's own filter design, computed in f64, with TPDF dither)")
+    c.add_argument("--pcm-cutoff", choices=list(_native.PCM_CUTOFFS),
+                   help="FLAC/WAV cutoff of the precise filter: standard (40 kHz), low (30 kHz) or wide (80 kHz, "
+                        "176400 Hz only) (default standard). The pysacd filter has "
+                        "standard only, its 0.5.x response: -3 dB at about 43 kHz at 88200 Hz, 72 kHz at 176400 Hz")
     c.add_argument("--flac-level", type=int, choices=range(9), metavar="0-8", help="FLAC compression (default 5)")
     _bool(c, "pauses", "include the pauses between tracks, as pysacd-extract -b (default off: trimmed)")
     c.add_argument("-j", "--jobs", type=int, help="worker threads (default: CPU count)")

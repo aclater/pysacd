@@ -10,8 +10,8 @@ abstract: >-
   same bytes.
 authors:
   - name: "The pysacd authors"
-version: 0.5.5
-date-released: "2026-11-23"
+version: 0.6.0
+date-released: "2026-11-25"
 repository-code: "https://github.com/dsd-toolbox/pysacd"
 url: "https://pypi.org/project/pysacd/"
 license: GPL-2.0-or-later

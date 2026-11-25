@@ -37,6 +37,14 @@ class CheckSkips(unittest.TestCase):
     def test_a_changed_reason_fails(self):
         self.assertIn("reason changed", check_skips.problems(*self.report(), {"tests.t.A.off": "set Z"})[0])
 
+    def test_an_optional_skip_may_happen_or_not(self):
+        may = {"tests.t.A.off": "set X", "tests.t.A.hw": "no hardware"}
+        self.assertEqual(check_skips.problems(*self.report(), {}, may), [])
+        self.assertIn("reason changed", check_skips.problems(*self.report(), {}, {"tests.t.A.off": "set Z"})[0])
+        want = check_skips.expected_for("j", [{"jobs": ["j"], "reason": "r", "tests": ["a"], "optional": True},
+                                              {"jobs": ["j"], "reason": "s", "tests": ["b"]}])
+        self.assertEqual(want, {"b": "s"})
+
     def test_no_tests_fails(self):
         self.assertIn("no tests", check_skips.problems(*self.report({"tests": 0, "skips": {}}), {})[0])
 

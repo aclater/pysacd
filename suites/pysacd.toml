@@ -53,14 +53,14 @@ command = "python3 -I tools/quality_device.py --format wav --rate 176400 --area 
 [pysacd_quality]
 # tools/quality_compare.py hands dsd-measure the tables above this one only, so editing anything
 # from here on (a bound, a note) leaves the measured suite, and the reuse of reports, unchanged.
-# dsd-measure version pin: 0.1.2 (tag v0.1.2). It records each device's version and executable hash,
+# dsd-measure version pin: 0.1.3 (tag v0.1.3). It records each device's version and executable hash,
 # reads the word length of every output file, marks a comparison that is not like for like, and
-# reports THD apart from SINAD. final stays false until the first published comparison (pysacd
-# 0.6.0 against 0.5.x, with dsd2pcm 0.2.0 as the PCM path): until then a page is a draft.
-dsd_measure_version = "0.1.2"
-dsd_measure_commit = "3eaec2df13634f3bfc3968326a1dd7604ddfaf08"
+# reports THD apart from SINAD. final is true from the first published comparison (pysacd
+# 0.6.0 against 0.5.x, with dsd2pcm 0.2.0 as the PCM path); false marks a page a draft.
+dsd_measure_version = "0.1.3"
+dsd_measure_commit = "8010bbab950091cabffb20fb25e8a6a744569a6d"
 dsd_measure_repository = "https://github.com/dsd-toolbox/dsd-measure"
-final = false
+final = true
 
 # The output every device must write, read by dsd-measure from each file's header
 # (metrics.output_format). Both versions must match it and each other, so that a comparison is
@@ -120,8 +120,9 @@ bound = 0.3
 [pysacd_quality.null]
 seconds = 20
 seed = 20261124
-# re-derived with dsd-measure 0.1.2 (3eaec2d): the same as with 0.1.1 (d234b7a)
-source_sha256 = "128f6ecb97a4060a38637bf9be746912d3f613f681a76093e04a0a54cbd4d24b"
+# re-derived with dsd-measure 0.1.3 (8010bba): it changed from 0.1.2's 128f6ecb97a4060a (3eaec2d), the
+# same as with 0.1.1 (d234b7a); same seed and recipe, so the tool's encoder or file writer changed
+source_sha256 = "5defb0279817a9275117f541edc5abea71557729b56dd723ea785e7cea972669"
 bound = 1.0
 
 [pysacd_quality.repeatability]

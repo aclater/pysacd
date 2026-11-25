@@ -11,6 +11,8 @@ on:
       - "csrc/**"
       - "Makefile"
       - "scarletbook.lock"
+      - "dsd2pcm.lock"
+      - "tools/dsd2pcm.py"
       - "scripts/bench_compare.py"
       - "scripts/bench_workload.py"
       - ".github/workflows/benchmark.yml"
@@ -48,6 +50,9 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 2  # a pull request's checkout is its merge commit: the first parent is the base
+
+      - name: Rust, pinned in dsd2pcm.lock (builds the dsd2pcm library)
+        run: python3 -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust" >> "$GITHUB_PATH"
 
       - name: Install
         run: |

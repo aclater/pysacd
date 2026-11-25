@@ -81,11 +81,28 @@ typedef struct {
     uint32_t        missing_last;
     /* 1: no limit on frames written as silence or filler in this run (the frame bound stays) */
     int             allow_filler;
+    /* PCM: the filter (SC_PCM_FILTER_*) and dsd2pcm's cutoff (DSD2PCM_CUTOFF_*: 0 standard,
+       1 low, 2 wide). Zeros are precise with the standard cutoff. The pysacd filter takes the
+       standard cutoff only, and the wide cutoff needs 176400 Hz. */
+    int             pcm_filter;
+    int             pcm_cutoff;
+    /* PCM (out): samples clamped to 24 bits in the frames the outputs cover */
+    uint64_t        pcm_clipped;
 } sc_area_t;
+
+/* sc_area_t.pcm_filter */
+#define SC_PCM_FILTER_PRECISE 0     /* dsd2pcm's precise filter: linear phase, no dither */
+#define SC_PCM_FILTER_PYSACD  1     /* dsd2pcm's pysacd filter: pysacd's three stages, TPDF dither */
 
 int sacdconv_abi(void);
 int sacdconv_layout(int which, uint32_t *out, int cap);
 const char *sacdconv_build_info(void);
+/* 1 if dsd2pcm version string v is one pysacd links (0.2.0 or later, a release unless
+   allow_prerelease): the check every PCM run makes on the linked dsd2pcm_version() */
+int sacdconv_dsd2pcm_version_ok(const char *v, int allow_prerelease);
+/* 1 if a dsd2pcm library reporting C ABI abi is the one the engine was compiled for: the check
+   every PCM run makes on the linked dsd2pcm_abi_version() */
+int sacdconv_dsd2pcm_abi_ok(uint32_t abi);
 int sacdconv_has_flac(void);
 void sacdconv_cancel(sc_area_t *a);
 int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts);

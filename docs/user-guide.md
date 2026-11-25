@@ -70,7 +70,11 @@ with SACDImage("album.iso") as img:
 ```
 
 To cancel, raise from the progress callback (Ctrl-C works too); the engine
-stops cleanly. See [the Python API](api.md).
+stops cleanly. FLAC and WAV use dsd2pcm's precise filter with the 40 kHz cutoff unless
+`run_area` gets `pcm_filter` and `pcm_cutoff`; a combination the filter doesn't have, or a gain
+outside −120 to +24 dB, raises `NativeError` before anything is written. The result's
+`pcm_clipped` counts samples clipped to 24 bits. See
+[the Python API](api.md#converting-run_area) and [converting](converting.md#pcm-filters-and-cutoffs).
 
 ## Troubleshooting
 

@@ -8,6 +8,8 @@ exporting, and 44 tests, the comparison with sacd_extract among them, skipped fo
 job. So every skip a CI job may have is listed in tests/expected-skips.json, with its job, its
 reason as pytest reports it, and why it's legitimate there. This fails on a new skip, on a skip
 that has stopped (remove it from the list), on a changed reason, and on a report with no tests.
+An entry with "optional": true is for a test that runs or skips depending on the runner's
+hardware (CET shadow stacks): it may skip, with that reason, or run.
 pytest writes the report when PYSACD_TEST_REPORT names a file (tests/conftest.py).
 """
 
@@ -27,17 +29,22 @@ def read_report(path: str | Path) -> tuple[int, dict[str, str]]:
     return report["tests"], report["skips"]
 
 
-def expected_for(job: str, expected: list[dict]) -> dict[str, str]:
-    """{test: reason} of the entries that apply to a job."""
-    return {t: e["reason"] for e in expected if job in e["jobs"] for t in e["tests"]}
+def expected_for(job: str, expected: list[dict], optional: bool = False) -> dict[str, str]:
+    """{test: reason} of the entries that apply to a job: the required ones, or the optional ones."""
+    return {t: e["reason"] for e in expected if job in e["jobs"] and bool(e.get("optional")) == optional
+            for t in e["tests"]}
 
 
-def problems(tests: int, skips: dict[str, str], want: dict[str, str]) -> list[str]:
+def problems(tests: int, skips: dict[str, str], want: dict[str, str],
+             may: dict[str, str] | None = None) -> list[str]:
+    """want: skips that must happen; may: skips that may happen (optional entries)."""
+    may = may or {}
     out = []
     if not tests:
         out.append("the report holds no tests")
-    out += [f"unexpected skip: {t}: {skips[t]}" for t in sorted(skips.keys() - want.keys())]
+    out += [f"unexpected skip: {t}: {skips[t]}" for t in sorted(skips.keys() - want.keys() - may.keys())]
     out += [f"no longer skips (remove it from {EXPECTED.name}): {t}" for t in sorted(want.keys() - skips.keys())]
+    want = {**may, **want}
     out += [f"skip reason changed: {t}: expected {want[t]!r}, got {skips[t]!r}"
             for t in sorted(skips.keys() & want.keys()) if skips[t] != want[t]]
     return out
@@ -53,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"unknown job {args.job!r}: not in {EXPECTED.name}", file=sys.stderr)
         return 2
     tests, skips = read_report(args.report)
-    bad = problems(tests, skips, expected_for(args.job, expected))
+    bad = problems(tests, skips, expected_for(args.job, expected), expected_for(args.job, expected, optional=True))
     for line in bad:
         print(f"::error::{line}")
     print(f"{args.job}: {tests} tests, {len(skips)} skipped, {len(bad)} problem(s)")

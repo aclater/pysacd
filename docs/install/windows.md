@@ -131,21 +131,26 @@ MSYS2 UCRT64 shell only; PowerShell can't find it, and the editable install fail
 
 <!-- docs-run: skip="Windows with MSYS2; CI's portability workflow builds it" -->
 ```powershell
-# 1. In PowerShell: get the source, root certificates for the download (see below), then the
-#    scarletbook library the engine links (pinned, checked)
+# 1. In PowerShell: get the source, root certificates for the downloads (see below), the
+#    scarletbook library the engine links, and the Rust toolchain that builds the dsd2pcm library
+#    (each pinned and checked)
 git clone https://github.com/dsd-toolbox/pysacd C:\src\pysacd
 cd C:\src\pysacd
 py -m pip install certifi
 py tools/scarletbook.py fetch --target x86_64-pc-windows-gnu --dest build/scarletbook
+py tools/dsd2pcm.py toolchain --dest C:\src\rust
 ```
 
 Then open the **MSYS2 UCRT64** shell from the Start menu and run the rest there:
 
 <!-- docs-run: skip="Windows with MSYS2; CI's portability workflow builds it" -->
+<!-- docs-lint: ignore placeholder -- $PATH is the shell's own search path, extended as written; nothing to replace -->
 ```sh
 # 2. In the UCRT64 shell: the compiler, then the engine
 cd /c/src/pysacd
 pacman -S make mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-flac
+export PATH="$PATH:/c/src/rust/bin"           # Rust after gcc: its own DLLs would break gcc
+py tools/dsd2pcm.py fetch --target x86_64-pc-windows-gnu --dest build/dsd2pcm
 make                                          # builds src/pysacd/_sacdconv.dll
 # 3. Still in the UCRT64 shell, so that gcc is on the PATH: a fresh python.org Python has no
 #    setuptools, which --no-build-isolation needs

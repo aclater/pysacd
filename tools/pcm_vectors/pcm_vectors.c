@@ -2,19 +2,22 @@
 /*
  * DSD-to-PCM test vector generator.
  *
- *   pcm_vectors <in.dsd> <channels> <rate> <gain_db> <tc0> <out.f32> <out.i32>
+ *   pcm_vectors <in.dsd> <channels> <rate> <gain_db> <tc0> <out.f32> <out.i32> [batch|frame]
  *
  * in.dsd:  raw SACD frames, channel-interleaved, MSB-first (as dsd2pcm_frame takes them).
  * out.f32: little-endian float32 out[c][s] per frame, before quantising
  *          (per frame: channel 0 samples, then channel 1, ...).
  * out.i32: little-endian int32 final samples, channel-interleaved, after
  *          skip/keep; the whole input is one batch with pre = 0.
+ * batch (default): the dither is seeded once, from tc0, as pysacd up to 0.5 seeded each batch.
+ * frame: it is seeded at the start of each frame from tc0 + its index, as pysacd since 0.6.0
+ *        (dsd2pcm's pysacd filter) does.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../csrc/dsp.c"
+#include "dsp.c"
 
 static inline uint32_t xorshift(uint32_t *s)
 {
@@ -33,8 +36,13 @@ static void put_le32(FILE *f, uint32_t v)
 
 int main(int argc, char **argv)
 {
-    if (argc != 8) {
-        fprintf(stderr, "usage: %s in.dsd channels rate gain_db tc0 out.f32 out.i32\n", argv[0]);
+    if (argc != 8 && argc != 9) {
+        fprintf(stderr, "usage: %s in.dsd channels rate gain_db tc0 out.f32 out.i32 [batch|frame]\n", argv[0]);
+        return 2;
+    }
+    int per_frame = argc == 9 && !strcmp(argv[8], "frame");
+    if (argc == 9 && !per_frame && strcmp(argv[8], "batch")) {
+        fprintf(stderr, "seeding must be batch or frame\n");
         return 2;
     }
     int ch = atoi(argv[2]), rate = atoi(argv[3]);
@@ -96,6 +104,8 @@ int main(int argc, char **argv)
         for (int s = 0; s < opf && got < keep; s++, pos++) {
             if (pos < skip)
                 continue;
+            if (per_frame && got % opf == 0)
+                rng = 0x9E3779B9u ^ ((tc0 + got / opf) * 2654435761u);
             for (int c = 0; c < ch; c++) {
                 uint32_t r1 = xorshift(&rng), r2 = xorshift(&rng); /* fixed order, as in sacdconv.c */
                 float dith = ((float)r1 - (float)r2) * lsb;

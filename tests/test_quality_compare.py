@@ -131,10 +131,10 @@ class Suite(unittest.TestCase):
         self.cfg = self.suite["pysacd_quality"]
 
     def test_pin_and_draft(self):
-        self.assertEqual(self.cfg["dsd_measure_version"], "0.1.2")
+        self.assertEqual(self.cfg["dsd_measure_version"], "0.1.3")
         self.assertEqual(len(self.cfg["dsd_measure_commit"]), 40)
-        self.assertTrue(self.cfg["dsd_measure_commit"].startswith("3eaec2d"))
-        self.assertIs(self.cfg["final"], False)       # final once the first published comparison is made
+        self.assertTrue(self.cfg["dsd_measure_commit"].startswith("8010bba"))
+        self.assertIs(self.cfg["final"], True)        # the first published comparison (0.6.0) is final
         self.assertEqual(self.cfg["output"], {"kind": "int", "bits": 24})
         self.assertEqual(len(self.cfg["null"]["source_sha256"]), 64)
 

@@ -13,7 +13,7 @@ behaviour, and a patch version only adds or fixes. Each release on
 ## [0.6.0] - 2026-11-25
 
 PCM conversion now goes through [dsd2pcm](https://github.com/dsd-toolbox/dsd2pcm-rs) 0.2, and FLAC
-and WAV use its `precise` filter by default, the best of the filters measured: on the release
+and WAV use its `precise` filter by default, the one with the highest SINAD measured: on the release
 quality suite, SINAD measures 141.8 dB at 88.2 kHz and 143.6 dB at 176.4 kHz with a 1 kHz tone at
 0 dB SACD, against 0.5.5's 127.8 and 128.1 dB ([PCM quality](docs/quality/0.6.0.md)). Both figures are at the measurement's floor and near the limit of a
 24-bit file ([floor], [word length] on that page), so they say the converter is no longer the
@@ -41,7 +41,7 @@ differ only where docs/sacd_extract.md says so; none differs otherwise, as for 0
   `pysacd-extract`, the config keys `pcm_filter` and `pcm_cutoff`, and the same arguments to
   `run_area`. With the `precise` filter the cutoff is 40 kHz (`standard`), 30 kHz (`low`) or
   80 kHz (`wide`, 176.4 kHz only); the passband ends there and the response is 3 dB down about
-  2.6 kHz above it. The `pysacd` filter has `standard` only, and for it that means its 0.5.x
+  2 kHz (`low`) to 2.6 kHz above it. The `pysacd` filter has `standard` only, and for it that means its 0.5.x
   response, which differs by rate: 3 dB down at 43.3 kHz at 88.2 kHz, and at 71.7 kHz at
   176.4 kHz (measured). A combination the filter doesn't have is refused before anything runs
   ([converting](docs/converting.md)).
@@ -135,7 +135,7 @@ differ only where docs/sacd_extract.md says so; none differs otherwise, as for 0
 - The engine links scarletbook 1.0.2 (was 0.7.0): the same C ABI and the same output; scarletbook's
   interface is now stable (1.0).
 - Documentation (the README's text and the icons included) and published measurement data are
-  now licensed CC BY 4.0; the code licence is unchanged (GPL-2.0-or-later, with the DSD-to-PCM filter MIT OR Apache-2.0). The exceptions are
+  now licensed CC BY 4.0; the code licence is unchanged (GPL-2.0-or-later; the former DSD-to-PCM filter, now in `tools/pcm_vectors/`, is MIT OR Apache-2.0). The exceptions are
   listed in the README's "Licence and credits". A `CITATION.cff` describes how to cite pysacd.
 
 ### Fixed

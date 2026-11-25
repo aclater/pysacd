@@ -92,11 +92,12 @@
     ]
   },
   {
-    "why": "SHSTK-enforced runs need a CPU with CET shadow stacks and a kernel with user shadow stacks; GitHub's runners vary. Where they have them, the test runs.",
+    "why": "SHSTK-enforced runs need a CPU with CET shadow stacks and a kernel with user shadow stacks; GitHub's runners vary. Where they have them, the test runs. The TSan build is SHSTK-marked too, so on a runner without them it skips here.",
     "reason": "user-space shadow stacks not available here (CPU, kernel or glibc)",
     "optional": true,
     "jobs": [
-      "tests"
+      "tests",
+      "tsan"
     ],
     "tests": [
       "tests.test_pcm_dsd2pcm.ShadowStacks.test_golden_with_shadow_stacks_on"
@@ -106,11 +107,22 @@
     "why": "The sanitizer builds are HARDEN=0 (no -fcf-protection), so the engine carries no SHSTK mark to enforce.",
     "reason": "the engine is not SHSTK-marked (not x86-64 glibc, or a HARDEN=0 sanitizer build)",
     "jobs": [
-      "asan",
-      "tsan"
+      "asan"
     ],
     "tests": [
       "tests.test_pcm_dsd2pcm.ShadowStacks.test_golden_with_shadow_stacks_on"
+    ]
+  },
+  {
+    "why": "The forced-shadow-stack test needs a CPU with user_shstk; GitHub's runners lack it. Where the CPU has it, the test runs.",
+    "reason": "the CPU or kernel has no user-space shadow stacks (no user_shstk in /proc/cpuinfo)",
+    "optional": true,
+    "jobs": [
+      "tests",
+      "tsan"
+    ],
+    "tests": [
+      "tests.test_pcm_dsd2pcm.ShadowStacksForced.test_golden_with_shadow_stacks_forced"
     ]
   }
 ]

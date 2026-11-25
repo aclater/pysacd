@@ -9,7 +9,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 import unicodedata
 import unittest
 from pathlib import Path
@@ -18,6 +17,7 @@ from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+import fsutil
 import sacdgen
 
 from pysacd import _native, convert, musicbrainz, safetext, tagging
@@ -101,7 +101,7 @@ class Collisions(unittest.TestCase):
 
     @unittest.skipUnless(_native_ok(), "native engine not built")
     def test_convert_end_to_end(self):
-        with tempfile.TemporaryDirectory() as d:
+        with fsutil.TempDir() as d:
             root = Path(d)
             iso = root / "c.iso"
             sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [FRAME] * 30, [10, 10, 10], dst=False,
@@ -112,7 +112,7 @@ class Collisions(unittest.TestCase):
                 rc = cli.main(["convert", "--no-musicbrainz", "--no-cover", "--file-template", "{title}",
                                "--dir-template", "x", "-o", str(out), str(iso)])
             self.assertEqual(rc, 0)
-            self.assertEqual(sorted(p.name for p in (out / "x").iterdir()),
+            self.assertEqual(sorted(p.name for p in fsutil.lp(out / "x").iterdir()),
                              ["Intro.dsf", "Outro.dsf", "intro (2).dsf"])
 
 
@@ -123,7 +123,7 @@ class Decoding(unittest.TestCase):
         """The album title scarletbook reads when the disc stores these bytes for it: a disc
         built with a placeholder title of the same length, then patched."""
         placeholder = "Q" * len(raw)
-        with tempfile.TemporaryDirectory() as d:
+        with fsutil.TempDir() as d:
             iso = Path(d) / "t.iso"
             sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [FRAME] * 10, [10], dst=False, titles=["t"], charset=charset)],
                               info=sacdgen.DiscInfo(title=placeholder, artist="a", charset=charset))
@@ -161,7 +161,7 @@ class Decoding(unittest.TestCase):
         return iso
 
     def test_toc_and_json(self):
-        with tempfile.TemporaryDirectory() as d:
+        with fsutil.TempDir() as d:
             iso = self.disc(Path(d), 3, ["ソフト表示", "ダメ\\テスト"], "表ソ アルバム")
             disc = read_toc(iso)
             self.assertEqual([t.title for t in disc.stereo.tracks], ["ソフト表示", "ダメ¥テスト"])
@@ -174,7 +174,7 @@ class Decoding(unittest.TestCase):
 
     @unittest.skipUnless(_native_ok(), "native engine not built")
     def test_convert_names(self):
-        with tempfile.TemporaryDirectory() as d:
+        with fsutil.TempDir() as d:
             root = Path(d)
             iso = self.disc(root, 6, ["許功蓋", "成功"], "許蓋", "歌手")         # Big5 with 0x5C trail bytes
             out = root / "out"
@@ -184,7 +184,7 @@ class Decoding(unittest.TestCase):
                 self.assertEqual(cli.main(["convert", "--no-musicbrainz", "--no-cover", "--dir-template", "x",
                                            "--file-template", "{tracknumber:02d} - {title}",
                                            "-o", str(out), str(iso)]), 0)
-            names = [p.name for p in out.rglob("*.dsf")]
+            names = [p.name for p in fsutil.lp(out).rglob("*.dsf")]
             self.assertEqual(sorted(names), ["01 - 許功蓋.dsf", "02 - 成功.dsf"])
 
     def run_both(self, root: Path, iso: Path) -> list[dict[bytes, bytes]]:
@@ -196,7 +196,7 @@ class Decoding(unittest.TestCase):
             cmd = [SACD_EXTRACT] if tool == "se" else [sys.executable, "-m", "pysacd.extract", "--no-cfg"]
             subprocess.run([*cmd, "-2", "-s", "-C", "-i", str(iso)], cwd=out, check=True,
                            env=dict(os.environ, PYTHONPATH=str(src)), capture_output=True)
-            trees.append({os.fsencode(p.relative_to(out)): p.read_bytes() for p in sorted(out.rglob("*"))
+            trees.append({os.fsencode(p.relative_to(fsutil.lp(out))): p.read_bytes() for p in sorted(fsutil.lp(out).rglob("*"))
                           if p.is_file() and p.suffix in (".dsf", ".cue")})
         return trees
 
@@ -215,7 +215,7 @@ class Decoding(unittest.TestCase):
         """sacd_extract decodes Shift-JIS and Big5, 0x5C trail bytes included: byte-identical."""
         for charset, titles, album, artist in ((3, ["ソフト表示", "ダメ\\テスト"], "表ソ アルバム", "能ソ"),
                                                (6, ["許功蓋", "成功"], "許蓋", "歌手")):
-            with self.subTest(charset=charset), tempfile.TemporaryDirectory() as d:
+            with self.subTest(charset=charset), fsutil.TempDir() as d:
                 root = Path(d)
                 iso = self.disc(root, charset, titles, album, artist)
                 se, py = self.run_both(root, iso)
@@ -232,7 +232,7 @@ class Decoding(unittest.TestCase):
         identical."""
         for charset, titles, album, artist in ((4, ["한국어", "노래"], "앨범", "가수"),
                                                (5, ["你好", "世界"], "专辑", "歌手")):
-            with self.subTest(charset=charset), tempfile.TemporaryDirectory() as d:
+            with self.subTest(charset=charset), fsutil.TempDir() as d:
                 root = Path(d)
                 iso = self.disc(root, charset, titles, album, artist)
                 se, py = self.run_both(root, iso)
@@ -354,7 +354,7 @@ class MusicBrainzTypes(unittest.TestCase):
             get.assert_not_called()
 
     def test_string_track_numbers_and_tags_fall_back(self):
-        with tempfile.TemporaryDirectory() as d:
+        with fsutil.TempDir() as d:
             iso = Path(d) / "m.iso"
             sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [FRAME] * 10, [10], dst=False, titles=["Disc Title"])])
             disc = read_toc(iso)
@@ -374,7 +374,7 @@ class MusicBrainzTypes(unittest.TestCase):
         self.assertEqual(render(convert.Options().file_template, v, False), "03 - Disc Title")
 
     def test_overlay_failure_keeps_disc_text(self):
-        with tempfile.TemporaryDirectory() as d:
+        with fsutil.TempDir() as d:
             iso = Path(d) / "m.iso"
             sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [FRAME] * 10, [10], dst=False, titles=["Disc Title"])])
             disc = read_toc(iso)
@@ -397,7 +397,7 @@ class MusicBrainzTypes(unittest.TestCase):
             bad = json.loads(json.dumps(self.GOOD))
             bad["media"][0]["tracks"][0]["length"] = "x"
             return bad
-        with tempfile.TemporaryDirectory() as d:
+        with fsutil.TempDir() as d:
             iso = Path(d) / "m.iso"
             sacdgen.build_iso(iso, [sacdgen.AreaSpec(2, [FRAME] * 10, [10], dst=False)],
                               info=sacdgen.DiscInfo(album_catalog="4988001234567"))

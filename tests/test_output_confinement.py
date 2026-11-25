@@ -5,10 +5,10 @@ relative -o that starts with "..".
 import os
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
+import fsutil
 import sacdgen
 import test_dst_full as dst
 
@@ -79,7 +79,7 @@ class Extract(unittest.TestCase):
     """End to end: every file of a run is under -o, whatever the disc says."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.frames = [sacdgen._dsd_frame(2, s) for s in range(6)]
@@ -96,7 +96,7 @@ class Extract(unittest.TestCase):
                                "-i", str(iso), *extra], cwd=cwd, env=env, capture_output=True, text=True, check=False)
 
     def _files(self):
-        return sorted(str(p.relative_to(self.root)) for p in self.root.rglob("*") if p.is_file())
+        return sorted(str(p.relative_to(fsutil.lp(self.root))) for p in fsutil.lp(self.root).rglob("*") if p.is_file())
 
     def test_hostile_titles_stay_under_the_output_folder(self):
         for n, title in enumerate(TITLES):
@@ -108,11 +108,11 @@ class Extract(unittest.TestCase):
                     iso = self._iso(f"d{n}-{set_size}.iso", title, set_size, seq)
                     r = self._run(iso, out, work)
                     self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-                    written = [p for p in work.rglob("*") if p.is_file()]
+                    written = [p for p in fsutil.lp(work).rglob("*") if p.is_file()]
                     self.assertTrue(any(p.suffix == ".dsf" for p in written))
                     for p in written:
-                        self.assertTrue(p.is_relative_to(out), p)
-                        self.assertFalse(any(part.startswith(".") for part in p.relative_to(out).parts), p)
+                        self.assertTrue(p.is_relative_to(fsutil.lp(out)), p)
+                        self.assertFalse(any(part.startswith(".") for part in p.relative_to(fsutil.lp(out)).parts), p)
 
     def test_relative_output_folder_with_dotdot(self):
         work = self.root / "work" / "sub"

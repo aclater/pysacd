@@ -7,10 +7,10 @@ disc or PS3 is needed.
 import os
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
+import fsutil
 import sacdgen
 import test_dst_full as dst
 
@@ -27,7 +27,7 @@ def run_extract(args: list[str], cwd: Path, env: dict | None = None) -> subproce
 
 
 def tree(root: Path) -> dict[str, bytes]:
-    return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*"))
+    return {str(p.relative_to(fsutil.lp(root))): p.read_bytes() for p in sorted(fsutil.lp(root).rglob("*"))
             if p.is_file() and not p.name.endswith((".log", ".txt", ".cfg"))}
 
 
@@ -36,7 +36,7 @@ def tree(root: Path) -> dict[str, bytes]:
 class ExtractInputs(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory()
+        cls.tmp = fsutil.TempDir()
         cls.dir = Path(cls.tmp.name)
         frames = [f for _, _, f in dst.encoded(2)]
         n = len(frames)
@@ -95,7 +95,7 @@ class ExtractInputs(unittest.TestCase):
             host, port = sim.address
             r = run_extract(["-I", "-i", f"{host}:{port}"], out)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        isos = list(out.rglob("*.iso"))
+        isos = list(fsutil.lp(out).rglob("*.iso"))
         self.assertEqual(len(isos), 1)
         self.assertEqual(isos[0].read_bytes(), self.iso.read_bytes())
 
@@ -109,7 +109,7 @@ class ExtractInputs(unittest.TestCase):
         self.assertIn("ERROR", log)
         self.assertRegex(log, r"DISC_READ.*(failed|timed out)|cannot read")
         self.assertIn("Traceback", log)                   # the full exception is recorded
-        self.assertFalse(list(out.rglob("*.dsf")))        # no partial outputs left behind
+        self.assertFalse(list(fsutil.lp(out).rglob("*.dsf")))        # no partial outputs left behind
 
     def test_log_file_contents(self):
         out = self.workdir("log")
@@ -149,7 +149,7 @@ class SectorSource(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory()
+        cls.tmp = fsutil.TempDir()
         cls.dir = Path(cls.tmp.name)
         frames = [f for _, _, f in dst.encoded(2)]
         cls.iso = cls.dir / "disc.iso"
@@ -243,7 +243,7 @@ class SectorSource(unittest.TestCase):
 
 class LogSafety(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = fsutil.TempDir()
         self.dir = Path(self.tmp.name)
 
     def tearDown(self):

@@ -90,5 +90,27 @@
     "tests": [
       "tests.test_musicbrainz_live.LiveMusicBrainz.test_release_lookup_still_parses_and_matches"
     ]
+  },
+  {
+    "why": "SHSTK-enforced runs need a CPU with CET shadow stacks and a kernel with user shadow stacks; GitHub's runners vary. Where they have them, the test runs.",
+    "reason": "user-space shadow stacks not available here (CPU, kernel or glibc)",
+    "optional": true,
+    "jobs": [
+      "tests"
+    ],
+    "tests": [
+      "tests.test_pcm_dsd2pcm.ShadowStacks.test_golden_with_shadow_stacks_on"
+    ]
+  },
+  {
+    "why": "The sanitizer builds are HARDEN=0 (no -fcf-protection), so the engine carries no SHSTK mark to enforce.",
+    "reason": "the engine is not SHSTK-marked (not x86-64 glibc, or a HARDEN=0 sanitizer build)",
+    "jobs": [
+      "asan",
+      "tsan"
+    ],
+    "tests": [
+      "tests.test_pcm_dsd2pcm.ShadowStacks.test_golden_with_shadow_stacks_on"
+    ]
   }
 ]

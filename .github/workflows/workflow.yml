@@ -10,6 +10,7 @@ on:
   pull_request:
     paths: ["setup.py", "pyproject.toml", "MANIFEST.in", "Makefile", "csrc/**", "tests/wheel_smoke.py",
             "scarletbook.lock", "tools/scarletbook.py", "tools/check_cet.py", "tools/check_release_tag.py",
+            "dsd2pcm.lock", "tools/dsd2pcm.py", "tools/mark_shstk.py",
             "src/pysacd/__init__.py", "licenses/**", "scripts/build-libflac.sh", ".github/workflows/workflow.yml"]
   push:
     tags: ["v*"]
@@ -123,6 +124,15 @@ jobs:
           echo "$(cygpath -w "$root/ucrt64/bin")" >> "$GITHUB_PATH"
           echo "$(cygpath -w "$root/usr/bin")" >> "$GITHUB_PATH"
 
+      # The dsd2pcm library is built from its pinned source (tools/dsd2pcm.py) with the pinned Rust:
+      # here on macOS and Windows; in the Linux containers, before anything else (CIBW_BEFORE_ALL_LINUX)
+      - name: Rust, pinned in dsd2pcm.lock (macOS, Windows)
+        if: runner.os != 'Linux'
+        shell: bash
+        run: |
+          py=$(command -v python3 || command -v python)
+          "$py" -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust" >> "$GITHUB_PATH"
+
       # A static libFLAC (no Ogg, no programs) for the wheel's minimum macOS, linked into the engine,
       # so delocate has nothing to bundle. Same libFLAC release as Homebrew's.
       - name: Build libFLAC from source (macOS)
@@ -155,9 +165,10 @@ jobs:
           CIBW_BEFORE_ALL_LINUX: >-
             if command -v apk >/dev/null; then apk add curl pkgconf xz;
             elif ! command -v pkg-config >/dev/null; then dnf install -y pkgconf-pkg-config; fi &&
-            sh {project}/scripts/build-libflac.sh /opt/libflac
+            sh {project}/scripts/build-libflac.sh /opt/libflac &&
+            /opt/python/cp313-cp313/bin/python3 -I {project}/tools/dsd2pcm.py toolchain --dest /opt/rust
           CIBW_ENVIRONMENT_PASS_LINUX: FLAC_VERSION FLAC_SHA256
-          CIBW_ENVIRONMENT_LINUX: PKG_CONFIG_PATH=/opt/libflac/lib/pkgconfig
+          CIBW_ENVIRONMENT_LINUX: PKG_CONFIG_PATH=/opt/libflac/lib/pkgconfig PATH=/opt/rust/bin:$PATH
           # The wheel's minimum macOS (#142); libFLAC above and scarletbook's library target it or older.
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.target }}
           # The Windows DLL is static: nothing to bundle.
@@ -241,6 +252,9 @@ jobs:
 
       # build, the backend and pysacd's dependencies all come from the hash-locked
       # requirements-dev.txt (#14), so nothing unhashed is downloaded (#70).
+      - name: Rust, pinned in dsd2pcm.lock (builds the dsd2pcm library)
+        run: python3.13 -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust" >> "$GITHUB_PATH"
+
       - name: Install the build tools
         run: |
           python3.13 -m venv /tmp/sdist-check
@@ -248,6 +262,18 @@ jobs:
 
       - name: Build the sdist
         run: /tmp/sdist-check/bin/python -m build --sdist --no-isolation
+
+      # setup.py vendors dsd2pcm's pinned source (checked against dsd2pcm.lock) and its licences,
+      # so a build from the sdist downloads nothing for dsd2pcm
+      # Exactly these three files: the archive's name comes from dsd2pcm.lock (tools/dsd2pcm.py
+      # source-name: libdsd2pcm-<version>-src.tar.gz for a capi-src pin)
+      - name: The sdist carries dsd2pcm's pinned source
+        run: |
+          set -eu
+          name=$(python3.13 -I tools/dsd2pcm.py source-name)
+          printf '%s\n' "vendor/dsd2pcm/$name" vendor/dsd2pcm/LICENSE-APACHE vendor/dsd2pcm/LICENSE-MIT | sort > /tmp/want
+          tar -tzf dist/*.tar.gz | grep -E '^[^/]+/vendor/dsd2pcm/[^/]+$' | cut -d/ -f2- | sort | tee /tmp/vendored
+          diff /tmp/want /tmp/vendored
 
       - name: The sdist builds a working package
         run: |
@@ -263,9 +289,58 @@ jobs:
           name: sdist
           path: dist/*.tar.gz
 
+  sdist-offline:
+    # A wheel from the sdist with the network off (docker --network none), an empty CARGO_HOME and
+    # no download cache: dsd2pcm comes from the source the sdist vendors, built by cargo --offline.
+    # The pinned Rust toolchain and the scarletbook library are fetched and checked against their
+    # pins on the runner first, and mounted read-only; the build image gets its compiler and the
+    # hash-locked build tools before the network goes.
+    name: sdist builds offline
+    needs: [sdist]
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: registry.fedoraproject.org/fedora@sha256:b414c09be79dd1f32529b55b096b6bb30435d82ee16fbdbbabf8985eb5f86db0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: sdist
+          path: dist
+
+      - name: The pinned Rust and scarletbook, fetched and checked
+        run: |
+          python3 -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust"
+          python3 -I tools/scarletbook.py fetch --target x86_64-unknown-linux-gnu --dest "$RUNNER_TEMP/scarletbook"
+
+      - name: A build image (compiler, and the build tools from requirements-dev.txt)
+        run: |
+          docker run --name pysacd-prep -v "$PWD/requirements-dev.txt:/req.txt:ro" "$IMAGE" bash -ec '
+            dnf -y -q --setopt=install_weak_deps=False install gcc make flac-devel pkgconf-pkg-config findutils \
+              binutils file python3.13 python3.13-devel
+            dnf clean all
+            python3.13 -m venv /opt/v
+            /opt/v/bin/pip install -q --require-hashes -r /req.txt'
+          docker commit pysacd-prep pysacd-offline
+          docker rm pysacd-prep
+
+      - name: A wheel from the sdist, with no network
+        run: |
+          docker run --rm --network none -v "$PWD/dist:/dist:ro" -v "$RUNNER_TEMP/rust:/rust:ro" \
+            -v "$RUNNER_TEMP/scarletbook:/scarletbook:ro" -v "$PWD:/src:ro" \
+            -e PATH=/rust/bin:/opt/v/bin:/usr/bin:/bin -e CARGO_HOME=/tmp/emptycargo -e SCARLETBOOK_DIR=/scarletbook \
+            pysacd-offline bash -ec '
+              mkdir /tmp/emptycargo /tmp/b
+              cd /tmp/b
+              python -m pip wheel -q --no-deps --no-build-isolation --no-index -w /tmp/w /dist/*.tar.gz
+              pip install -q --no-deps --no-index /tmp/w/*.whl
+              python /src/tests/wheel_smoke.py
+              [ -z "$(ls -A /tmp/emptycargo)" ] || { ls -R /tmp/emptycargo; echo "cargo wrote to CARGO_HOME"; }'
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [wheels, sdist]
+    needs: [wheels, sdist, sdist-offline]
     runs-on: ubuntu-latest
     permissions:
       contents: write

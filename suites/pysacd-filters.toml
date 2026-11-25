@@ -1,0 +1,55 @@
+# pysacd's PCM filters side by side on one build (docs/quality/0.6.0.md, "Filters"): the precise
+# filter with each cutoff it offers at each rate, and the pysacd filter, stereo FLAC, measured with
+# the same dsd-measure version, inputs and wrapper as suites/pysacd.toml. Run it with the
+# candidate's `pysacd` first on PATH, from the repository root:
+#
+#   dsd-measure run suites/pysacd-filters.toml -o build/quality-filters
+#
+# It is not a release-to-release comparison (suites/pysacd.toml is); it backs the choice of the
+# default filter with measurements of this release.
+
+[suite]
+name = "pysacd PCM filters"
+profile = "quick"
+in_rate = 88200
+out = "report"
+
+[[device]]
+name = "precise standard 88.2 kHz"
+adapter = "cli"
+class = "A"
+output_ext = "wav"
+version_command = "pysacd --version"
+command = "python3 -I tools/quality_device.py --format flac --rate 88200 --area stereo --pcm-filter precise --pcm-cutoff standard {input} {output}"
+
+[[device]]
+name = "pysacd 88.2 kHz"
+adapter = "cli"
+class = "A"
+output_ext = "wav"
+version_command = "pysacd --version"
+command = "python3 -I tools/quality_device.py --format flac --rate 88200 --area stereo --pcm-filter pysacd {input} {output}"
+
+[[device]]
+name = "precise wide 176.4 kHz"
+adapter = "cli"
+class = "A"
+output_ext = "wav"
+version_command = "pysacd --version"
+command = "python3 -I tools/quality_device.py --format flac --rate 176400 --area stereo --pcm-filter precise --pcm-cutoff wide {input} {output}"
+
+[[device]]
+name = "precise standard 176.4 kHz"
+adapter = "cli"
+class = "A"
+output_ext = "wav"
+version_command = "pysacd --version"
+command = "python3 -I tools/quality_device.py --format flac --rate 176400 --area stereo --pcm-filter precise --pcm-cutoff standard {input} {output}"
+
+[[device]]
+name = "pysacd 176.4 kHz"
+adapter = "cli"
+class = "A"
+output_ext = "wav"
+version_command = "pysacd --version"
+command = "python3 -I tools/quality_device.py --format flac --rate 176400 --area stereo --pcm-filter pysacd {input} {output}"

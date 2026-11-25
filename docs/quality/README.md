@@ -22,8 +22,9 @@ in [development](../development.md#release-quality-comparison).
 
 ## Releases
 
-None yet. The first page comes with 0.6.0, measured against 0.5.5 with the released versions of
-dsd2pcm and of the measurement tool that the suite will pin.
+| Release | Against | Page | Status |
+|---|---|---|---|
+| 0.6.0 | 0.5.5 | [0.6.0](0.6.0.md) | final: dsd2pcm 0.2.0, dsd-measure 0.1.3 |
 
 ## See also
 

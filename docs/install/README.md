@@ -36,8 +36,8 @@ pysacd --version                      # shows how the engine was built
 
 The wheel includes the engine, libFLAC and mutagen.
 
-Wheels are portable builds: the PCM filters pick AVX-512, AVX2 or the baseline code when the
-library loads.
+Wheels are portable builds: the PCM conversion picks its SIMD level when it runs, with the same
+output on every CPU.
 
 ## Checking a download
 
@@ -81,10 +81,19 @@ online with `gh auth login` and no `--bundle`. The
 
 ## From source
 
-On Linux or macOS, the build needs a C compiler and make, and libFLAC for FLAC output. With GCC
-before 12 (Ubuntu 22.04's GCC 11, for one) the engine builds without the load-time choice of
-AVX-512 or AVX2 for the PCM filters, and they run the baseline code, as the musllinux wheel does
-(slower: see [performance](../performance.md), portable builds).
+On Linux or macOS, the build needs a C compiler and make, Rust (cargo 1.83 or later), and libFLAC
+for FLAC output. The build compiles the [dsd2pcm](https://github.com/dsd-toolbox/dsd2pcm-rs) C
+library (0.2.0 or later), which converts DSD to PCM, from the release source pinned in
+`dsd2pcm.lock`, checked by its SHA-256.
+The sdist on PyPI carries that source; a git checkout downloads it. Either way cargo builds it
+offline: it needs nothing from crates.io.
+On a machine without Rust, this installs the pinned Rust release into `build/rust` of the source
+tree; then put the `build/rust/bin` folder it prints on your PATH for the build:
+
+<!-- docs-run: skip="installs Rust into a source checkout for a source build; CI's jobs run the same command" -->
+```sh
+python3 tools/dsd2pcm.py toolchain --dest build/rust
+```
 
 The build downloads the [scarletbook-rs](https://github.com/aclater/scarletbook-rs) C library
 that the engine links, from its GitHub release, and checks it against the SHA-256 pinned in

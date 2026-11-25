@@ -10,7 +10,43 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-25
+
+PCM conversion now goes through [dsd2pcm](https://github.com/dsd-toolbox/dsd2pcm-rs) 0.2, and FLAC
+and WAV use its `precise` filter by default, the best of the filters measured: on the release
+quality suite, SINAD measures 141.8 dB at 88.2 kHz and 143.6 dB at 176.4 kHz with a 1 kHz tone at
+0 dB SACD, against 0.5.5's 127.8 and 128.1 dB ([PCM quality](docs/quality/0.6.0.md)). Both figures are at the measurement's floor and near the limit of a
+24-bit file ([floor], [word length] on that page), so they say the converter is no longer the
+limit, not how far beyond it it goes. FLAC and WAV bytes therefore differ from 0.5.5's.
+`--pcm-filter pysacd` keeps the filter pysacd used up to 0.5.x, computed in double precision; its
+bytes differ from 0.5.5's too. From this release on, PCM output is the same on every CPU and SIMD
+level and wherever a track or range starts (0.5.x already gave the same bytes with any thread
+count), and it may change between releases where measured quality improves; each such change is
+listed here with its measured effect. DSF, DSDIFF and ISO output,
+and `-P`, are byte-identical to 0.5.5 (release checks, below). Building from source now needs Rust.
+
+Release checks for 0.6.0 (docs/development.md, "To release"): `tools/extract_compare.py --require-sacd-extract` against
+`sacd_extract` built from CI's pinned commit, 0.5.5 against this release's source with its version
+string set to 0.5.5 (the DSF and DSDIFF tags and `-P` print it) and dsd2pcm built from the 0.2.0
+candidate's C library source archive (its PCM is byte-identical to the 0.2.0 tag's on all 122 PCM
+goldens), on the same five real discs as for 0.5.3, in all 37 modes
+(185 runs, 1,386 files). 158 runs show no difference between the trees: every DSF, DSDIFF, edited
+master and ISO file is byte-identical, and so is `-P`. The other 27 are the PCM runs, and all 263
+of their FLAC and WAV files differ, as intended, with the same format and frame count as 0.5.5's;
+98.6 % of the 16.4 billion samples change. Of `sacd_extract`'s 698 files, 436 are identical and 262
+differ only where docs/sacd_extract.md says so; none differs otherwise, as for 0.5.5.
+
 ### Added
+- `--pcm-filter precise|pysacd` and `--pcm-cutoff standard|low|wide` for `pysacd convert` and
+  `pysacd-extract`, the config keys `pcm_filter` and `pcm_cutoff`, and the same arguments to
+  `run_area`. With the `precise` filter the cutoff is 40 kHz (`standard`), 30 kHz (`low`) or
+  80 kHz (`wide`, 176.4 kHz only); the passband ends there and the response is 3 dB down about
+  2.6 kHz above it. The `pysacd` filter has `standard` only, and for it that means its 0.5.x
+  response, which differs by rate: 3 dB down at 43.3 kHz at 88.2 kHz, and at 71.7 kHz at
+  176.4 kHz (measured). A combination the filter doesn't have is refused before anything runs
+  ([converting](docs/converting.md)).
+- PCM samples clipped to 24 bits (a gain above 0 dB on loud material) are counted, in
+  `run_area`'s result (`pcm_clipped`), and reported as a warning.
 - docs/install/windows.md: installing on Windows 11 from PyPI with python.org Python and
   `py -m pip install pysacd` or pipx, the first commands with Windows paths, Windows file names,
   long paths, and the MSYS2 build for developers. The README and docs/install/README.md point
@@ -23,7 +59,69 @@ behaviour, and a patch version only adds or fixes. Each release on
   ([development](docs/development.md#docs-commands-against-a-release)) (#215).
 
 ### Changed
-- The release quality suite (`suites/pysacd.toml`) pins dsd-measure 0.1.2: THD is compared apart
+- PCM conversion uses dsd2pcm 0.2, linked into the engine in place of pysacd's own filter, and its
+  `precise` filter by default: linear phase, rounded to 24 bits without dither. DSD silence becomes
+  exact digital silence (all-zero samples), where 0.5.x wrote dither noise.
+- At 176.4 kHz, 0.6.0 removes content above about 40 kHz that 0.5.x passed. The default is the
+  precise filter's `standard` cutoff (40 kHz) at both rates, as in sacdfs. 0.5.x at 176.4 kHz was
+  flat to about 60 kHz and 3 dB down at about 72 kHz; what it passed there is mostly the DSD
+  modulator's shaped noise. The `wide` cutoff (80 kHz) measures within 0.3 dB of it in band (SINAD
+  143.6 against 143.6 dB, noise floor −151.4 against −151.5 dBFS; worst alias image 1.4 dB lower), and its FLAC files
+  are larger. Band levels of one real stereo track at 176.4 kHz (both channels, dBFS, a full-scale
+  sine is 0 dBFS), and its FLAC size:
+
+  | Output | 20–40 kHz | 40–50 kHz | 50–60 kHz | 60–70 kHz | 70–80 kHz | 80–88.2 kHz | FLAC (MB) |
+  |---|---:|---:|---:|---:|---:|---:|---:|
+  | 0.5.5 | −68.6 | −61.5 | −52.9 | −46.5 | −48.7 | −74.2 | 207.1 |
+  | 0.6.0 default (precise, standard) | −68.6 | −71.6 | −155.5 | −155.5 | −155.5 | −156.4 | 137.9 |
+  | 0.6.0 `--pcm-cutoff wide` | −68.6 | −61.5 | −52.9 | −46.1 | −41.6 | −45.5 | 212.9 |
+  | 0.6.0 `--pcm-filter pysacd` | −68.6 | −61.5 | −52.9 | −46.5 | −48.7 | −74.2 | 207.1 |
+
+  The default's files are 33 % smaller than 0.5.5's on this track. To keep the band:
+  `--pcm-cutoff wide` (to 80 kHz), or `--pcm-filter pysacd` for 0.5.x's response
+  ([converting](docs/converting.md#pcm-filters-and-cutoffs),
+  [PCM quality](docs/quality/0.6.0.md#out-of-band-level-and-file-size)). At 88.2 kHz the band is
+  the same as 0.5.x's (3 dB down at 42.6 kHz, 0.5.x at 43.3 kHz).
+- Speed, measured on an Intel i9-13900H (P-cores) in a paired A/B of 3 interleaved rounds per row
+  on real discs, 0.5.5 against 0.6.0: FLAC at 88.2 kHz is about 11 % faster, WAV at 176.4 kHz
+  with the default is about 2 % faster, and DSD paths are unchanged. `--pcm-cutoff wide` takes
+  about 1.8 times the default's time. The full by-release table follows after the release
+  ([performance](docs/performance.md)).
+- FLAC and WAV output changes: its bytes, and so any checksum of it, differ from 0.5.5's. Measured
+  effect, 0.5.5 against this release on the pinned suite, stereo and 5.1, both rates, with the
+  default settings: SINAD up 14.0 to 15.6 dB (to 141.8 dB at 88.2 kHz and 143.6 dB at 176.4 kHz,
+  both at the measurement's floor [floor] and near the 24-bit limit [word length]), THD down 14.0
+  to 15.0 dB, the noise floor (20 Hz to 20 kHz) down 18.2 dB at 88.2 kHz and 20.7 dB at 176.4 kHz,
+  the worst alias image down 22.9 to 24.4 dB; no figure is worse ([PCM quality](docs/quality/0.6.0.md)).
+- The default output is centred on the DSD timeline. 0.5.x output was late by 0.266 samples
+  (3.01 µs) at 88.2 kHz and early by 0.469 samples (2.66 µs) at 176.4 kHz, a constant offset of
+  its filter, so a track converted by 0.5.x and one by 0.6.0 don't align sample-exactly.
+  `--pcm-filter pysacd` keeps the old timing.
+- The `pysacd` filter (`--pcm-filter pysacd`) is computed in double precision by dsd2pcm; its taps,
+  response, TPDF dither and seeding are pysacd's. Its bytes differ from 0.5.5's.
+- PCM output is the same on every CPU and SIMD level, and from any build of the same version.
+  0.5.5's wheels used `-ffast-math` and picked their filter code by CPU, so 0.5.x output also
+  depended on the build: the 0.5.5 wheel from PyPI and a 0.5.5 source build differ in the last
+  bits of some samples. It also no longer depends on where a track or range starts: a track
+  converted alone now has the same bytes as inside a whole-area run (checked on 0.5.5 and 0.6.0;
+  0.5.5 seeded its dither per batch, so they differed). As in 0.5.x, the thread count changes
+  nothing.
+- Requires dsd2pcm 0.2.0 or later, a release. Building from source needs Rust (cargo 1.83 or
+  later): the build compiles dsd2pcm's C library from its release source archive
+  (`libdsd2pcm-0.2.0-src.tar.gz`), pinned in `dsd2pcm.lock` and checked by its SHA-256. The sdist
+  carries that archive, and cargo builds it offline (`--offline`), so a build from the sdist needs
+  no network for dsd2pcm and no crates.io index; the scarletbook library is still downloaded, or
+  `SCARLETBOOK_DIR` ([development](docs/development.md#the-dsd2pcm-library)).
+- A PCM gain outside -120 to +24 dB, or not a finite number, is refused before anything runs or
+  any folder is created: by `--gain-db`, by `pysacd convert` for `gain_db` in `config.toml` (exit
+  status 2 with a message; a value such as `"loud"` gave a traceback, and 30 failed after the
+  folders were made), and by `run_area`.
+- `--pcm-filter` and `--pcm-cutoff` are checked with DSD output too: a pair the filter doesn't
+  have exits 2, and a valid one is named as ignored for DSF.
+- The engine checks the linked dsd2pcm's C ABI (`dsd2pcm_abi_version()`) against the header it was
+  built with, and its version, once per run before converting.
+- `pysacd --version` names the dsd2pcm version in the engine and the default PCM filters.
+- The release quality suite (`suites/pysacd.toml`) pins dsd-measure 0.1.3: THD is compared apart
   from SINAD, each output's word length and rate are read from the file and must match between the
   two releases, figures at the measurement's floor or limited by the 24-bit word length are marked,
   and reused reports must name the same dsd-measure and pysacd versions
@@ -83,6 +181,13 @@ behaviour, and a patch version only adds or fixes. Each release on
   ([Windows from source](docs/install/windows.md#build-from-source-developers)) (#225).
 
 ### Security
+- `tools/dsd2pcm.py` runs cargo with a CARGO_HOME of its own and without `RUSTC_WRAPPER`,
+  `RUSTFLAGS` or source replacements from the environment, so a user's `~/.cargo/config.toml`
+  can't change what is built, and refuses a source archive that carries cargo configuration.
+- CI builds a wheel from the sdist with the network off, so the sdist's offline build is tested.
+- `tools/pcm_goldens.py write --with-cli` builds dsd2pcm's command-line tool from the repository
+  at the pinned commit, and refuses that archive unless its library sources are byte-identical to
+  the pinned, digest-checked C library source archive's.
 - The private-names check (`scripts/check-private-names.sh`) now fails when it cannot run,
   and refuses a name list that would match every line.
 
@@ -211,6 +316,26 @@ no-text disc in the `-z -b` mode, a mode the comparison reports without failing 
 passed, the 21 expected skips). The changes since 0.5.1 had a security review before the release;
 its three points are fixed in this release.
 
+### Changed
+- The engine's fuzz harness also covers ranges that don't start at frame 0 in every format, DSF
+  chains with a head frame, the ISO copy, cancellation, 176.4 kHz PCM, FLAC output, other thread
+  counts and `allow_filler`: an input can carry a run configuration before the image, and the seed
+  corpus has a configured run for each. CI replays the seeds under TSan as well as ASan and UBSan
+  (#157).
+- The macOS wheels' support is stated as it was tested: built for macOS 11 (arm64) and 10.13
+  (x86-64), run on macOS 15 on both; older versions are untested (#142).
+- The release-tag check runs in a Fedora container like the other release jobs, and on pull
+  requests it also checks its clone, so its set-up is tested before a tag depends on it (#167).
+- `licenses/` names the GCC runtime library (`libgcc_s`) that the musllinux wheel carries, with its
+  licence texts (#167).
+- The release workflow refuses a `v*` tag that isn't `v` plus the package version, or whose commit
+  isn't on `master` or a `release/*` branch, before anything is built or published (#154).
+- The Linux wheels link libFLAC 1.5.0, built in the job from its release source with the SHA-256
+  checked, as the macOS wheels do, instead of bundling the build image's libFLAC and libogg (1.3.2
+  in the manylinux wheels, 1.4.3 in the musllinux wheel). FLAC encoding in them is now multithreaded,
+  as on macOS and Windows. The audio is the same; the encoder's vendor string in each FLAC file
+  names the new version (#153).
+
 ### Fixed
 - `pysacd-extract` warns when a file already in the album folder can't be read for its tags: it is
   matched by name only, and replaced if the run writes that file. docs/sacd_extract.md says how
@@ -253,26 +378,6 @@ its three points are fixed in this release.
 - Reading a MusicBrainz or cover response stops with an error on anything that isn't bytes.
   The test suite can run under a memory limit (`PYSACD_TEST_MEMORY_MB`), and CI's `tests` job does.
 
-### Changed
-- The engine's fuzz harness also covers ranges that don't start at frame 0 in every format, DSF
-  chains with a head frame, the ISO copy, cancellation, 176.4 kHz PCM, FLAC output, other thread
-  counts and `allow_filler`: an input can carry a run configuration before the image, and the seed
-  corpus has a configured run for each. CI replays the seeds under TSan as well as ASan and UBSan
-  (#157).
-- The macOS wheels' support is stated as it was tested: built for macOS 11 (arm64) and 10.13
-  (x86-64), run on macOS 15 on both; older versions are untested (#142).
-- The release-tag check runs in a Fedora container like the other release jobs, and on pull
-  requests it also checks its clone, so its set-up is tested before a tag depends on it (#167).
-- `licenses/` names the GCC runtime library (`libgcc_s`) that the musllinux wheel carries, with its
-  licence texts (#167).
-- The release workflow refuses a `v*` tag that isn't `v` plus the package version, or whose commit
-  isn't on `master` or a `release/*` branch, before anything is built or published (#154).
-- The Linux wheels link libFLAC 1.5.0, built in the job from its release source with the SHA-256
-  checked, as the macOS wheels do, instead of bundling the build image's libFLAC and libogg (1.3.2
-  in the manylinux wheels, 1.4.3 in the musllinux wheel). FLAC encoding in them is now multithreaded,
-  as on macOS and Windows. The audio is the same; the encoder's vendor string in each FLAC file
-  names the new version (#153).
-
 ## [0.5.1] - 2026-11-14
 
 A security release. A private review of 0.5.0, asked for by the maintainer, found three problems
@@ -285,6 +390,62 @@ if you convert images you did not rip yourself.** Two defaults change with the f
 - `pysacd-extract --templates` keeps files that already exist; `--overwrite` replaces them.
 
 Output for ordinary discs is unchanged, byte for byte (release checks, below).
+
+Release checks for 0.5.1 (docs/development.md, "To release"): `tools/extract_compare.py
+--require-sacd-extract` against `sacd_extract` built from CI's pinned commit, 0.5.0 against the
+fixes, on three real discs (stereo and 6-channel DST; plain stereo with 6-channel DST; plain stereo)
+in all 35 modes (105 runs, 597 files): no difference between 0.5.0 and the fixes in any run. Against
+`sacd_extract`, of its 319 files 191 are identical and 128 differ only where docs/sacd_extract.md
+says they do; none differs otherwise, and `-P` matches on all three. That run was made before the
+one-worker default below (#137) was merged in; with it, the seven plain-DSD and mixed modes were run
+again on the two discs with plain areas (14 runs): no difference. The fixes were developed
+privately, where CI doesn't run, so these were run by hand on the release tree before it was
+published: the full suite (312 passed, the 16 expected skips), the whole suite under ASan and UBSan
+(clang), the `sacd_extract` comparison tests, the engine leak check (memcheck), ruff and mypy. The
+beets-pysacd test suite passes against this release's code. Not run by hand: macOS and Windows,
+CodeQL, semgrep and TSan, which the release pull request's CI ran. That CI found one defect the
+private checks could not: on Windows, a title that sanitises to a name ending in a dot or space
+made the run fail (Windows drops them from folder names); such names lose them on Windows now. It
+also found three tests that assumed POSIX or Python 3.11.
+
+### Changed
+
+- **CI builds and tests in Red Hat-derived containers.** The test suite on Python 3.10 to 3.15, the
+  ASan/UBSan, leak, fuzz, `sacd_extract` comparison and benchmark jobs, the live MusicBrainz lookup
+  and the release's sdist run in a Fedora 44 container; semgrep, zizmor and the private-names check
+  in UBI 10, with semgrep and zizmor installed from PyPI by hash instead of their vendors' images.
+  CI only; the wheels and the package are unchanged ([development](docs/development.md#ci)).
+- **Plain DSD to DSF or DSDIFF uses one worker thread by default (#137).** Nothing is decoded or
+  filtered there, so a pool the size of the CPU only cost wake-ups. On a 32-thread machine, a
+  40-minute stereo disc from the page cache to local NVMe (`-2 -s`, 15 alternating runs, power
+  profile `performance`): engine time 0.17–0.21 s with one worker against 0.20–0.23 s with 32
+  (medians of three series), the same bytes out. `--threads` and `-j` still set the count. Not
+  measured: multichannel plain DSD.
+- **Python 3.10 is supported again (#140)**, so pysacd installs with Ubuntu 22.04's own Python. On 3.10 the
+  config file is read with `tomli` (installed only there), and CI runs the suite on 3.10 too. The
+  wheels are unchanged (one per platform serves every Python).
+- **The engine builds with GCC 11** (Ubuntu 22.04's). GCC before 12 stopped with "no dispatcher found
+  for the versioning attributes" on the PCM filters' load-time choice of AVX-512 or AVX2; such a
+  compiler now builds them for the baseline only. Wheels are built with a newer GCC and keep the choice.
+  Run on Python 3.10.12 and GCC 11.4 in an Ubuntu 22.04 container, as an ordinary user: ruff, mypy, the
+  engine with `-Werror`, and the whole suite (267 tests, the expected 16 skipped) pass.
+- `docs/quickstart.md` now gives the minimums: Python 3.10, and for wheels glibc 2.28, musl 1.2,
+  macOS 11 (arm64) or macOS 10.13 (x86-64).
+- **The macOS wheels run on macOS 11 and later (Apple silicon) and 10.13 and later (Intel)** (#142),
+  instead of macOS 15 only. They link libFLAC 1.5.0, the release Homebrew ships, built in CI from its
+  release source with the SHA-256 checked, statically, for those versions.
+
+- **The engine links scarletbook-rs 0.5.9** (digests checked against the release's `.sha256` files
+  and attestations; the CET shadow-stack mark is kept). Output is byte-identical to the 0.5.8 build in
+  every mode on the five real test discs; speed is in docs/performance.md. 0.5.9 has nothing new for
+  pysacd to adopt: its additions are Rust-only (`TrackAudioCursor::with_dst_lanes`) or documentation
+  of how to write per-track DSF files, whose writer is planned for scarletbook 0.6.0 (scarletbook-rs#202),
+  so pysacd's per-track writer stays until then.
+- **A stale engine is refused with a rebuild message.** `src/pysacd/_sacdconv.so` is a build product that
+  git ignores; one built before `sacdconv_cancel` was added failed with `AttributeError: undefined
+  symbol: sacdconv_cancel`, because pysacd bound that function before it checked the engine's ABI.
+  It now checks the ABI first, so the error says `engine ABI N, this pysacd needs M; rebuild it
+  (make clean all)`. A clean `make` fixes such a tree (docs/development.md).
 
 ### Security
 
@@ -347,62 +508,6 @@ Output for ordinary discs is unchanged, byte for byte (release checks, below).
     when a folder already holds another disc's tracks; a run that skipped every file exits with 1;
   - before reopening a temporary file by name, pysacd checks it is still its own regular file;
   - an engine call that returns no result is a failure, not a success.
-
-Release checks for 0.5.1 (docs/development.md, "To release"): `tools/extract_compare.py
---require-sacd-extract` against `sacd_extract` built from CI's pinned commit, 0.5.0 against the
-fixes, on three real discs (stereo and 6-channel DST; plain stereo with 6-channel DST; plain stereo)
-in all 35 modes (105 runs, 597 files): no difference between 0.5.0 and the fixes in any run. Against
-`sacd_extract`, of its 319 files 191 are identical and 128 differ only where docs/sacd_extract.md
-says they do; none differs otherwise, and `-P` matches on all three. That run was made before the
-one-worker default below (#137) was merged in; with it, the seven plain-DSD and mixed modes were run
-again on the two discs with plain areas (14 runs): no difference. The fixes were developed
-privately, where CI doesn't run, so these were run by hand on the release tree before it was
-published: the full suite (312 passed, the 16 expected skips), the whole suite under ASan and UBSan
-(clang), the `sacd_extract` comparison tests, the engine leak check (memcheck), ruff and mypy. The
-beets-pysacd test suite passes against this release's code. Not run by hand: macOS and Windows,
-CodeQL, semgrep and TSan, which the release pull request's CI ran. That CI found one defect the
-private checks could not: on Windows, a title that sanitises to a name ending in a dot or space
-made the run fail (Windows drops them from folder names); such names lose them on Windows now. It
-also found three tests that assumed POSIX or Python 3.11.
-
-### Changed
-
-- **CI builds and tests in Red Hat-derived containers.** The test suite on Python 3.10 to 3.15, the
-  ASan/UBSan, leak, fuzz, `sacd_extract` comparison and benchmark jobs, the live MusicBrainz lookup
-  and the release's sdist run in a Fedora 44 container; semgrep, zizmor and the private-names check
-  in UBI 10, with semgrep and zizmor installed from PyPI by hash instead of their vendors' images.
-  CI only; the wheels and the package are unchanged ([development](docs/development.md#ci)).
-- **Plain DSD to DSF or DSDIFF uses one worker thread by default (#137).** Nothing is decoded or
-  filtered there, so a pool the size of the CPU only cost wake-ups. On a 32-thread machine, a
-  40-minute stereo disc from the page cache to local NVMe (`-2 -s`, 15 alternating runs, power
-  profile `performance`): engine time 0.17–0.21 s with one worker against 0.20–0.23 s with 32
-  (medians of three series), the same bytes out. `--threads` and `-j` still set the count. Not
-  measured: multichannel plain DSD.
-- **Python 3.10 is supported again (#140)**, so pysacd installs with Ubuntu 22.04's own Python. On 3.10 the
-  config file is read with `tomli` (installed only there), and CI runs the suite on 3.10 too. The
-  wheels are unchanged (one per platform serves every Python).
-- **The engine builds with GCC 11** (Ubuntu 22.04's). GCC before 12 stopped with "no dispatcher found
-  for the versioning attributes" on the PCM filters' load-time choice of AVX-512 or AVX2; such a
-  compiler now builds them for the baseline only. Wheels are built with a newer GCC and keep the choice.
-  Run on Python 3.10.12 and GCC 11.4 in an Ubuntu 22.04 container, as an ordinary user: ruff, mypy, the
-  engine with `-Werror`, and the whole suite (267 tests, the expected 16 skipped) pass.
-- `docs/quickstart.md` now gives the minimums: Python 3.10, and for wheels glibc 2.28, musl 1.2,
-  macOS 11 (arm64) or macOS 10.13 (x86-64).
-- **The macOS wheels run on macOS 11 and later (Apple silicon) and 10.13 and later (Intel)** (#142),
-  instead of macOS 15 only. They link libFLAC 1.5.0, the release Homebrew ships, built in CI from its
-  release source with the SHA-256 checked, statically, for those versions.
-
-- **The engine links scarletbook-rs 0.5.9** (digests checked against the release's `.sha256` files
-  and attestations; the CET shadow-stack mark is kept). Output is byte-identical to the 0.5.8 build in
-  every mode on the five real test discs; speed is in docs/performance.md. 0.5.9 has nothing new for
-  pysacd to adopt: its additions are Rust-only (`TrackAudioCursor::with_dst_lanes`) or documentation
-  of how to write per-track DSF files, whose writer is planned for scarletbook 0.6.0 (scarletbook-rs#202),
-  so pysacd's per-track writer stays until then.
-- **A stale engine is refused with a rebuild message.** `src/pysacd/_sacdconv.so` is a build product that
-  git ignores; one built before `sacdconv_cancel` was added failed with `AttributeError: undefined
-  symbol: sacdconv_cancel`, because pysacd bound that function before it checked the engine's ABI.
-  It now checks the ABI first, so the error says `engine ABI N, this pysacd needs M; rebuild it
-  (make clean all)`. A clean `make` fixes such a tree (docs/development.md).
 
 ## [0.5.0] - 2026-11-05
 
@@ -673,7 +778,8 @@ First release on PyPI.
   MusicBrainz text before it reaches file names, tags or the terminal (see
   [security](docs/security.md)).
 
-[Unreleased]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/dsd-toolbox/pysacd/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.5...v0.6.0
 [0.5.5]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/dsd-toolbox/pysacd/compare/v0.5.2...v0.5.3

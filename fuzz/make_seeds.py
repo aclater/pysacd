@@ -32,7 +32,8 @@ DSF, FLAC_OUT, WAV, DFF, DST, CHAIN, WAV2 = 1, 2, 4, 8, 16, 32, 64
 ALL = DSF | FLAC_OUT | WAV | DFF | DST | WAV2
 F176K, FILLER, COPY, SPECULATIVE, SOURCE, LOG, CHECK_FRAME, DATA_OFFSET = 1, 2, 4, 8, 16, 32, 64, 128
 CANCEL_LOG, CANCEL_THREAD, CANCEL_BEFORE = 1 << 6, 2 << 6, 3 << 6
-EMPTY, FORMAT, RATE, CHANNELS, TOC = 1, 2, 4, 8, 16
+EMPTY, FORMAT, RATE, CHANNELS, TOC, FILTER = 1, 2, 4, 8, 16, 32
+PCM_PYSACD, PCM_WIDE = 64, 128      # in the MISUSE byte: the PCM settings (not misuse)
 
 
 def config(outs: int = 0, flags: int = 0, threads: int = 2, cancel: int = 0, flac: int = 0, lead: int = 0,
@@ -99,6 +100,11 @@ def configured(valid: bytes) -> dict[str, bytes]:
         "cfg-misuse-rate": config(WAV, misuse=RATE, length=10) + valid,
         "cfg-misuse-channels": config(DFF, misuse=CHANNELS, length=10, flags=LOG) + valid,
         "cfg-misuse-toc": config(DFF, misuse=TOC, length=10, flags=LOG) + valid,
+        "cfg-misuse-filter": config(WAV, misuse=FILTER, length=10, flags=LOG) + valid,
+        "cfg-pcm-pysacd": config(WAV | FLAC_OUT, misuse=PCM_PYSACD, start=1, length=10, flags=LOG) + valid,
+        "cfg-pcm-wide-176k": config(WAV | FLAC_OUT, misuse=PCM_WIDE, flags=F176K | LOG, length=10) + valid,
+        "cfg-pcm-wide-88k-refused": config(WAV, misuse=PCM_WIDE, length=10) + valid,
+        "cfg-pcm-pysacd-wide-refused": config(WAV, misuse=PCM_PYSACD | PCM_WIDE, flags=F176K, length=10) + valid,
     }
 
 

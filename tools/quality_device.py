@@ -132,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="idle frames before the signal, removed from the output (changes the dither's draw)")
     ap.add_argument("--jobs", type=int, default=1, help="pysacd worker threads (default 1)")
     ap.add_argument("--pysacd", default="pysacd", help="the pysacd command (default: pysacd on PATH)")
+    ap.add_argument("--pcm-filter", help="pysacd convert --pcm-filter (0.6.0 and later; default: not passed)")
+    ap.add_argument("--pcm-cutoff", help="pysacd convert --pcm-cutoff (0.6.0 and later; default: not passed)")
     a = ap.parse_args(argv)
 
     chans, _ = read_dsf(a.input)
@@ -155,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
         cmd = [exe, "convert", str(iso), "--config", str(work / "none.toml"), "-f", a.format, "-r", str(a.rate),
                "-a", a.area, "-o", str(out), "--dir-template", "album", "--file-template", "track",
                "--no-musicbrainz", "--no-cover", "--cover-file", "", "--jobs", str(a.jobs)]
+        cmd += ["--pcm-filter", a.pcm_filter] if a.pcm_filter else []
+        cmd += ["--pcm-cutoff", a.pcm_cutoff] if a.pcm_cutoff else []
         env = dict(os.environ, XDG_CONFIG_HOME=str(work / "config"))
         p = subprocess.run(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False)
         if p.returncode:

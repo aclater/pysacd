@@ -35,6 +35,8 @@ class Options:
     disc: str | None = None                   # "N/M": disc N of an M-disc set (overrides TOC and MusicBrainz)
     pcm_rate: int = 88200                     # flac/wav: 88200 | 176400
     gain_db: float = 0.0
+    pcm_filter: str | None = None             # flac/wav: precise | pysacd (None: precise)
+    pcm_cutoff: str | None = None             # standard | low | wide (None: standard)
     flac_level: int = 5
     pauses: bool = False                      # include the pauses between tracks, as pysacd-extract -b
     jobs: int = 0                             # worker threads, 0 = CPU count
@@ -474,7 +476,8 @@ def _convert_area(img: SACDImage, iso: str, disc: Disc, area: Area, opts: Option
     try:
         run = _native.run_area(img, iso, area, specs, opts.pcm_rate, opts.gain_db, opts.jobs,
                                progress=_progress_printer(label), exact=opts.exact,
-                               allow_silence=opts.allow_silence)
+                               allow_silence=opts.allow_silence, pcm_filter=opts.pcm_filter,
+                               pcm_cutoff=opts.pcm_cutoff)
     except BaseException as e:
         for spec in specs:
             Path(spec.path).unlink(missing_ok=True)

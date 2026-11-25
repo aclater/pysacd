@@ -211,7 +211,11 @@ enum {
     MISUSE_FORMAT = 2,  /* the first output's format is unknown */
     MISUSE_RATE = 4,    /* a PCM rate of 44.1 kHz */
     MISUSE_CHANNELS = 8,    /* one channel more than the area has */
-    MISUSE_TOC = 16     /* no area has its TOC at toc_lsn */
+    MISUSE_TOC = 16,    /* no area has its TOC at toc_lsn */
+    MISUSE_FILTER = 32, /* an unknown PCM filter (3) */
+    /* not misuse: the PCM settings. A wide cutoff is refused at 88.2 kHz and with the pysacd filter */
+    PCM_PYSACD = 64,    /* the pysacd filter, else precise */
+    PCM_WIDE = 128      /* the wide cutoff, else standard */
 };
 
 typedef struct {
@@ -387,6 +391,8 @@ static void run_area_cfg(const uint8_t *cfg, const char *image, SbDisc *disc, co
         a.channels++;
     if (misuse & MISUSE_TOC)
         a.toc_lsn++;
+    a.pcm_filter = misuse & MISUSE_FILTER ? 3 : misuse & PCM_PYSACD ? SC_PCM_FILTER_PYSACD : SC_PCM_FILTER_PRECISE;
+    a.pcm_cutoff = misuse & PCM_WIDE ? 2 : 0;
     if (flags & FLAG_COPY) {
         out_path(copy, sizeof copy, "copy.iso");
         a.iso_out_path = copy;

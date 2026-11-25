@@ -10,7 +10,8 @@ name: fuzz
 
 on:
   pull_request:
-    paths: ["csrc/**", "fuzz/**", "tests/sacdgen.py", "scarletbook.lock", ".github/workflows/fuzz.yml"]
+    paths: ["csrc/**", "fuzz/**", "tests/sacdgen.py", "scarletbook.lock", "dsd2pcm.lock", "tools/dsd2pcm.py",
+            "tools/mark_shstk.py", "Makefile", ".github/workflows/fuzz.yml"]
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
@@ -52,6 +53,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Rust, pinned in dsd2pcm.lock (builds the dsd2pcm library)
+        run: python3 -I tools/dsd2pcm.py toolchain --dest "$RUNNER_TEMP/rust" >> "$GITHUB_PATH"
 
       - name: Build the harness and the seed corpus
         # the seed generator uses the tests' DST encoder, which needs numpy

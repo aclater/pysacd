@@ -18,6 +18,22 @@ linked in statically (#85), in every wheel and every build from source:
 | scarletbook-rs | MIT OR Apache-2.0, used under MIT | [scarletbook-rs-LICENSE-MIT](scarletbook-rs-LICENSE-MIT) |
 | the Rust standard library, rayon, crossbeam, either, thiserror (inside it) | MIT OR Apache-2.0, used under MIT | [scarletbook-rs-runtime-MIT](scarletbook-rs-runtime-MIT) |
 
+The engine also has the [dsd2pcm](https://github.com/dsd-toolbox/dsd2pcm-rs) C library linked in
+statically, which converts DSD to PCM. It is built from the release source pinned in
+`dsd2pcm.lock` without its default features, so it holds only dsd2pcm and its own copy of the Rust
+standard library; `tools/dsd2pcm.py` refuses to build if `cargo tree` shows any crate without an
+MIT-compatible licence alternative (dsd2pcm's FLAC reader, claxon, is Apache-2.0 only and is left
+out):
+
+| Library | Licence | File |
+|---|---|---|
+| dsd2pcm | MIT OR Apache-2.0, used under MIT | [dsd2pcm-LICENSE-MIT](dsd2pcm-LICENSE-MIT) |
+| the Rust standard library (inside it) | MIT OR Apache-2.0, used under MIT | [scarletbook-rs-runtime-MIT](scarletbook-rs-runtime-MIT) (its standard library notice) |
+
+`tools/mark_shstk.py`, which marks dsd2pcm's object for CET shadow stacks during the build, is
+pysacd's own build tooling (GPL-2.0-or-later); it adds a note section to the object and is not
+shipped.
+
 The musllinux wheel also carries GCC's runtime support library, `libgcc_s`, which auditwheel
 copies in next to the engine because musl systems may not have it (the Rust code in the
 scarletbook library needs it to unwind). It is not modified:
@@ -32,15 +48,18 @@ its own licence.
 pysacd takes the dual-licensed code under MIT because MIT is compatible with GPL-2.0, and
 Apache-2.0 is not compatible with GPL-2.0 (only with GPL-3.0).
 
-pysacd itself is GPL-2.0-or-later ([COPYING](../COPYING)), except for its DSD-to-PCM filter.
+pysacd itself is GPL-2.0-or-later ([COPYING](../COPYING)), except for its former DSD-to-PCM
+filter.
 
-**The DSD-to-PCM filter** (`csrc/dsp.c`, `csrc/dsp.h`) is MIT OR Apache-2.0
+**The former DSD-to-PCM filter** (`tools/pcm_vectors/dsp.c`, `tools/pcm_vectors/dsp.h`; in
+`csrc/` up to 0.5.5) is MIT OR Apache-2.0
 ([dsp-LICENSE-MIT](dsp-LICENSE-MIT), [dsp-LICENSE-APACHE](dsp-LICENSE-APACHE)). Its copyright
 holder, the only author of both files, relicensed them from GPL-2.0-or-later on 2026-11-23, so that
 other projects can reuse the filter. Earlier versions of the two files remain available under
 GPL-2.0-or-later as well. The byte-wise lookup-table technique in its first stage is credited to
-Sebastian Gesemann's dsd2pcm (BSD-3-Clause), as the file says. Inside pysacd,
-the files are combined with the rest of the program under GPL-2.0-or-later.
+Sebastian Gesemann's dsd2pcm (BSD-3-Clause), as the file says. The `pysacd` filter of
+the dsd2pcm library linked into the engine (dsd2pcm-rs, above) is a port of the two files. Since 0.6.0 the engine no longer compiles the files: they make the
+reference vectors in `tools/pcm_vectors/` that dsd2pcm is checked against.
 
 **Documentation.** The README's text, the documentation in `docs/` (icons included) and the
 measurement data published in it are CC BY 4.0 ([CC-BY-4.0.txt](CC-BY-4.0.txt)), except for the parts the README lists under

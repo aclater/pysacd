@@ -24,6 +24,17 @@ says which.
   compare only at the same version). The other platforms of step 1, and steps 6, 7 and 9, run on
   the published files after the tag. A step that fails blocks the tag; a
   failure after the tag means a patch release.
+- **A dsd2pcm release candidate.** While `dsd2pcm.lock` pins a dsd2pcm commit before its release
+  is tagged (0.6.0 did), these run again once the tag exists, before pysacd's tag, in this order:
+  1. re-pin `dsd2pcm.lock` to the tag: `source.ref` the tag, and `source.sha256` the digest of
+     the release's `libdsd2pcm-<version>-src.tar.gz` (its `.sha256` file)
+     ([development](development.md#the-dsd2pcm-library));
+  2. `python3 tools/dsd2pcm.py attest`;
+  3. the [PCM goldens](#pcm-goldens);
+  4. the [PCM quality comparison](#11-pcm-quality-comparison), the page no longer a draft;
+  5. `tools/extract_compare.py` [on real discs](#against-sacd_extract-and-the-previous-release-on-real-discs),
+     its counts into the changelog;
+  6. the changelog section's date.
 - **What blocks.** Any difference in output that isn't documented, any sanitizer report, crash or
   leak, a Quick start or docs command that fails as written, a slowdown over the
   [threshold](#8-performance), or a security finding without a `go`.
@@ -173,19 +184,28 @@ for every release from 0.5.6.
 
 ### PCM goldens
 
-The DSD-to-PCM filter must give the reference vectors' bytes:
+The engine's PCM must equal the goldens, and the goldens dsd2pcm's own command-line tool. The
+pinned C library source archive has no command-line tool, so `--with-cli` builds it from the
+repository at the commit in `dsd2pcm.lock` (GitHub's archive of that commit), and refuses that
+archive unless its library sources are byte-identical to the pinned, digest-checked archive's. The
+tool's own dependencies come from crates.io. Needs `cargo` on PATH:
 
 <!-- docs-run: skip="release step 2: runs the PCM vectors of a source checkout" -->
 ```sh
-tools/pcm_vectors/run_all.sh /tmp/pcm-vectors
-(cd /tmp/pcm-vectors/ref && sha256sum *.i32) | sort -k2 > got.sha256
-grep -E '^    [0-9a-f]{64}  ' tools/pcm_vectors/README.md | sed 's/^    //' | sort -k2 > want.sha256
-diff want.sha256 got.sha256
+make
+PYTHONPATH=src python3 tools/pcm_goldens.py check
+PYTHONPATH=src python3 tools/pcm_goldens.py write --with-cli
+git diff --exit-code tests/fixtures/pcm-goldens.json
 ```
 
-*Expected:* no output (12 files). The PCM that the shipped engine writes is checked by the FLAC
-and WAV modes of the real-disc comparison, byte for byte against PREVIOUS. *Validated:* 2026-11-23
-on master after 0.5.5.
+*Expected:* "122 of 122 cases match", then "122 cases, each equal to dsd2pcm command-line output",
+and no output from `git diff`: the file names dsd2pcm and its command-line tool at the pinned
+version and commit (`dsd2pcm_cli`), which `tests/test_pcm_dsd2pcm.py` compares with
+`dsd2pcm.lock`. Since 0.6.0 PCM bytes may change between releases where measured quality improves
+([step 11](#11-pcm-quality-comparison) measures it); the FLAC and WAV modes
+of the real-disc comparison then differ from PREVIOUS, as the changelog says, with the same frame
+counts. *Validated:* 2026-11-25 on the dsd2pcm 0.2.0 tag (b743111): 122 cases equal to dsd2pcm's
+command-line output, the same bytes as on the candidates before it; only the recorded commit changed.
 
 ## 3. Timed fuzzing
 
@@ -231,6 +251,31 @@ scripts/leak-check.sh memcheck
 ```
 
 *Expected:* both exit 0. *Validated:* 2026-11-23 on master after 0.5.5.
+
+### CET shadow stacks
+
+CI's runners don't enforce shadow stacks, so both `ShadowStacks` tests in
+`tests/test_pcm_dsd2pcm.py` skip there. Run them on a machine whose CPU and kernel support
+user-space shadow stacks (`user_shstk` in `/proc/cpuinfo`): the Intel i9-13900H lab machine, as
+the lab test account, under the benchmark lock or while the machine is idle:
+
+<!-- docs-run: skip="a release step on a machine with user-space shadow stacks (release test plan step 4)" -->
+```sh
+make
+PYTHONPATH=src python3 -m pytest -v tests/test_pcm_dsd2pcm.py -k ShadowStacks
+```
+
+*Expected:* `test_golden_with_shadow_stacks_forced` passes, not skipped (a skip means the machine
+has no user-space shadow stacks: the step is not done). It links a small C harness
+(`tests/native/shstk_run.c`) to the engine library, turns shadow stacks on with a raw
+`arch_prctl` before anything else runs, and converts the PCM golden cases at every SIMD level
+with them enforced: every return in the process, the engine's threads and dsd2pcm included, is
+checked by the CPU, and the output must match the goldens. A deliberately wrong return in the
+harness must fault with `SEGV_CPERR`, which shows the check is live.
+`test_golden_with_shadow_stacks_on` does the same through glibc (`glibc.cpu.x86_shstk=on`); it
+skips where glibc leaves shadow stacks off, as Fedora 44's and RHEL 10's do even with that
+setting. Record the results and the CPU in the release issue.
+New for 0.6.0.
 
 ## 5. The real-disc corpus
 
@@ -392,7 +437,7 @@ the tag unless DECISIONS.md in dsd-toolbox/dsd-toolbox explains and accepts it; 
 Unlike the other steps, the version bump doesn't matter here: no figure depends on pysacd's
 version string. *Validated:* 2026-11-24 as trial runs, not published: 0.5.5 against the 0.6.0
 release branch with dsd-measure 0.1.1 and an unreleased dsd2pcm, and 0.5.5 against master (the old C
-filter) with dsd-measure 0.1.2; new from 0.6.0.
+filter) with dsd-measure 0.1.2; re-run 2026-11-25 on the dsd2pcm 0.2.0 tag with dsd-measure 0.1.3 (published as docs/quality/0.6.0.md); new from 0.6.0.
 
 ## Sign-off
 
@@ -408,6 +453,7 @@ changelog section.
 | 2. PCM goldens | | |
 | 3. Fuzzing: engine ASan 30 min, TSan 10 min, Python targets | | |
 | 4. Leak check: LSan and memcheck | | |
+| 4. CET shadow stacks on the i9-13900H, passed (not skipped) | | |
 | 6. Quick start from PyPI in a fresh container | | |
 | 7. Docs commands: run, or listed with why | | |
 | 8. Timing table in performance.md, threshold met | | |

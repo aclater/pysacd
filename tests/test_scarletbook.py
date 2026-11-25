@@ -353,13 +353,16 @@ class MakePath(unittest.TestCase):
         cmd = object.__new__(engine)
         cmd.build_lib = tempfile.mkdtemp()
         self.addCleanup(lambda: shutil.rmtree(cmd.build_lib, ignore_errors=True))
-        with mock.patch.object(engine.__mro__[1], "run"), mock.patch.object(subprocess, "run") as run, \
-                mock.patch.dict(os.environ, {"SCARLETBOOK_DIR": r"C:\lib\scarletbook"}), \
+        # compiler_first_env() looks the compiler up on this host, which isn't Windows
+        with mock.patch.dict(engine.run.__globals__, {"compiler_first_env": lambda: None}), \
+                mock.patch.object(engine.__mro__[1], "run"), mock.patch.object(subprocess, "run") as run, \
+                mock.patch.dict(os.environ, {"SCARLETBOOK_DIR": r"C:\lib\scarletbook", "DSD2PCM_DIR": r"C:\lib\dsd2pcm"}), \
                 mock.patch.object(sys, "platform", "win32"):
             engine.run(cmd)
         make = run.call_args.args[0]
         self.assertEqual(make[0], "make")
         self.assertIn("SCARLETBOOK_DIR=C:/lib/scarletbook", make)
+        self.assertIn("DSD2PCM_DIR=C:/lib/dsd2pcm", make)
         self.assertFalse([a for a in make if "\\" in a], make)
 
 

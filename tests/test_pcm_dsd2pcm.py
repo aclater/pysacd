@@ -871,11 +871,15 @@ class FlacEqualsWav(unittest.TestCase):
             (d / "dump.c").write_text(FLAC_DUMP)
             dump = d / ("dump.exe" if sys.platform == "win32" else "dump")
             cmd = [cc, "-O1", "-o", str(dump), str(d / "dump.c"), *flags.stdout.split()]
-            if subprocess.run(cmd, check=False, capture_output=True).returncode:
+            # the compiler's own directory first on PATH: on Windows its programs (cc1, as) load the first
+            # libwinpthread DLL on PATH, and the pinned Rust's older one fails them silently (setup.py
+            # does the same for make)
+            cc_env = dict(os.environ, PATH=os.pathsep.join([str(Path(cc).parent), os.environ.get("PATH", "")]))
+            if subprocess.run(cmd, check=False, capture_output=True, env=cc_env).returncode:
                 # a static libFLAC (the wheel builds') needs its private libraries too
                 static = subprocess.run([pkg_config, "--static", "--libs", "flac"], capture_output=True, text=True,
                                         check=True)
-                subprocess.run([*cmd, *static.stdout.split(), "-lm"], check=True)
+                subprocess.run([*cmd, *static.stdout.split(), "-lm"], check=True, env=cc_env)
             for channels in (2, 6):
                 frames = noise_frames(channels, 45, 4500 + channels)
                 iso = d / f"f{channels}.iso"
@@ -889,7 +893,7 @@ class FlacEqualsWav(unittest.TestCase):
                         specs = [_native.OutputSpec("wav", wav, 0, 45), _native.OutputSpec("flac", flac, 0, 45)]
                         with SACDImage(iso) as img:
                             _native.run_area(img, iso, area, specs, rate, 0.0, pcm_filter=filt)
-                        subprocess.run([str(dump), str(flac), str(d / "x.i32")], check=True)
+                        subprocess.run([str(dump), str(flac), str(d / "x.i32")], check=True, env=cc_env)
                         raw = (d / "x.i32").read_bytes()
                         self.assertTrue(i32_as_s24(raw) == wav_data(wav), "FLAC samples differ from WAV samples")
                         self.assertEqual(len(raw) // 4, 45 * OPF[rate] * channels)

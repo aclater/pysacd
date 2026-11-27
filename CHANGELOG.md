@@ -10,6 +10,13 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Added
+
+- A heap-flat memory gate in the test suite (`tests/test_heap_flat.py`) and in the
+  [release test plan](docs/release-test-plan.md#heap-flat-memory-gate): an exact counting `malloc`
+  shim reads the live bytes after each of 100 conversions in one process, over six cases, and two
+  controls that leak on purpose must fail it.
+
 ### Fixed
 
 - The Makefile quotes `$(PYTHON)`, so building with an interpreter under a path that contains a space

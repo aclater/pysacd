@@ -252,6 +252,39 @@ scripts/leak-check.sh memcheck
 
 *Expected:* both exit 0. *Validated:* 2026-11-23 on master after 0.5.5.
 
+### Heap-flat memory gate
+
+The lab memory-testing standard asks for an exact referee, not for a tool that samples. The gate runs
+one process that converts the same synthetic disc 100 times, after three warm-up conversions, under
+`tests/native/countmalloc.c`, a counting `malloc` shim that sees every C-level allocation, with
+`PYTHONMALLOC=malloc` so that the interpreter's own memory is counted too. It reads the exact live
+bytes after each conversion and runs six cases: a normal conversion, a truncated image, an
+unwritable output directory, a cancelled run, corrupt audio, and a DST area of garbage frames.
+The gate fails if a case's level changes by more than 6624 bytes between the first and the last
+conversion, if the fitted growth is more than 63 bytes per conversion, or if the outcome of a case
+changes between conversions. The margins are three times the widest spread between three calibration
+runs on an idle host (2208 bytes and 21 bytes per conversion), fixed before the first gate run. On
+that host the honest cases fell by between 0.8 and 4.6 KB over 100 conversions and did not grow. The
+smallest leak the condition can detect is about 67 bytes per conversion.
+
+Two controls leak on purpose, 4096 bytes and 256 bytes per conversion, and the same gate must fail on
+both. The first measured 4115 to 4133 bytes per conversion on the calibration host.
+
+<!-- docs-run: skip="release step 4: the memory gate needs a built engine, a C compiler and glibc on Linux" -->
+```sh
+make
+PYTHONPATH=src python3 -m pytest -q tests/test_heap_flat.py
+```
+
+*Expected:* all tests pass, and none is skipped (a skip means no glibc, no built engine (`make`) or no mutagen).
+Set `HEAPFLAT_PYTHON` to the interpreter that has mutagen if the running one has not.
+
+*Not yet part of the gate:* what is still allocated at exit across 1, 10 and 130 conversions (the
+block count is equal from 10 conversions, the bytes agree to within 32 bytes but not exactly: a first look only), the peak
+heap against a bound per input class, fuzzing with a per-input memory limit, and a soak of at least an
+hour with the level sampled at idle points. Until they are added, this step does not show that the
+engine is free of every kind of leak; it shows that conversions in one process do not grow the heap.
+
 ### CET shadow stacks
 
 CI's runners don't enforce shadow stacks, so both `ShadowStacks` tests in
@@ -453,6 +486,7 @@ changelog section.
 | 2. PCM goldens | | |
 | 3. Fuzzing: engine ASan 30 min, TSan 10 min, Python targets | | |
 | 4. Leak check: LSan and memcheck | | |
+| 4. Heap-flat memory gate, and both controls fail it | | |
 | 4. CET shadow stacks on the i9-13900H, passed (not skipped) | | |
 | 6. Quick start from PyPI in a fresh container | | |
 | 7. Docs commands: run, or listed with why | | |

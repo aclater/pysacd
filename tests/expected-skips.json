@@ -105,7 +105,7 @@
   },
   {
     "why": "The sanitizer builds are HARDEN=0 (no -fcf-protection), so the engine carries no SHSTK mark to enforce.",
-    "reason": "the engine is not SHSTK-marked (not x86-64 glibc, or a HARDEN=0 sanitizer build)",
+    "reason": "the engine has no SHSTK mark: a HARDEN=0 sanitizer build (no -fcf-protection)",
     "jobs": [
       "asan"
     ],

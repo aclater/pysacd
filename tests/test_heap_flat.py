@@ -50,6 +50,14 @@ LEAK_PER_CONVERSION = 4096  # what the positive control leaks
 LEAK_MUST_SHOW = 3 * 1024   # the control must show at least this much growth per conversion
 
 
+# The gate is a lab and release check, not one of GitHub's short required checks: it runs only where this
+# variable is set to 1 (the lab pipeline and the release run, docs/release-test-plan.md, step 4). Where it
+# is unset, every test below skips with this reason, which prints in the log: a skip, never a pass. Its
+# margins were calibrated on Linux with Python 3.15.2, without a sanitizer build; they also held in single runs
+# on Python 3.13 and 3.14, which are not calibrated; the lab runs the gate on the calibrated interpreter.
+OPT_IN = "set PYSACD_HEAP_FLAT=1 to run the heap-flat memory gate (lab and release runs)"
+
+
 def _skip_reason() -> str | None:
     if not sys.platform.startswith("linux"):
         return "the counting shim needs glibc on Linux (LD_PRELOAD, __libc_malloc)"
@@ -74,6 +82,7 @@ def _engine_built() -> bool:
     return any((ROOT / "src" / "pysacd").glob("_sacdconv.*"))
 
 
+@unittest.skipUnless(os.environ.get("PYSACD_HEAP_FLAT") == "1", OPT_IN)
 @unittest.skipIf(_skip_reason() is not None, _skip_reason() or "")
 @unittest.skipUnless(_engine_built(), "native engine not built (make)")
 class HeapFlat(unittest.TestCase):

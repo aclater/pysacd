@@ -270,13 +270,20 @@ smallest leak the condition can detect is about 67 bytes per conversion.
 Three controls leak on purpose, 4096, 256 and 100 bytes per conversion, and the same gate must fail on
 all three. The first measured 4115 to 4133 bytes per conversion on the calibration host.
 
+The gate is a lab and release check, not one of GitHub's short required checks: its tests run only where
+`PYSACD_HEAP_FLAT=1` is set, and skip with that reason everywhere else, so a skip in the GitHub jobs is
+expected and is never a pass. Its margins were calibrated on Linux with Python 3.15.2, without a sanitizer build; they also held in
+single runs on Python 3.13 (a CI runner) and 3.14, which are not calibrated, and the lab runs the gate on
+the calibrated interpreter.
+
 <!-- docs-run: skip="release step 4: the memory gate needs a built engine, a C compiler and glibc on Linux" -->
 ```sh
 make
-PYTHONPATH=src python3 -m pytest -q tests/test_heap_flat.py
+PYSACD_HEAP_FLAT=1 PYTHONPATH=src python3 -m pytest -q tests/test_heap_flat.py
 ```
 
-*Expected:* all tests pass, and none is skipped (a skip means no glibc, no built engine (`make`) or no mutagen).
+*Expected:* all tests pass, and none is skipped (a skip means no glibc, no built engine (`make`), no mutagen
+or `PYSACD_HEAP_FLAT=1` not set).
 Set `HEAPFLAT_PYTHON` to the interpreter that has mutagen if the running one has not.
 
 The release run adds a soak and a check of what is still allocated at exit. Both are scripted in

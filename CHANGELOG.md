@@ -10,6 +10,11 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Fixed
+
+- The Makefile quotes `$(PYTHON)`, so building with an interpreter under a path that contains a space
+  works (#229).
+
 ## [0.6.0] - 2026-11-25
 
 PCM conversion now goes through [dsd2pcm](https://github.com/dsd-toolbox/dsd2pcm-rs) 0.2, and FLAC

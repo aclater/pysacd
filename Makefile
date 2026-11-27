@@ -76,7 +76,7 @@ SB_EXPORTS_DEP := csrc/exports.map
 D2P_MARK := $(and $(filter x86_64,$(UNAME_M)),$(if $(findstring musl,$(shell $(CC) -dumpmachine 2>/dev/null)),,y))
 D2P_PRELINK = $(CC) -r -nostdlib -o $(1).tmp -Wl,--whole-archive $(2) -Wl,--no-whole-archive && \
     $(OBJCOPY) --remove-section=.group --wildcard --keep-global-symbol='dsd2pcm_*' $(1).tmp $(1) && rm -f $(1).tmp \
-    $(if $(D2P_MARK),&& $(PYTHON) tools/mark_shstk.py --objcopy $(OBJCOPY) $(1))
+    $(if $(D2P_MARK),&& "$(PYTHON)" tools/mark_shstk.py --objcopy $(OBJCOPY) $(1))
 SB_EXPORTS_HAS := ^ *sb_\*;$$
 SB_SYMTOOL := nm
 SB_SYMS = -D --defined-only $(1)
@@ -134,7 +134,7 @@ ifeq ($(origin SCARLETBOOK_DIR),undefined)
 SCARLETBOOK_DIR := build/scarletbook
 SB_READY := $(SCARLETBOOK_DIR)/.pysacd-scarletbook
 $(SB_READY): scarletbook.lock tools/scarletbook.py
-	$(PYTHON) tools/scarletbook.py fetch --cc "$(CC)" --dest $(SCARLETBOOK_DIR)
+	"$(PYTHON)" tools/scarletbook.py fetch --cc "$(CC)" --dest $(SCARLETBOOK_DIR)
 else
 ifeq ($(OS),Windows_NT)
 # forward slashes: the recipes run under MSYS's sh, which takes a backslash as an escape (#225)
@@ -160,7 +160,7 @@ ifeq ($(origin DSD2PCM_DIR),undefined)
 DSD2PCM_DIR := build/dsd2pcm
 D2P_READY := $(DSD2PCM_DIR)/.pysacd-dsd2pcm
 $(D2P_READY): dsd2pcm.lock tools/dsd2pcm.py tools/scarletbook.py
-	$(PYTHON) tools/dsd2pcm.py fetch --cc "$(CC)" --dest $(DSD2PCM_DIR)
+	"$(PYTHON)" tools/dsd2pcm.py fetch --cc "$(CC)" --dest $(DSD2PCM_DIR)
 else
 D2P_READY := $(DSD2PCM_DIR)/include/dsd2pcm.h
 endif

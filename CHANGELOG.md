@@ -10,6 +10,15 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Fixed
+
+- The Makefile quotes `$(PYTHON)`, so building with an interpreter under a path that contains a space
+  works (#229).
+- `tools/lock_dev.py`'s `PINS` were seven releases behind the lock files that Dependabot had bumped
+  (pytest, pluggy, tomli, ruff, mypy, ast-serialize, mypy-extensions), so running it would have
+  downgraded them. `PINS` now match, and a test fails when they diverge from the lock files or from
+  `pyproject.toml`'s `dev` extra.
+
 ## [0.6.0] - 2026-11-25
 
 PCM conversion now goes through [dsd2pcm](https://github.com/dsd-toolbox/dsd2pcm-rs) 0.2, and FLAC

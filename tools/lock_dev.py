@@ -28,19 +28,19 @@ PINS = [
     ("numpy", "2.2.6", 'python_version < "3.11"', "test"),     # numpy 2.3 dropped Python 3.10
     ("numpy", "2.4.6", 'python_version >= "3.11" and python_version < "3.12"', "test"),
     ("numpy", "2.5.4", 'python_version >= "3.12"', "test"),
-    ("pytest", "9.1.1", "", "test"),
+    ("pytest", "9.2.0", "", "test"),
     ("iniconfig", "2.3.1", "", "test"),
     ("packaging", "26.3", "", "test"),
-    ("pluggy", "1.6.0", "", "test"),
+    ("pluggy", "1.7.0", "", "test"),
     ("pygments", "2.21.0", "", "test"),
     ("colorama", "0.4.6", 'sys_platform == "win32"', "test"),
-    ("tomli", "2.4.0", 'python_version < "3.11"', "test"),       # pysacd and pytest on Python 3.10
+    ("tomli", "2.5.0", 'python_version < "3.11"', "test"),       # pysacd and pytest on Python 3.10
     ("exceptiongroup", "1.3.1", 'python_version < "3.11"', "test"),  # pytest on Python 3.10
-    ("ruff", "0.17.0", "", "dev"),
-    ("mypy", "2.4.0", "", "dev"),
-    ("ast-serialize", "0.13.0", "", "dev"),
+    ("ruff", "0.17.4", "", "dev"),
+    ("mypy", "2.4.1", "", "dev"),
+    ("ast-serialize", "0.13.1", "", "dev"),
     ("librt", "0.16.0", "", "dev"),
-    ("mypy-extensions", "1.1.0", "", "dev"),
+    ("mypy-extensions", "1.2.0", "", "dev"),
     ("pathspec", "1.1.1", "", "dev"),
     ("typing-extensions", "4.16.0", "", "test"),   # exceptiongroup (3.10) and mypy
     ("coverage", "7.16.2", "", "dev"),       # CI's coverage leg (ci.yml)

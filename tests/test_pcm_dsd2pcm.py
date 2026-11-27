@@ -25,6 +25,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import platform
 import random
 import re
 import shutil
@@ -653,7 +654,9 @@ class ShadowStacks(unittest.TestCase):
 
     def test_golden_with_shadow_stacks_on(self):
         if not engine_shstk_marked():
-            self.skipTest("the engine is not SHSTK-marked (not x86-64 glibc, or a HARDEN=0 sanitizer build)")
+            if platform.machine() in ("x86_64", "AMD64") and sys.platform.startswith("linux"):
+                self.skipTest("the engine has no SHSTK mark: a HARDEN=0 sanitizer build (no -fcf-protection)")
+            self.skipTest("the engine is not SHSTK-marked: SHSTK marks exist only on x86-64 Linux with glibc")
         env = dict(os.environ, GLIBC_TUNABLES="glibc.cpu.x86_shstk=on")
         probe = subprocess.run([sys.executable, "-c", "print(open('/proc/self/status').read())"], env=env,
                                capture_output=True, text=True, check=False)

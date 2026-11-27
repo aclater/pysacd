@@ -33,6 +33,13 @@ static pthread_mutex_t site_mu = PTHREAD_MUTEX_INITIALIZER;
 
 static atomic_llong live_bytes;
 static atomic_llong live_blocks;
+static atomic_llong peak_bytes;   /* high-water mark of live_bytes since the last cm_peak_reset() */
+
+static void raise_peak(long long now) {
+    long long p = atomic_load(&peak_bytes);
+    while (now > p && !atomic_compare_exchange_weak(&peak_bytes, &p, now)) {
+    }
+}
 
 static void site_add(void *p) {
     if (busy) return;
@@ -79,11 +86,17 @@ void cm_site_dump(const char *path) {
 
 static void *note(void *p) {
     if (p && recording) site_add(p);
-    if (p) { atomic_fetch_add(&live_bytes, (long long)malloc_usable_size(p)); atomic_fetch_add(&live_blocks, 1); }
+    if (p) {
+        long long n = (long long)malloc_usable_size(p);
+        raise_peak(atomic_fetch_add(&live_bytes, n) + n);
+        atomic_fetch_add(&live_blocks, 1);
+    }
     return p;
 }
 long long cm_live(void) { return atomic_load(&live_bytes); }
 long long cm_count(void) { return atomic_load(&live_blocks); }
+long long cm_peak(void) { return atomic_load(&peak_bytes); }
+void cm_peak_reset(void) { atomic_store(&peak_bytes, atomic_load(&live_bytes)); }
 
 void *malloc(size_t n) { return note(__libc_malloc(n)); }
 void *calloc(size_t a, size_t b) { return note(__libc_calloc(a, b)); }
@@ -109,7 +122,10 @@ void *realloc(void *p, size_t n) {
     site_del(p);
     void *q = __libc_realloc(p, n);
     if (q && recording) site_add(q);
-    if (q) { atomic_fetch_add(&live_bytes, (long long)malloc_usable_size(q) - old); }
+    if (q) {
+        long long d = (long long)malloc_usable_size(q) - old;
+        raise_peak(atomic_fetch_add(&live_bytes, d) + d);
+    }
     return q;
 }
 

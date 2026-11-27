@@ -3,7 +3,7 @@ print the referee's live bytes after each. Run with the counting shim preloaded 
 (so the interpreter's own memory is counted too). Not a test itself.
 
 usage: heapflat_child.py CASE ISO OUTDIR N [AUDIO_START AUDIO_END]
-CASE: ok | truncated | badout | cancel | corrupt | dstbad | leak | leak256 (the last two are positive controls)
+CASE: ok | truncated | badout | cancel | corrupt | dstbad | ok6 | longtext | leak | leak256 | leak100 (the last two are positive controls)
 cancel: the progress callback raises KeyboardInterrupt, the Python API's cancel hook (_native.run_area
 cancels the engine when the progress callback or the waiting thread is interrupted).
 corrupt: random bytes (fixed seed) over the middle third of the audio area, AUDIO_START..AUDIO_END
@@ -27,6 +27,7 @@ AUDIO = (int(sys.argv[5]), int(sys.argv[6])) if len(sys.argv) > 6 else None
 lib = ctypes.CDLL(None)
 lib.cm_live.restype = ctypes.c_longlong
 lib.cm_count.restype = ctypes.c_longlong
+lib.cm_peak.restype = ctypes.c_longlong
 libc_malloc = lib.malloc
 libc_malloc.restype = ctypes.c_void_p
 libc_malloc.argtypes = [ctypes.c_size_t]
@@ -55,23 +56,27 @@ def one() -> None:
                 raise KeyboardInterrupt
             return show
         convert._progress_printer = cancelling
+    elif case == "ok6":
+        opts.areas = "multichannel"
     elif case == "badout":
         opts.output_dir = str(outdir / "no" / "such" / "dir" / "\0")
     outcome = "ok"
     try:
         with contextlib.redirect_stdout(io.StringIO()):
             rc = convert.convert(target, opts)
-        if case in ("ok", "leak", "leak256"):
+        if case in ("ok", "ok6", "longtext", "leak", "leak256", "leak100"):
             assert any(outdir.rglob("*.dsf")), "the conversion wrote nothing"
         if rc:
             outcome = f"exit {rc}"
     except (SystemExit, OSError, ValueError, RuntimeError, KeyboardInterrupt) as e:
-        if case in ("ok", "leak", "leak256"):
+        if case in ("ok", "ok6", "longtext", "leak", "leak256", "leak100"):
             raise                                # the success case must succeed
         outcome = type(e).__name__
     outcomes[outcome] = outcomes.get(outcome, 0) + 1     # a few fixed keys: adds nothing after the first run
     if case == "leak":
         leaked.append(libc_malloc(4096))      # 4 KiB per conversion, never freed (positive control)
+    elif case == "leak100":
+        leaked.append(libc_malloc(100))       # 100 B per conversion: just above the detection floor
     elif case == "leak256":
         leaked.append(libc_malloc(256))       # 256 B per conversion: a control near the detection threshold
     shutil.rmtree(outdir, ignore_errors=True)
@@ -89,19 +94,35 @@ if TRACE:
 for _ in range(int(os.environ.get('HEAPFLAT_WARMUP', '1'))):
     one()                                       # warm-up: takes the one-time allocations
 # the record lives in C memory, preallocated, so that keeping it adds nothing the referee counts
-levels = (ctypes.c_longlong * n)()
-blocks = (ctypes.c_longlong * n)()
-traced = (ctypes.c_longlong * n)()
+EVERY = int(os.environ.get('HEAPFLAT_EVERY', '1'))      # sample the level every EVERY conversions (the soak)
+m = (n + EVERY - 1) // EVERY
+levels = (ctypes.c_longlong * m)()
+blocks = (ctypes.c_longlong * m)()
+traced = (ctypes.c_longlong * m)()
+peaks = (ctypes.c_longlong * m)()      # peak live bytes above the level before each sampled conversion
+# HEAPFLAT_PLANT=BYTES/EVERY: a planted leak of BYTES every EVERY conversions (a soak control), never freed
+PLANT = os.environ.get('HEAPFLAT_PLANT')
+plant_bytes, plant_every = (int(x) for x in PLANT.split('/')) if PLANT else (0, 1)
 if os.environ.get('HEAPFLAT_SITES'):
     lib.cm_site_start()
 for i in range(n):
+    sample = i % EVERY == 0
+    base = int(lib.cm_live())
+    if sample:
+        lib.cm_peak_reset()
     one()
-    levels[i] = level()
-    blocks[i] = lib.cm_count()
-    traced[i] = tracemalloc.get_traced_memory()[0] if TRACE else 0
+    if PLANT and (i + 1) % plant_every == 0:
+        leaked.append(libc_malloc(plant_bytes))
+    if sample:
+        k = i // EVERY
+        peaks[k] = int(lib.cm_peak()) - base
+        levels[k] = level()
+        blocks[k] = lib.cm_count()
+        traced[k] = tracemalloc.get_traced_memory()[0] if TRACE else 0
 if os.environ.get("HEAPFLAT_SITES"):
     lib.cm_site_dump(os.environ["HEAPFLAT_SITES"].encode())
 print("OUTCOMES", " ".join(f"{k.replace(chr(32), chr(95))}={v}" for k, v in sorted(outcomes.items())))
 print("LEVELS", *list(levels))
+print("PEAKS", *list(peaks))
 print("BLOCKS", *list(blocks))
 print("TRACED", *list(traced))

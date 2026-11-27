@@ -102,8 +102,20 @@ class HeapFlat(unittest.TestCase):
                                      sacdgen.DiscInfo(title="DST garbage", artist="pysacd"))
         cls.dst_iso = cls.tmp / "dst-garbage.iso"
         cls.dst_iso.write_bytes(bytes(img))
+        # input classes for the peak observation: six channels, and the longest text the TOC can carry
+        six = [sacdgen._dsd_frame(6, i) for i in range(40)]
+        img, _ = sacdgen.build_image([sacdgen.AreaSpec(6, six, [20, 20], dst=False, titles=["One", "Two"])],
+                                     sacdgen.DiscInfo(title="Six channels", artist="pysacd"))
+        cls.mch_iso = cls.tmp / "six.iso"
+        cls.mch_iso.write_bytes(bytes(img))
+        big = "T" * 600           # the most the generator fits in the text sector
+        img, _ = sacdgen.build_image([sacdgen.AreaSpec(2, frames, [20, 20], dst=False, titles=[big, big])],
+                                     sacdgen.DiscInfo(title=big, artist=big))
+        cls.tag_iso = cls.tmp / "long-text.iso"
+        cls.tag_iso.write_bytes(bytes(img))
 
     outcomes: ClassVar[dict[str, dict[str, int]]] = {}
+    peaks: ClassVar[dict[str, list[int]]] = {}
 
     def levels(self, case: str, n: int = N) -> list[int]:
         out = self.tmp / f"out-{case}"
@@ -112,13 +124,16 @@ class HeapFlat(unittest.TestCase):
                    PYTHONDONTWRITEBYTECODE="1", HEAPFLAT_WARMUP=str(WARMUP))
         env.pop("HEAPFLAT_TRACEMALLOC", None)
         env.pop("HEAPFLAT_SITES", None)
-        args = [self.python, str(CHILD), case, str(self.dst_iso if case == "dstbad" else self.iso), str(out), str(n)]
+        iso = {"dstbad": self.dst_iso, "ok6": self.mch_iso, "longtext": self.tag_iso}.get(case, self.iso)
+        args = [self.python, str(CHILD), case, str(iso), str(out), str(n)]
         if case == "corrupt":
             args += [str(self.audio[0]), str(self.audio[1])]
         r = subprocess.run(args, env=env, capture_output=True, text=True, timeout=120, check=False)
         self.assertEqual(r.returncode, 0, f"{case}: child failed:\n{r.stderr[-3000:]}")
         line = next(ln for ln in r.stdout.splitlines() if ln.startswith("LEVELS "))
         levels = [int(x) for x in line.split()[1:]]
+        peaks = next(ln for ln in r.stdout.splitlines() if ln.startswith("PEAKS "))
+        self.peaks[case] = [int(x) for x in peaks.split()[1:]]
         got = next(ln for ln in r.stdout.splitlines() if ln.startswith("OUTCOMES "))
         self.outcomes[case] = {k: int(v) for k, v in (kv.split("=") for kv in got.split()[1:])}
         self.assertEqual(len(levels), n)
@@ -136,10 +151,16 @@ class HeapFlat(unittest.TestCase):
         self.assertLessEqual(slope, SLOPE_MARGIN, f"{case}: fitted growth {slope:.1f} B per conversion: {lv}")
         # the case did what its name says, the same way every time (one outcome)
         got = self.outcomes[case]
-        self.assertEqual(len(got), 1, f"{case}: the outcome changed between conversions: {got}")
-        want = EXPECTED_OUTCOME.get(case)
-        if want is not None:
-            self.assertEqual(next(iter(got)), want, f"{case}: unexpected outcome {got}")
+        if case == "cancel":
+            # a cancel can arrive after a short conversion has finished: 3,249 of 1.1 million in the lab soak
+            total = sum(got.values())
+            self.assertLessEqual(set(got), {"KeyboardInterrupt", "ok"}, f"{case}: unexpected outcome {got}")
+            self.assertGreaterEqual(got.get("KeyboardInterrupt", 0), 0.9 * total, f"{case}: {got}")
+        else:
+            self.assertEqual(len(got), 1, f"{case}: the outcome changed between conversions: {got}")
+            want = EXPECTED_OUTCOME.get(case)
+            if want is not None:
+                self.assertEqual(next(iter(got)), want, f"{case}: unexpected outcome {got}")
         print(f"\nheap-flat {case}: outcome {got}")
         print(f"heap-flat {case}: first {lv[0]} last {lv[-1]} change {change} B "
               f"(min {min(lv)} max {max(lv)}, margin {MARGIN})", file=sys.stderr)
@@ -161,6 +182,29 @@ class HeapFlat(unittest.TestCase):
         """A 256 B per conversion leak, near what the gate can detect (about 67 B), must also fail it."""
         with self.assertRaises(AssertionError):
             self.assert_flat("leak256")
+
+    def test_peak_heap_per_input_class_is_observed(self):
+        """OBSERVATION, not yet a gate: the peak heap above the level before one conversion, per input class
+        (stereo, six channels, the longest text, garbage DST). Bounds follow when the lab has calibrated them."""
+        for case in ("ok", "ok6", "longtext", "dstbad"):
+            self.levels(case, 10)
+            pk = self.peaks[case]
+            print(f"\nheap-flat peak {case}: min {min(pk)} max {max(pk)} B above the starting level", file=sys.stderr)
+            self.assertGreater(min(pk), 0)
+
+    def test_third_control_just_above_the_floor_fails_the_gate(self):
+        """100 B per conversion, just above the floor of about 67 B, must fail the gate too."""
+        with self.assertRaises(AssertionError):
+            self.assert_flat("leak100")
+
+    def test_a_short_soak_is_never_a_pass(self):
+        """tests/heapflat_release.py soak under 1,000,000 conversions is an observation: exit status 3."""
+        env = dict(os.environ, PYTHONPATH=str(ROOT / "src"), PYTHONDONTWRITEBYTECODE="1")
+        r = subprocess.run([self.python, str(ROOT / "tests" / "heapflat_release.py"), "soak", "--conversions", "30",
+                            "--every", "10", "--scenario", "ok"], env=env, capture_output=True, text=True,
+                           timeout=120, check=False)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertIn("observation", r.stdout)
 
     def test_ok(self):
         self.assert_flat("ok")

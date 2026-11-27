@@ -267,8 +267,8 @@ runs on an idle host (2208 bytes and 21 bytes per conversion), fixed before the 
 that host the honest cases fell by between 0.8 and 4.6 KB over 100 conversions and did not grow. The
 smallest leak the condition can detect is about 67 bytes per conversion.
 
-Two controls leak on purpose, 4096 bytes and 256 bytes per conversion, and the same gate must fail on
-both. The first measured 4115 to 4133 bytes per conversion on the calibration host.
+Three controls leak on purpose, 4096, 256 and 100 bytes per conversion, and the same gate must fail on
+all three. The first measured 4115 to 4133 bytes per conversion on the calibration host.
 
 <!-- docs-run: skip="release step 4: the memory gate needs a built engine, a C compiler and glibc on Linux" -->
 ```sh
@@ -279,11 +279,43 @@ PYTHONPATH=src python3 -m pytest -q tests/test_heap_flat.py
 *Expected:* all tests pass, and none is skipped (a skip means no glibc, no built engine (`make`) or no mutagen).
 Set `HEAPFLAT_PYTHON` to the interpreter that has mutagen if the running one has not.
 
-*Not yet part of the gate:* what is still allocated at exit across 1, 10 and 130 conversions (the
-block count is equal from 10 conversions, the bytes agree to within 32 bytes but not exactly: a first look only), the peak
-heap against a bound per input class, fuzzing with a per-input memory limit, and a soak of at least an
-hour with the level sampled at idle points. Until they are added, this step does not show that the
-engine is free of every kind of leak; it shows that conversions in one process do not grow the heap.
+The release run adds a soak and a check of what is still allocated at exit. Both are scripted in
+`tests/heapflat_release.py`, whose header holds the calibration figures the margins come from (a run of
+about 1.1 million conversions per scenario on an idle host, four scenarios: a normal conversion, a
+cancelled run, a DST area of garbage frames and a truncated image) and the margins themselves, fixed
+before the gate run:
+
+- **Soak:** per scenario, one process converts the same disc 1,102,696 times and samples the exact live
+  bytes every 1000 conversions. The last sample must differ from the first by no more than 45,000 bytes
+  (three times the 15 KB range seen in the calibration). That is about 0.04 bytes per conversion, or 41
+  bytes per thousand conversions, the smallest steady leak the condition can detect. A run of fewer than
+  1,000,000 conversions is printed as an observation, not a result.
+- **Bytes at exit:** separate processes convert 10 and 130 times, three runs each; every run must be
+  within 192 bytes (three times the 64 bytes seen) of the median of the three 10-conversion runs.
+- **Controls:** the soak with a planted leak of 128 bytes every 1000 conversions (about 141 KB over the
+  run, above the limit) and the exit check with a planted leak of 100 bytes per conversion must both
+  fail the gate, and the unmodified build must pass both. The gate run is repeated on a second host.
+
+<!-- docs-run: skip="release step 4: the soak runs for about an hour per scenario on a lab host" -->
+```sh
+python3 tests/heapflat_release.py soak
+python3 tests/heapflat_release.py exit
+python3 tests/heapflat_release.py soak --plant 128/1000
+python3 tests/heapflat_release.py exit --plant 100/1
+```
+
+*Expected:* the first two commands exit 0; the last two, the controls, exit 0 only because the gate
+fails. A fall in the level is not a pass criterion. The slow fall seen in the calibration is expected
+while the thread library's bookkeeping settles. The call-site table of the counting shim shows what stays
+allocated after the warm-up: blocks of about 2 KB allocated inside thread-exit destructors of the
+statically linked Rust code, blocks of about 2.3 KB from aligned allocations in the same library, and
+the C library's dynamic thread-local storage blocks of 312 bytes. Their number stays the same from 40
+to 200 conversions. This identifies them by size and call site, not by owner.
+
+*Not yet part of the gate:* the peak heap against a bound per input class (observed so far: about
+5.1 MB for stereo and 10.4 MB for six channels, about twice, and long text adds about 30 KB), and fuzzing
+with a per-input memory limit. Until they are added, this step shows that conversions in one process
+do not grow the heap; it does not bound the memory of a hostile input.
 
 ### CET shadow stacks
 
@@ -486,7 +518,7 @@ changelog section.
 | 2. PCM goldens | | |
 | 3. Fuzzing: engine ASan 30 min, TSan 10 min, Python targets | | |
 | 4. Leak check: LSan and memcheck | | |
-| 4. Heap-flat memory gate, and both controls fail it | | |
+| 4. Heap-flat memory gate, soak and bytes at exit; every control fails the gate | | |
 | 4. CET shadow stacks on the i9-13900H, passed (not skipped) | | |
 | 6. Quick start from PyPI in a fresh container | | |
 | 7. Docs commands: run, or listed with why | | |

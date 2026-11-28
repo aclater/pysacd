@@ -10,12 +10,19 @@ behaviour, and a patch version only adds or fixes. Each release on
 
 ## [Unreleased]
 
+### Added
+
+- A heap-flat memory gate in the test suite (`tests/test_heap_flat.py`) and in the
+  [release test plan](docs/release-test-plan.md#heap-flat-memory-gate): an exact counting `malloc`
+  shim reads the live bytes after each of 100 conversions in one process, over six cases, and three
+  controls that leak on purpose (4096, 256 and 100 bytes per conversion) must fail it.
+
 ### Fixed
 
 - The Makefile quotes `$(PYTHON)`, so building with an interpreter under a path that contains a space
   works (#229).
-- `tools/lock_dev.py`'s `PINS` were seven releases behind the lock files that Dependabot had bumped
-  (pytest, pluggy, tomli, ruff, mypy, ast-serialize, mypy-extensions), so running it would have
+- Seven of the `PINS` in `tools/lock_dev.py` were behind the lock files that Dependabot had bumped
+  (pytest, pluggy, tomli, ruff, mypy, ast-serialize, mypy-extensions), so running the script would have
   downgraded them. `PINS` now match, and a test fails when they diverge from the lock files or from
   `pyproject.toml`'s `dev` extra.
 

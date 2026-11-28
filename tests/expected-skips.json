@@ -124,5 +124,28 @@
     "tests": [
       "tests.test_pcm_dsd2pcm.ShadowStacksForced.test_golden_with_shadow_stacks_forced"
     ]
+  },
+  {
+    "why": "The heap-flat memory gate is a lab and release check: it runs only where PYSACD_HEAP_FLAT=1, so GitHub's short required checks never run it (its margins are calibrated on Linux with Python 3.15.2, without a sanitizer).",
+    "reason": "set PYSACD_HEAP_FLAT=1 to run the heap-flat memory gate (lab and release runs)",
+    "jobs": [
+      "tests",
+      "asan",
+      "tsan"
+    ],
+    "tests": [
+      "tests.test_heap_flat.HeapFlat.test_a_short_soak_is_never_a_pass",
+      "tests.test_heap_flat.HeapFlat.test_cancel",
+      "tests.test_heap_flat.HeapFlat.test_corrupt_audio",
+      "tests.test_heap_flat.HeapFlat.test_dst_garbage_frames",
+      "tests.test_heap_flat.HeapFlat.test_ok",
+      "tests.test_heap_flat.HeapFlat.test_peak_heap_per_input_class_is_observed",
+      "tests.test_heap_flat.HeapFlat.test_positive_control_fails_the_gate",
+      "tests.test_heap_flat.HeapFlat.test_positive_control_leak_is_seen",
+      "tests.test_heap_flat.HeapFlat.test_second_control_near_the_threshold_fails_the_gate",
+      "tests.test_heap_flat.HeapFlat.test_third_control_just_above_the_floor_fails_the_gate",
+      "tests.test_heap_flat.HeapFlat.test_truncated_input",
+      "tests.test_heap_flat.HeapFlat.test_unwritable_output"
+    ]
   }
 ]

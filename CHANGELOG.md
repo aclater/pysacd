@@ -25,6 +25,9 @@ behaviour, and a patch version only adds or fixes. Each release on
   (pytest, pluggy, tomli, ruff, mypy, ast-serialize, mypy-extensions), so running the script would have
   downgraded them. `PINS` now match, and a test fails when they diverge from the lock files or from
   `pyproject.toml`'s `dev` extra.
+- The engine caps the worker count at 256 (`-j`, `--threads`), with a warning when it lowers a larger
+  value: `-j 100000` asked for about 65 GB for the batch pool and failed with "out of memory", and memory now
+  has a stated bound per worker (see [converting](docs/converting.md)).
 
 ## [0.6.0] - 2026-11-25
 

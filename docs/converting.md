@@ -105,6 +105,13 @@ How it works:
     DSD goes to DSF or DSDIFF, where there is nothing to decode or filter, #137): converts DSD
     to PCM and lays out DSF blocks. scarletbook's decoding pool has one thread fewer, so the reader,
     which works on every frame, has a CPU of its own (#94).
+    Memory grows with the worker count: each worker has two batches of 35 frames in flight, plus 4 more
+    in the pool, so a conversion needs about 0.33 MB per batch for stereo and 1 MB for six channels
+    (a run with two workers, `-j 2`, measured about 5 MB of peak heap for stereo and 10 MB for six
+    channels on a synthetic disc, with the reader's buffers; the memory gate's observation test,
+    `tests/test_heap_flat.py`, whose child process `tests/heapflat_child.py` sets two workers). The engine caps the worker count at 256, about 170 MB for stereo and 510 MB for six
+    channels (computed from the pool size, not measured), and logs a warning when it lowers a larger `-j`
+    or `--threads`.
   - **Writer thread:** writes every overlapping output in order. That covers
     DSF, DSDIFF (DSD or DST passthrough), WAV and FLAC.
 

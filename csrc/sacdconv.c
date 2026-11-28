@@ -78,6 +78,9 @@ _Static_assert(DSD2PCM_FRAME_BYTES_PER_CHANNEL == FRAME_BYTES_PER_CH, "dsd2pcm a
 #define PRE_FRAMES     2               /* context kept before a batch (the PCM filter needs one) */
 #define POST_FRAMES    1               /* context after a batch (the PCM filter's reach is < 1 frame) */
 #define SLOT_FRAMES    (PRE_FRAMES + BATCH_FRAMES + POST_FRAMES)
+/* The pool holds 2 * workers + 4 batches of SLOT_FRAMES frames, so memory grows with the worker count:
+   it is capped (docs/converting.md, "Memory"). One worker per core stays below this on any machine in use. */
+#define MAX_WORKERS    256
 #define READ_SECTORS   1024            /* 2 MiB reads */
 #define OUT_BUFFER     (1 << 20)
 #define FILL_CHUNK     (1 << 20)       /* DSF bytes per sb_output_layout_fill call */
@@ -1783,6 +1786,10 @@ int sacdconv_area_run(sc_area_t *a, sc_output_t *outs, int nouts)
     nworkers = a->threads > 0 ? a->threads : sc_ncpus();
     if (nworkers < 1)
         nworkers = 1;
+    if (nworkers > MAX_WORKERS) {
+        sc_log(a, SC_WARNING, "%d worker threads asked for; using the maximum, %d", nworkers, MAX_WORKERS);
+        nworkers = MAX_WORKERS;
+    }
     e.npool = nworkers * 2 + 4;
     pthread_mutex_init(&e.mu, NULL);
     pthread_cond_init(&e.cv_free, NULL);
